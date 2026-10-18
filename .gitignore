@@ -14,21 +14,36 @@ gradle-app.setting
 # Cache of project
 .gradletasknamecache
 
-# Eclipse Gradle plugin generated files
-# Eclipse Core
+# Eclipse / Spring Tool Suite
+.apt_generated
+.factorypath
+.springBeans
+.sts4-cache
 .project
-# JDT-specific (Eclipse Java Development Tools)
 .classpath
+.settings/
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
 
-# IDE and editor settings
+# IntelliJ IDEA
 .idea/
 *.iml
 *.ipr
 *.iws
-.settings/
-.vscode/
 out/
-bin/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# VS Code
+.vscode/
 
 # Local environment and credentials
 .env
