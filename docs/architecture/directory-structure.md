@@ -4,9 +4,9 @@
 
 ## 근거와 이번 범위
 
-- [요구사항 명세서 v1.1](../../../docs/revised/2026-10-17/OpenStudy_요구사항_명세서_v1.1.docx): §3 P23~P36, §4 기능, §5 무결성, §6
+- [요구사항 명세서 v1.2](../../../docs/revised/2026-10-17/OpenStudy_요구사항_명세서_v1.2.docx): §3 P23~P36, §4 기능, §5 무결성, §6
   DomainLens, §7 비기능.
-- [요구조건 식별서 및 WBS v1.1](../../../docs/revised/2026-10-17/OpenStudy_요구조건_식별서_및_WBS_v1.1.xlsx): `요구조건식별` 128개, `작업계획` W01~
+- [요구조건 식별서 및 WBS v1.2](../../../docs/revised/2026-10-17/OpenStudy_요구조건_식별서_및_WBS_v1.2.xlsx): `요구조건식별` 128개, `작업계획` W01~
   W50, `백엔드Task` BE-002/003과 관련 기반 Task.
 - [기존 선택 기록](../design-decisions/decision-register.md): 단일 빌드·패키지 경계, Groovy DSL, 모듈 내부 JPA 모델/별도 DTO, 전용 MySQL 테스트 DB와
   일치시켰다.
@@ -146,8 +146,7 @@ bootstrap을 참조하지 않는다. `common/service`처럼 모든 업무 로직
 | `support/database/`                                   | 전용 DB 확인·격리·테스트 후 정리                                           |
 | `support/fixture/`, `support/clock/`, `support/http/` | 재현 데이터·시간 경계·클라이언트 도우미                                    |
 
-테스트 DB는 MySQL 8.4 (Debian) 전용 DB를 사용한다. 기본 CRUD 롤백과 HTTP/경합/커밋 시험 후 정리를 구분하며 Testcontainers를 기본 전제로 추가하지 않는다. 더블과 실제
-DB/서버/SMTP/엔진 검증 결과를 따로 기록한다. ArchUnit 규칙은 BE-002 빌드 설정 후 BE-003에서 구현하고, 허용/위반 예제로 검사 효력을 검증한다.
+테스트 DB는 2026-10-19 변경된 M1-12에 따라 Docker 전용 MySQL 8.4/InnoDB를 사용하고 자동 테스트는 Testcontainers로 관리한다. 기본 CRUD 롤백과 HTTP/경합/커밋 후 정리를 구분하며 개발 DB 오접속을 차단하고 테스트 컨테이너 자원만 정리한다. 이미지 버전·digest·OS를 기록하고 Debian 운영 검수는 별도로 수행한다. 자동 연동·초기 DB 기반 검증은 구현됐으며 [검증 보고서 v1.0](../verification/database-initialization-v1.0.md)을 따른다. 더블과 실제 DB/서버/SMTP/엔진 검증 결과를 따로 기록한다. ArchUnit 규칙은 BE-002 빌드 설정 후 BE-003에서 구현하고, 허용/위반 예제로 검사 효력을 검증한다.
 
 OS-NFR-001~004는 auth/authorization 및 각 application과 platform, OS-NFR-007은 shared와 ticket/sales/ai, OS-NFR-008~010은
 migration/seed/테스트/실행 인계 문서에 연결된다. OS-NFR-005와 OS-HOME의 화면 접근성/반응형은 프론트 책임이며 백엔드는 관련 권한/오류 계약을 제공한다. OS-NFR-006의 성능 목표는
@@ -199,7 +198,7 @@ migration/seed/테스트/실행 인계 문서에 연결된다. OS-NFR-005와 OS-
 
 1. BE-002: 실제 JDK/Boot/Gradle/외부 의존성 호환성을 확인하고 Groovy 빌드·Wrapper·실행 클래스를 추가한다.
 2. BE-003/004: 이 문서의 경계를 ArchUnit으로 검사하고 공통 오류·입력 검증을 구현한다.
-3. BE-005~007: 전용 MySQL 테스트 DB 격리·스키마·시드·Clock을 구현한다.
+3. BE-005~007: Docker/MySQL 테스트 DB·Testcontainers 격리·스키마·시드·Clock을 구현한다.
 4. 승인된 작은 Task에 따라 인증/직원/지점/권한 등을 구현하고 실제 HTTP·DB 경합을 검증한다. M1 전체 범위는 이 구조 작업으로 확정하지 않는다.
 5. 실제 DomainLens 산출물을 확인한 뒤 ai/infrastructure에 공개 어댑터를 구현한다.
 
