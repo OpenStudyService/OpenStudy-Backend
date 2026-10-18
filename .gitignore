@@ -80,3 +80,9 @@ __pycache__/
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Local DB design snapshots; executable schema is managed by Flyway
+/docs/db/v0.4/
+/docs/db/v0.5/
+/docs/db/OpenStudy_DB_Initial_v0.4.zip
+/docs/db/OpenStudy_DB_Initial_v0.5.zip

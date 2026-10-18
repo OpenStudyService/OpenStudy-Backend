@@ -42,6 +42,8 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-starter-session-jdbc-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:testcontainers-mysql'
     testCompileOnly 'org.projectlombok:lombok'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testAnnotationProcessor 'org.projectlombok:lombok'
@@ -49,4 +51,8 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    // Service connections override these values. An unconfigured test must fail closed.
+    systemProperty 'spring.profiles.active', 'test'
+    systemProperty 'spring.datasource.url', 'jdbc:mysql://127.0.0.1:1/testcontainers_required'
+    systemProperty 'spring.flyway.url', 'jdbc:mysql://127.0.0.1:1/testcontainers_required'
 }

@@ -1,0 +1,17 @@
+spring:
+  datasource:
+    # @ServiceConnection replaces these values. Without a container, fail closed.
+    url: jdbc:mysql://127.0.0.1:1/testcontainers_required
+    username: testcontainers_required
+    password: testcontainers_required
+    hikari:
+      connection-timeout: 1000
+      initialization-fail-timeout: 1
+      maximum-pool-size: 4
+  flyway:
+    url: jdbc:mysql://127.0.0.1:1/testcontainers_required
+    clean-disabled: true
+    baseline-on-migrate: false
+  session:
+    jdbc:
+      cleanup-cron: "-"

@@ -1,12 +1,9 @@
--- OpenStudy / MySQL 8.4 InnoDB / initial draft v0.4 (2026-10-18)
+-- OpenStudy / MySQL 8.4 InnoDB / initial draft v0.5 (2026-10-18)
 -- NOTE: initial schema, not a validated production migration; review docs before applying.
 -- All DATETIME(6) values are UTC; configure database connections and MySQL session time_zone = +00:00.
 -- Local business-day/month calculations and weekly operating hours use Asia/Seoul in application logic.
 -- No customer login/QR/real PG/social login/attachment delivery in the stated scope.
 -- Requires MySQL 8.4 CHECK constraints and generated columns.
-CREATE DATABASE IF NOT EXISTS `openstudy` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
-USE `openstudy`;
-SET time_zone = '+00:00';
 
 -- ACCESS: 스터디카페 지점
 CREATE TABLE `branches` (
@@ -36,7 +33,7 @@ CREATE TABLE `branch_weekly_hours` (
   UNIQUE KEY `uk_branch_weekly_hours_1` (`branch_id`, `weekday`),
   CONSTRAINT `fk_branch_weekly_hours_1` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `ck_branch_weekly_hours_1` CHECK (weekday BETWEEN 1 AND 7),
-  CONSTRAINT `ck_branch_weekly_hours_2` CHECK (((is_closed = 1 AND opens_minute IS NULL AND closes_minute IS NULL) OR (is_closed = 0 AND opens_minute < 1440 AND closes_minute > opens_minute AND closes_minute <= 2880)))
+  CONSTRAINT `ck_branch_weekly_hours_2` CHECK (((is_closed = 1 AND opens_minute IS NULL AND closes_minute IS NULL) OR (is_closed = 0 AND opens_minute IS NOT NULL AND closes_minute IS NOT NULL AND opens_minute < 1440 AND closes_minute > opens_minute AND closes_minute <= 2880)))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='지점 기본 영업시간. 분 단위, 종료 1440 초과는 다음날';
 
 -- ACCESS: 직원 로그인 계정; 이메일 ID 불변, 최초 소유자 1명
@@ -262,7 +259,8 @@ CREATE TABLE `conversations` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_conversations_1` (`dm_employee_low_id`, `dm_employee_high_id`),
   KEY `ix_conversations_1` (`branch_id`, `kind`),
-  CONSTRAINT `fk_conversations_1` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE SET NULL,
+  -- Preserve branch-channel identity; suspend referenced branches instead of deleting them.
+  CONSTRAINT `fk_conversations_1` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_conversations_2` FOREIGN KEY (`dm_employee_low_id`) REFERENCES `employees` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_conversations_3` FOREIGN KEY (`dm_employee_high_id`) REFERENCES `employees` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_conversations_4` FOREIGN KEY (`created_by`) REFERENCES `employees` (`id`) ON DELETE SET NULL,
@@ -425,6 +423,8 @@ CREATE TABLE `payments` (
   `version` BIGINT UNSIGNED NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_payments_1` (`idempotency_key`),
+  UNIQUE KEY `uk_payments_2` (`id`, `customer_id`, `branch_id`),
+  UNIQUE KEY `uk_payments_3` (`id`, `customer_id`, `branch_id`, `product_id`),
   KEY `ix_payments_1` (`branch_id`, `status`, `approved_at`),
   KEY `ix_payments_2` (`customer_id`, `created_at`),
   KEY `ix_payments_3` (`product_id`, `approved_at`),
@@ -432,7 +432,8 @@ CREATE TABLE `payments` (
   CONSTRAINT `fk_payments_2` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_payments_3` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_payments_4` FOREIGN KEY (`created_by`) REFERENCES `employees` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `ck_payments_1` CHECK ((purpose = 'PASS' AND product_id IS NOT NULL) OR (purpose IN ('ROOM','LOCKER') AND product_id IS NULL))
+  CONSTRAINT `ck_payments_1` CHECK ((purpose = 'PASS' AND product_id IS NOT NULL) OR (purpose IN ('ROOM','LOCKER') AND product_id IS NULL)),
+  CONSTRAINT `ck_payments_2` CHECK (amount_krw > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='이용권·스터디룸·사물함 내부 Mock 승인/실패, 구매 지점의 원거래';
 
 -- COMMERCE: 승인 결제 발급권, 구매 당시 상품 조건 스냅샷
@@ -464,7 +465,7 @@ CREATE TABLE `passes` (
   KEY `ix_passes_2` (`purchase_branch_id`, `created_at`),
   CONSTRAINT `fk_passes_1` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_passes_2` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `fk_passes_3` FOREIGN KEY (`purchase_payment_id`) REFERENCES `payments` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_passes_3` FOREIGN KEY (`purchase_payment_id`, `customer_id`, `purchase_branch_id`, `product_id`) REFERENCES `payments` (`id`, `customer_id`, `branch_id`, `product_id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_passes_4` FOREIGN KEY (`purchase_branch_id`) REFERENCES `branches` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `ck_passes_1` CHECK ((kind = 'TIME' AND snapshot_minutes IS NOT NULL AND snapshot_minutes > 0 AND remaining_minutes IS NOT NULL AND snapshot_credit_krw IS NULL AND remaining_credit_krw IS NULL) OR (kind = 'PERIOD' AND snapshot_period_days IS NOT NULL AND snapshot_period_days > 0 AND remaining_minutes IS NULL AND remaining_credit_krw IS NULL) OR (kind = 'STORED_VALUE' AND snapshot_credit_krw IS NOT NULL AND snapshot_hourly_rate_krw IS NOT NULL AND snapshot_credit_krw > 0 AND snapshot_hourly_rate_krw > 0 AND remaining_credit_krw IS NOT NULL AND remaining_minutes IS NULL))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='승인 결제 발급권, 구매 당시 상품 조건 스냅샷';
@@ -486,7 +487,8 @@ CREATE TABLE `refunds` (
   KEY `ix_refunds_2` (`processing_branch_id`, `refunded_at`),
   CONSTRAINT `fk_refunds_1` FOREIGN KEY (`payment_id`) REFERENCES `payments` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_refunds_2` FOREIGN KEY (`processing_branch_id`) REFERENCES `branches` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `fk_refunds_3` FOREIGN KEY (`processed_by`) REFERENCES `employees` (`id`) ON DELETE RESTRICT
+  CONSTRAINT `fk_refunds_3` FOREIGN KEY (`processed_by`) REFERENCES `employees` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_refunds_1` CHECK (amount_krw > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='원거래 1회 전액 환불, 처리지점/원결제지점 분리';
 
 -- SPACE: 지점 좌석: OCCUPIED는 활성 seat_session으로 계산
@@ -647,7 +649,7 @@ CREATE TABLE `room_weekly_hours` (
   UNIQUE KEY `uk_room_weekly_hours_1` (`room_id`, `weekday`),
   CONSTRAINT `fk_room_weekly_hours_1` FOREIGN KEY (`room_id`) REFERENCES `rooms` (`id`) ON DELETE CASCADE,
   CONSTRAINT `ck_room_weekly_hours_1` CHECK (weekday BETWEEN 1 AND 7),
-  CONSTRAINT `ck_room_weekly_hours_2` CHECK (((is_closed = 1 AND opens_minute IS NULL AND closes_minute IS NULL) OR (is_closed = 0 AND opens_minute < 1440 AND closes_minute > opens_minute AND closes_minute <= 2880)))
+  CONSTRAINT `ck_room_weekly_hours_2` CHECK (((is_closed = 1 AND opens_minute IS NULL AND closes_minute IS NULL) OR (is_closed = 0 AND opens_minute IS NOT NULL AND closes_minute IS NOT NULL AND opens_minute < 1440 AND closes_minute > opens_minute AND closes_minute <= 2880)))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='월~일 룸 시간; 익일 종료 지원/날짜별 휴무 미지원';
 
 -- SPACE: 룸 30분 단위 정수 요금 선결제, start 포함/end 제외
@@ -663,6 +665,9 @@ CREATE TABLE `room_reservations` (
   `slot_count` INT UNSIGNED NOT NULL,
   `amount_krw` BIGINT UNSIGNED NOT NULL,
   `status` ENUM('PAYMENT_PENDING','CONFIRMED','PAYMENT_FAILED','IN_USE','COMPLETED','CANCELLED') NOT NULL DEFAULT 'PAYMENT_PENDING',
+  `cancelled_at` DATETIME(6) NULL,
+  `cancelled_by` BIGINT UNSIGNED NULL,
+  `cancel_reason` VARCHAR(500) NULL,
   `request_key` VARCHAR(120) NOT NULL,
   `created_by` BIGINT UNSIGNED NOT NULL,
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
@@ -671,13 +676,16 @@ CREATE TABLE `room_reservations` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_room_reservations_1` (`request_key`),
   UNIQUE KEY `uk_room_reservations_2` (`payment_id`),
+  UNIQUE KEY `uk_room_reservations_3` (`id`, `room_id`),
   KEY `ix_room_reservations_1` (`room_id`, `start_at`, `end_at`, `status`),
   KEY `ix_room_reservations_2` (`branch_id`, `start_at`, `status`),
   KEY `ix_room_reservations_3` (`customer_id`, `start_at`),
   CONSTRAINT `fk_room_reservations_1` FOREIGN KEY (`room_id`, `branch_id`) REFERENCES `rooms` (`id`, `branch_id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_room_reservations_2` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `fk_room_reservations_3` FOREIGN KEY (`payment_id`) REFERENCES `payments` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_room_reservations_3` FOREIGN KEY (`payment_id`, `customer_id`, `branch_id`) REFERENCES `payments` (`id`, `customer_id`, `branch_id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_room_reservations_4` FOREIGN KEY (`created_by`) REFERENCES `employees` (`id`) ON DELETE RESTRICT,
+  -- Preserve cancellation attribution; retain referenced employee accounts for audit history.
+  CONSTRAINT `fk_room_reservations_5` FOREIGN KEY (`cancelled_by`) REFERENCES `employees` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `ck_room_reservations_1` CHECK (end_at > start_at),
   CONSTRAINT `ck_room_reservations_2` CHECK (SECOND(start_at) = 0 AND MICROSECOND(start_at) = 0),
   CONSTRAINT `ck_room_reservations_3` CHECK (MINUTE(start_at) IN (0, 30)),
@@ -687,8 +695,25 @@ CREATE TABLE `room_reservations` (
   CONSTRAINT `ck_room_reservations_7` CHECK (TIMESTAMPDIFF(SECOND, start_at, end_at) = slot_count * 1800),
   CONSTRAINT `ck_room_reservations_8` CHECK (slot_count > 0),
   CONSTRAINT `ck_room_reservations_9` CHECK (rate_per_30min_snapshot_krw > 0),
-  CONSTRAINT `ck_room_reservations_10` CHECK (amount_krw = rate_per_30min_snapshot_krw * slot_count)
+  CONSTRAINT `ck_room_reservations_10` CHECK (amount_krw = rate_per_30min_snapshot_krw * slot_count),
+  CONSTRAINT `ck_room_reservations_11` CHECK ((status = 'CANCELLED' AND cancelled_at IS NOT NULL AND cancel_reason IS NOT NULL) OR (status <> 'CANCELLED' AND cancelled_at IS NULL AND cancelled_by IS NULL AND cancel_reason IS NULL)),
+  CONSTRAINT `ck_room_reservations_12` CHECK (status NOT IN ('CONFIRMED','IN_USE','COMPLETED') OR payment_id IS NOT NULL)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='룸 30분 단위 정수 요금 선결제, start 포함/end 제외';
+
+-- SPACE: 확정 예약의 30분 점유 슬롯. 취소 시 슬롯 삭제, 예약/감사는 유지
+CREATE TABLE `room_reservation_slots` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `reservation_id` BIGINT UNSIGNED NOT NULL,
+  `room_id` BIGINT UNSIGNED NOT NULL,
+  `slot_start_at` DATETIME(6) NOT NULL,
+  `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_room_reservation_slots_1` (`room_id`, `slot_start_at`),
+  KEY `ix_room_reservation_slots_1` (`reservation_id`, `slot_start_at`),
+  CONSTRAINT `fk_room_reservation_slots_1` FOREIGN KEY (`reservation_id`, `room_id`) REFERENCES `room_reservations` (`id`, `room_id`) ON DELETE CASCADE,
+  CONSTRAINT `ck_room_reservation_slots_1` CHECK (SECOND(slot_start_at) = 0 AND MICROSECOND(slot_start_at) = 0),
+  CONSTRAINT `ck_room_reservation_slots_2` CHECK (MINUTE(slot_start_at) IN (0,30))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='확정 예약의 30분 점유 슬롯. 취소 시 슬롯 삭제, 예약/감사는 유지';
 
 -- SPACE: 예약된 룸 실제 사용 기록
 CREATE TABLE `room_usages` (
@@ -1140,6 +1165,11 @@ CREATE TABLE `SPRING_SESSION_ATTRIBUTES` (
 -- TRANSACTION BOUNDARIES (not guaranteed by FK/UNIQUE alone):
 -- room_reservations: price = 30-minute slot count * KRW rate; payment/confirmation atomic.
 -- room_reservations: SELECT room FOR UPDATE, then assert no overlap [start,end) for CONFIRMED/IN_USE before APPROVE.
+-- Confirm by atomically approving Mock payment, marking reservation CONFIRMED and inserting one room_reservation_slots row per 30-minute segment.
+-- UNIQUE (room_id,slot_start_at) prevents double booking if another writer skips room locking; transaction rollback on duplicate.
+-- On cancellation of unpaid/unused booking: delete owned room_reservation_slots and retain room_reservations CANCELLED + audit.
+-- Cancel/Mock full refund must update payment REFUNDED and create refunds once in the same transaction; never issue refund for IN_USE/COMPLETED.
+-- Check slot count and timestamps against reservation in application; FK/CHECK cannot establish count(*) = slot_count.
 -- locker_assignments: SELECT locker FOR UPDATE, then assert no overlapping ACTIVE date intervals.
 -- Locker billing: charged_4week_terms * rate_per_4weeks_snapshot_krw. 1 term = exactly 28 days.
 -- Locker rental/charge date ranges use [start_date,end_date), end exclusive.
@@ -1152,6 +1182,11 @@ CREATE TABLE `SPRING_SESSION_ATTRIBUTES` (
 -- Locker 4-week term billing confirmed; return/cancellation refund eligibility remains undecided: see README.
 -- shifts: SELECT employee FOR UPDATE, then assert no overlapping scheduled shifts across all branches.
 -- attendance_breaks: SELECT attendance_record FOR UPDATE, then reject overlapping break intervals/outside work.
+-- pass payment FK enforces matching customer, purchase branch and product ID; room payment FK matches customer and branch.
+-- payment.status=APPROVED, purpose and amount require service-level validation (cross-row CHECK impossible).
+-- refund amount equals original payment; one refund max per payment by UNIQUE and same transaction, no partial refunds.
+-- paid room cancellation preserves cancellation actor/reason/time, refunds history, frees 30-minute slots atomically.
+-- overage_minutes/overage_krw on seat_sessions are display-only; no automatic extra charge/debt collection in MVP.
 -- cross-entity coherency: payment->pass/reservation, branch->seat/room, passes.customer, invitation approval.
 -- all write workflows require authorization recheck, transaction, idempotency key/version, audit as relevant.
 -- Spring Session max absolute auth age 12h is enforced by application, not by SPRING_SESSION expiry alone.
@@ -1159,4 +1194,4 @@ CREATE TABLE `SPRING_SESSION_ATTRIBUTES` (
 -- account suspension/logout invalidates Spring sessions + SSE stream from app layer.
 -- permission_presets do not dynamically grant rights; copy into membership_permission_grants.
 -- invitation sender generates raw token only in transient memory, persists digest/revision, never outbox payload.
--- schema changes should be transferred to Flyway V1__initial_schema.sql after review, not rerun on populated DB.
+-- After this migration is applied, make schema changes in a new Flyway version; do not edit or rerun V1.
