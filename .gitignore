@@ -14,8 +14,69 @@ gradle-app.setting
 # Cache of project
 .gradletasknamecache
 
-# Eclipse Gradle plugin generated files
-# Eclipse Core
+# Eclipse / Spring Tool Suite
+.apt_generated
+.factorypath
+.springBeans
+.sts4-cache
 .project
-# JDT-specific (Eclipse Java Development Tools)
 .classpath
+.settings/
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# VS Code
+.vscode/
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+application-local.yml
+application-local.yaml
+application-local.properties
+application-*-local.yml
+application-*-local.yaml
+application-*-local.properties
+gradle-local.properties
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Runtime output and diagnostic files
+logs/
+*.log
+uploads/
+*.hprof
+hs_err_pid*
+replay_pid*
+
+# Python tooling used by DB documentation
+__pycache__/
+*.py[cod]
+.venv/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
