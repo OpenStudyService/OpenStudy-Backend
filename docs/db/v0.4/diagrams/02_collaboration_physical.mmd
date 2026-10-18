@@ -1,0 +1,112 @@
+erDiagram
+  branches {
+    BIGINT id PK
+  }
+  employees {
+    BIGINT id PK
+  }
+  branch_memberships {
+    BIGINT id PK
+    BIGINT employee_id FK
+    BIGINT branch_id FK
+    BIGINT approved_by FK
+  }
+  work_tasks {
+    BIGINT id PK
+    BIGINT branch_id FK
+    VARCHAR title
+    TEXT body
+    BIGINT created_by FK
+    BIGINT assignee_employee_id FK
+    VARCHAR category
+    ENUM priority
+    ENUM status
+    DATETIME due_at
+    DATETIME completed_at
+    DATETIME created_at
+    DATETIME updated_at
+    BIGINT version
+  }
+  task_checklist_items {
+    BIGINT id PK
+    BIGINT task_id FK
+    VARCHAR body
+    INT sort_order
+    BOOLEAN is_done
+    BIGINT updated_by FK
+    DATETIME updated_at
+  }
+  task_events {
+    BIGINT id PK
+    BIGINT task_id FK
+    BIGINT actor_employee_id FK
+    VARCHAR event_type
+    JSON before_json
+    JSON after_json
+    DATETIME created_at
+  }
+  conversations {
+    BIGINT id PK
+    ENUM kind
+    BIGINT branch_id FK
+    VARCHAR name
+    BIGINT dm_employee_low_id FK
+    BIGINT dm_employee_high_id FK
+    BIGINT created_by FK
+    DATETIME created_at
+  }
+  conversation_members {
+    BIGINT conversation_id PK,FK
+    BIGINT employee_id PK,FK
+    DATETIME joined_at
+    DATETIME left_at
+    BIGINT last_read_message_id
+    DATETIME last_read_at
+  }
+  messages {
+    BIGINT id PK
+    BIGINT conversation_id FK
+    BIGINT sender_employee_id FK
+    BIGINT parent_message_id FK
+    BIGINT related_task_id FK
+    ENUM kind
+    TEXT body
+    VARCHAR client_message_key
+    DATETIME sent_at
+  }
+  announcements {
+    BIGINT id PK
+    BIGINT author_employee_id FK
+    VARCHAR title
+    TEXT body
+    ENUM target
+    ENUM status
+    BOOLEAN is_pinned
+    DATETIME published_at
+    DATETIME created_at
+    DATETIME updated_at
+    BIGINT version
+  }
+  announcement_branches {
+    BIGINT announcement_id PK,FK
+    BIGINT branch_id PK,FK
+  }
+  announcements ||--o{ announcement_branches : "announcement_id"
+  branch_memberships ||--o{ work_tasks : "branch_id_assignee_employee_id"
+  branches ||--o{ announcement_branches : "branch_id"
+  branches ||--o{ conversations : "branch_id"
+  branches ||--o{ work_tasks : "branch_id"
+  conversation_members ||--o{ messages : "conversation_id_sender_employee_id"
+  conversations ||--o{ conversation_members : "conversation_id"
+  employees ||--o{ announcements : "author_employee_id"
+  employees ||--o{ conversation_members : "employee_id"
+  employees ||--o{ conversations : "created_by"
+  employees ||--o{ conversations : "dm_employee_high_id"
+  employees ||--o{ conversations : "dm_employee_low_id"
+  employees ||--o{ task_checklist_items : "updated_by"
+  employees ||--o{ task_events : "actor_employee_id"
+  employees ||--o{ work_tasks : "created_by"
+  messages ||--o{ messages : "parent_message_id_conversation_id"
+  work_tasks ||--o{ messages : "related_task_id"
+  work_tasks ||--o{ task_checklist_items : "task_id"
+  work_tasks ||--o{ task_events : "task_id"

@@ -1,0 +1,133 @@
+erDiagram
+  branches {
+    BIGINT id PK
+    VARCHAR code
+    VARCHAR name
+    VARCHAR address
+    VARCHAR phone
+    ENUM status
+    DATETIME created_at
+    DATETIME updated_at
+    BIGINT version
+  }
+  branch_weekly_hours {
+    BIGINT id PK
+    BIGINT branch_id FK
+    TINYINT weekday
+    BOOLEAN is_closed
+    SMALLINT opens_minute
+    SMALLINT closes_minute
+  }
+  employees {
+    BIGINT id PK
+    VARCHAR email
+    VARCHAR password_hash
+    VARCHAR name
+    VARCHAR nickname
+    VARCHAR avatar_url
+    ENUM global_role
+    TINYINT owner_slot
+    ENUM status
+    ENUM theme
+    DATETIME last_login_at
+    DATETIME created_at
+    DATETIME updated_at
+    BIGINT version
+  }
+  permission_definitions {
+    BIGINT id PK
+    VARCHAR code
+    VARCHAR description
+    BOOLEAN is_admin_only
+  }
+  permission_presets {
+    BIGINT id PK
+    VARCHAR name
+    ENUM role
+    BOOLEAN is_system
+    BIGINT created_by FK
+    DATETIME created_at
+    DATETIME updated_at
+    BIGINT version
+  }
+  permission_preset_grants {
+    BIGINT preset_id PK,FK
+    BIGINT permission_id PK,FK
+  }
+  branch_memberships {
+    BIGINT id PK
+    BIGINT employee_id FK
+    BIGINT branch_id FK
+    ENUM role
+    ENUM status
+    BIGINT approved_by FK
+    DATETIME approved_at
+    DATETIME created_at
+    DATETIME updated_at
+    BIGINT version
+  }
+  membership_permission_grants {
+    BIGINT membership_id PK,FK
+    BIGINT permission_id PK,FK
+  }
+  employee_invitations {
+    BIGINT id PK
+    BIGINT branch_id FK
+    VARCHAR invitee_email
+    ENUM initial_role
+    BIGINT preset_id FK
+    BIGINT created_by FK
+    BIGINT accepted_employee_id FK
+    BIGINT approved_by FK
+    ENUM status
+    TINYINT active_invitation_slot
+    BINARY token_hash
+    INT revision
+    DATETIME created_at
+    DATETIME expires_at
+    DATETIME accepted_at
+    DATETIME approved_at
+    DATETIME updated_at
+    BIGINT version
+  }
+  invitation_send_jobs {
+    BIGINT id PK
+    BIGINT invitation_id FK
+    INT revision
+    ENUM status
+    INT attempts
+    DATETIME next_attempt_at
+    DATETIME sent_at
+    VARCHAR last_error_code
+    DATETIME created_at
+    DATETIME updated_at
+  }
+  audit_events {
+    BIGINT id PK
+    BIGINT actor_employee_id FK
+    BIGINT branch_id FK
+    VARCHAR entity_type
+    BIGINT entity_id
+    VARCHAR action
+    VARCHAR reason
+    JSON before_json
+    JSON after_json
+    DATETIME occurred_at
+  }
+  branch_memberships ||--o{ membership_permission_grants : "membership_id"
+  branches ||--o{ audit_events : "branch_id"
+  branches ||--o{ branch_memberships : "branch_id"
+  branches ||--o{ branch_weekly_hours : "branch_id"
+  branches ||--o{ employee_invitations : "branch_id"
+  employee_invitations ||--o{ invitation_send_jobs : "invitation_id"
+  employees ||--o{ audit_events : "actor_employee_id"
+  employees ||--o{ branch_memberships : "approved_by"
+  employees ||--o{ branch_memberships : "employee_id"
+  employees ||--o{ employee_invitations : "accepted_employee_id"
+  employees ||--o{ employee_invitations : "approved_by"
+  employees ||--o{ employee_invitations : "created_by"
+  employees ||--o{ permission_presets : "created_by"
+  permission_definitions ||--o{ membership_permission_grants : "permission_id"
+  permission_definitions ||--o{ permission_preset_grants : "permission_id"
+  permission_presets ||--o{ employee_invitations : "preset_id"
+  permission_presets ||--o{ permission_preset_grants : "preset_id"

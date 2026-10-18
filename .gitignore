@@ -19,3 +19,49 @@ gradle-app.setting
 .project
 # JDT-specific (Eclipse Java Development Tools)
 .classpath
+
+# IDE and editor settings
+.idea/
+*.iml
+*.ipr
+*.iws
+.settings/
+.vscode/
+out/
+bin/
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+application-local.yml
+application-local.yaml
+application-local.properties
+application-*-local.yml
+application-*-local.yaml
+application-*-local.properties
+gradle-local.properties
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Runtime output and diagnostic files
+logs/
+*.log
+uploads/
+*.hprof
+hs_err_pid*
+replay_pid*
+
+# Python tooling used by DB documentation
+__pycache__/
+*.py[cod]
+.venv/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini

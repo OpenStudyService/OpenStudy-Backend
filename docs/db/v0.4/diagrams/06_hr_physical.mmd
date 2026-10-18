@@ -1,0 +1,162 @@
+erDiagram
+  branches {
+    BIGINT id PK
+  }
+  employees {
+    BIGINT id PK
+  }
+  branch_memberships {
+    BIGINT id PK
+    BIGINT employee_id FK
+    BIGINT branch_id FK
+    BIGINT approved_by FK
+  }
+  shifts {
+    BIGINT id PK
+    BIGINT employee_id FK
+    BIGINT branch_id FK
+    DATETIME starts_at
+    DATETIME ends_at
+    SMALLINT planned_break_minutes
+    ENUM status
+    BIGINT created_by FK
+    DATETIME created_at
+    DATETIME updated_at
+    BIGINT version
+  }
+  shift_events {
+    BIGINT id PK
+    BIGINT shift_id FK
+    BIGINT actor_employee_id FK
+    ENUM event_type
+    JSON before_json
+    JSON after_json
+    VARCHAR reason
+    DATETIME created_at
+  }
+  attendance_records {
+    BIGINT id PK
+    BIGINT employee_id FK
+    BIGINT branch_id FK
+    BIGINT shift_id FK
+    DATETIME clock_in_at
+    DATETIME clock_out_at
+    ENUM status
+    BIGINT active_employee_id
+    DATETIME created_at
+    DATETIME updated_at
+    BIGINT version
+  }
+  attendance_breaks {
+    BIGINT id PK
+    BIGINT attendance_id FK
+    DATETIME started_at
+    DATETIME ended_at
+  }
+  attendance_corrections {
+    BIGINT id PK
+    BIGINT attendance_id FK
+    BIGINT requested_by FK
+    ENUM correction_kind
+    BIGINT break_id FK
+    DATETIME before_clock_in_at
+    DATETIME before_clock_out_at
+    DATETIME after_clock_in_at
+    DATETIME after_clock_out_at
+    DATETIME before_break_start_at
+    DATETIME before_break_end_at
+    DATETIME after_break_start_at
+    DATETIME after_break_end_at
+    VARCHAR reason
+    ENUM status
+    BIGINT decided_by FK
+    DATETIME decided_at
+    DATETIME created_at
+    BIGINT version
+  }
+  leave_grants {
+    BIGINT id PK
+    BIGINT employee_id FK
+    BIGINT origin_branch_id FK
+    SMALLINT grant_year
+    DATE valid_from
+    DATE valid_through
+    DECIMAL granted_days
+    DECIMAL remaining_days
+    VARCHAR reason
+    BIGINT granted_by FK
+    DATETIME created_at
+    BIGINT version
+  }
+  leave_requests {
+    BIGINT id PK
+    BIGINT employee_id FK
+    SMALLINT request_year
+    DATE starts_on
+    DATE ends_on
+    DECIMAL requested_days
+    VARCHAR reason
+    ENUM status
+    BIGINT decided_by FK
+    DATETIME decided_at
+    DATETIME created_at
+    DATETIME updated_at
+    BIGINT version
+  }
+  leave_allocations {
+    BIGINT id PK
+    BIGINT leave_request_id FK
+    BIGINT leave_grant_id FK
+    DECIMAL allocated_days
+    DATETIME restored_at
+  }
+  leave_balance_events {
+    BIGINT id PK
+    BIGINT leave_grant_id FK
+    BIGINT leave_request_id FK
+    ENUM event_type
+    DECIMAL delta_days
+    VARCHAR reason
+    BIGINT actor_employee_id FK
+    VARCHAR event_key
+    DATETIME created_at
+  }
+  shift_swaps {
+    BIGINT id PK
+    BIGINT original_shift_id FK
+    BIGINT requested_by FK
+    BIGINT replacement_employee_id FK
+    DATETIME proposed_starts_at
+    DATETIME proposed_ends_at
+    VARCHAR reason
+    ENUM status
+    BIGINT decided_by FK
+    DATETIME decided_at
+    DATETIME created_at
+    BIGINT version
+  }
+  attendance_breaks ||--o{ attendance_corrections : "break_id"
+  attendance_records ||--o{ attendance_breaks : "attendance_id"
+  attendance_records ||--o{ attendance_corrections : "attendance_id"
+  branch_memberships ||--o{ attendance_records : "branch_id_employee_id"
+  branch_memberships ||--o{ shifts : "branch_id_employee_id"
+  branches ||--o{ leave_grants : "origin_branch_id"
+  employees ||--o{ attendance_corrections : "decided_by"
+  employees ||--o{ attendance_corrections : "requested_by"
+  employees ||--o{ leave_balance_events : "actor_employee_id"
+  employees ||--o{ leave_grants : "employee_id"
+  employees ||--o{ leave_grants : "granted_by"
+  employees ||--o{ leave_requests : "decided_by"
+  employees ||--o{ leave_requests : "employee_id"
+  employees ||--o{ shift_events : "actor_employee_id"
+  employees ||--o{ shift_swaps : "decided_by"
+  employees ||--o{ shift_swaps : "replacement_employee_id"
+  employees ||--o{ shift_swaps : "requested_by"
+  employees ||--o{ shifts : "created_by"
+  leave_grants ||--o{ leave_allocations : "leave_grant_id"
+  leave_grants ||--o{ leave_balance_events : "leave_grant_id"
+  leave_requests ||--o{ leave_allocations : "leave_request_id"
+  leave_requests ||--o{ leave_balance_events : "leave_request_id"
+  shifts ||--o{ attendance_records : "shift_id"
+  shifts ||--o{ shift_events : "shift_id"
+  shifts ||--o{ shift_swaps : "original_shift_id"
