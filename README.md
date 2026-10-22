@@ -14,7 +14,7 @@ openstudy-backend/
 ├── gradlew / gradlew.bat
 ├── gradle/wrapper/
 ├── docs/
-│   ├── architecture/              초기 구조 설계와 요구사항/WBS 대응
+│   ├── architecture/              현재 구조 설계와 요구사항/WBS 대응
 │   ├── db/                        DB 스키마와 ERD 설계 자료
 │   ├── design-decisions/          기존 설계 선택 기록
 │   ├── development-log/           날짜별 작업 기록
@@ -24,9 +24,8 @@ openstudy-backend/
     ├── main/
     │   ├── java/com/openstudy/
     │   │   ├── OpenstudyBackendApplication.java
-    │   │   ├── bootstrap/        config, owner, seed
-    │   │   ├── shared/           error, validation, time, money, pagination
-    │   │   ├── platform/         audit, idempotency, outbox, mail, realtime, storage
+    │   │   ├── config/           Spring 설정
+    │   │   ├── common/exception/ 공통 예외와 HTTP 오류 처리
     │   │   └── modules/          20개 업무 모듈
     │   └── resources/
     │       ├── application.yaml
@@ -38,7 +37,7 @@ openstudy-backend/
         │   ├── OpenstudyBackendApplicationTests.java
         │   ├── architecture/
         │   ├── modules/          업무별 테스트
-        │   ├── platform/
+        │   ├── common/
         │   ├── integration/     http, concurrency, domainlens
         │   └── support/         database, fixture, http, clock
         └── resources/fixtures/
@@ -57,13 +56,29 @@ openstudy-backend/
 | 근무·집계 | workforce, sales, home |
 | 외부 엔진 연동 | ai |
 
-각 모듈에 `api/`, `presentation/`, `application/`, `domain/`, `infrastructure/`를 둡니다. api는 다른 모듈에 공개하는 Java 계약이고 HTTP 컨트롤러·요청/응답 DTO는 presentation에 둡니다. 모듈 내부 JPA 엔티티는 domain에 두고 공개 응답에 직접 노출하지 않습니다.
+각 모듈은 다음 구조를 사용합니다. 클래스 이름은 배치 예시이며 아직 업무 클래스는 구현하지 않았습니다.
 
-workforce는 `domain/schedule`, `domain/attendance`, `domain/leave`, `domain/substitution`으로 내부 책임을 구분합니다. 기능 구현이 시작되면 필요한 계층만 채웁니다.
+```text
+modules/reservation/
+├── package-info.java
+├── controller/                 ReservationController.java
+├── service/                    ReservationService.java
+├── repository/                 ReservationRepository.java
+├── entity/                     Reservation.java
+└── dto/
+    ├── request/                CreateReservationRequest.java
+    └── response/               ReservationResponse.java
+```
 
-각 모듈의 `package-info.java`는 책임을 설명하고 `.gitkeep`은 빈 디렉터리를 보존합니다. ArchUnit과 업무 구현·시드·초기화 명령은 아직 추가하지 않았습니다. 실행용 스키마 SQL은 `src/main/resources/db/migration/`에서 관리합니다.
+Controller는 요청 처리와 입력 검증, Service는 업무 흐름·권한·트랜잭션, Repository는 DB 접근, Entity는 JPA 매핑과 상태 변경 규칙을 담당합니다. 요청·응답 DTO를 엔티티와 분리하고 엔티티를 HTTP 응답에 직접 노출하지 않습니다. Spring Data JPA 저장소 인터페이스와 필요한 사용자 정의 구현은 모두 repository에 둡니다.
 
-[기존 구조 설계](docs/architecture/directory-structure.md)의 빌드·Wrapper·실행 클래스 미생성 설명은 초기 상태입니다. 현재 배치는 이 README와 [구조 적용 기록](docs/development-log/2026-10-18-backend-project-directory-layout.md)을 따릅니다. 이전 골격 보관본은 실제 Gradle 소스 경로가 아닙니다.
+모듈 간에는 명시적으로 공개한 service 진입점과 DTO만 사용합니다. 다른 모듈의 entity·repository에 직접 접근하지 않으며 모듈 순환 의존을 금지합니다. Java public이라는 이유만으로 모든 Service 메서드를 다른 모듈에 공개하지 않습니다. 호출 진입점과 DTO는 해당 기능 구현 시 문서와 경계 검사 대상으로 명시합니다.
+
+workforce는 근무표·근태·휴가·대체근무를 하나의 업무 모듈로 유지합니다. 세부 패키지는 실제 구현량에 따라 필요한 계층에 추가합니다. 공통 설정은 config, 업무에 종속되지 않는 공통 기능은 common에 두며 common/exception 외의 세부 폴더는 기능 구현 시 추가합니다.
+
+각 모듈의 package-info.java는 책임을 설명하고 .gitkeep은 빈 디렉터리를 보존합니다. ArchUnit과 업무 구현·시드·초기화 명령은 아직 추가하지 않았습니다. 실행용 스키마 SQL은 src/main/resources/db/migration/에서 관리합니다.
+
+현재 구조는 [디렉터리 설계](docs/architecture/directory-structure.md)와 [2026-10-22 변경 기록](docs/development-log/2026-10-22-simplify-backend-package-layout.md)을 따릅니다. docs/directory-architecture/와 과거 개발 기록은 이전 구조의 보관 자료이며 실제 Gradle 소스 경로가 아닙니다.
 
 ## 개발과 검증
 

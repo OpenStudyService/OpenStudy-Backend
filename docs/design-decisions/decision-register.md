@@ -8,6 +8,12 @@
 ‘내 선택’에 A/B/C 또는 `설명 필요`/`보류`를 적는다. ‘이유·조건’에는 예를 들어 ‘재기동 후에도 로그인 유지가 필요함’을 적으면 된다. 결정일·결정자는 실제 확인 후 기록한다. 조건이 권장안과 다르면
 구현 전에 영향과 대안을 정리한다.
 
+## 2026-10-22 디렉토리 구조 변경
+
+사용자가 익숙한 Spring Boot 계층 이름과 코드 탐색의 편의성을 위해 구조 변경을 요청했다. 모듈별 api/presentation/application/domain/infrastructure를 controller/service/repository/entity/dto(request·response)로 변경하고 최상위 bootstrap/shared/platform을 config/common으로 정리했다. common/exception 외의 공통 세부 패키지는 필요한 기능 구현 시 추가한다.
+
+M1-02의 단일 빌드·기능별 패키지와 M1-04의 JPA 업무 엔티티·별도 DTO는 유지한다. 모듈 간 계약 위치는 api 전용 패키지에서 명시적으로 공개한 service 진입점과 DTO로 변경한다. 다른 모듈 Entity/Repository 직접 접근과 모듈 순환은 계속 금지한다. ArchUnit은 아직 미구현이다. [현재 설계](../architecture/directory-structure.md)와 [변경 기록](../development-log/2026-10-22-simplify-backend-package-layout.md)을 따른다.
+
 ## M1 착수 전 선택
 
 | ID    | 항목                     | 권장      | 내 선택                                 | 이유·조건                                                                                                                                                                                | 결정일·결정자               |

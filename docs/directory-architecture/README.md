@@ -1,5 +1,7 @@
 # OpenStudy 백엔드
 
+> 이전 구조 보관본: 이 폴더의 api/presentation/application/domain/infrastructure 및 bootstrap/shared/platform은 현재 소스 구조가 아니다. 현재 배치는 [저장소 README](../../README.md)와 [디렉터리 설계](../architecture/directory-structure.md)를 따른다.
+
 첨부 요구사항 v1.1과 WBS v1.1을 바탕으로 만든 백엔드 디렉토리 골격이다. 단일 Gradle 빌드 안에서 기능별 패키지로 모듈을 구분한다. 기본 패키지 `com.openstudy`는 이번 구조 작업의 명명 기준이며 향후 조직의 네임스페이스에 맞춰 변경할 수 있다.
 
 현재 포함된 것은 패키지 디렉토리, 책임 설명, 리소스/테스트 위치와 구조 문서다. 실행 클래스·업무 코드·SQL·빌드 설정은 아직 없다. `package-info.java`는 패키지 설명이며 `.gitkeep`은 빈 디렉토리 보존용이다.
@@ -31,7 +33,7 @@ openstudy-backend/
         └── resources/fixtures/
 ```
 
-[전체 모듈과 요구사항/WBS 대응](docs/architecture/directory-structure.md)을 먼저 읽는다. 모듈의 `api/`는 다른 모듈에 공개하는 Java 계약이고 HTTP 엔드포인트는 `presentation/`에 둔다.
+[전체 모듈과 요구사항/WBS 대응](../architecture/directory-structure.md)을 먼저 읽는다. 아래 보관 골격에서 모듈의 `api/`는 다른 모듈에 공개하는 Java 계약이고 HTTP 엔드포인트는 `presentation/`에 둔다. 현재 소스 배치는 위 안내의 최신 설계를 따른다.
 
 ## 후속 빌드 작업
 

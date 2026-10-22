@@ -1,5 +1,7 @@
 # M1 전에 결정할 설계
 
+> 2026-10-22 구조 변경: 업무 모듈은 controller/service/repository/entity/dto(request·response), 최상위는 config/common/modules로 구성한다. 단일 빌드·기능별 모듈화와 JPA 엔티티/DTO 분리 결정은 유지한다. 현재 경로와 호출 규칙은 [디렉터리 설계](../architecture/directory-structure.md)를 따른다.
+
 작성일: 2026-10-18 KST. 상태: M1-01의 진행 방식 확정·범위 보류, M1-02~12 선택 확정. M1-08은 이메일 ID 변경 금지로 대체. M1-03은 B (Groovy DSL),
 M1-06/11/12는 B, M1-02/04/05/07/09/10은 A다. 후속 도메인 설계는 별도 검토한다.
 
@@ -106,7 +108,7 @@ M1은 첫 번째로 실제 서버와 화면이 연결되는 완성 단위다. �
 
 **통과 증거:** 상태 변경 우회 금지, 엔티티의 민감 필드 미노출, 업무 규칙 단위 테스트와 JPA 매핑 통합 테스트.
 
-**구현 흐름:** `CreateTaskRequest/UpdateTaskRequest → application 서비스 → Task 생성·변경/DB 저장 → TaskResponse`. Task의 상태 변경은
+**구현 흐름:** `CreateTaskRequest/UpdateTaskRequest → Service → Task 생성·변경/DB 저장 → TaskResponse`. Task의 상태 변경은
 `complete()` 같은 의도를 드러내는 메서드를 사용하고, 여러 원본의 권한 검사·트랜잭션·감사는 서비스에서 조율한다. 엔티티를 controller의 요청/응답으로 직접 사용하지 않는다. 복잡한 계산·정책은
 필요에 따라 별도 클래스로 분리한다.
 

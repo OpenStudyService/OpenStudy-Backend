@@ -1,5 +1,7 @@
 # OpenStudy 백엔드 설계 선택 안내
 
+> 2026-10-22 구조 변경: 업무 모듈은 controller/service/repository/entity/dto(request·response), 최상위는 config/common/modules로 구성한다. 단일 빌드·기능별 모듈화와 JPA 엔티티/DTO 분리 결정은 유지한다. 현재 경로와 호출 규칙은 [디렉터리 설계](../architecture/directory-structure.md)를 따른다.
+
 작성일: 2026-10-18 KST. 상태: 진행 방식 및 기존 설계 선택지 확정, 첫 마일스톤 Task 범위·상세 설계·계약 동기화·실행 검증은 후속 작업. 대상: 1인 개발·교육 시연·취업 포트폴리오.
 
 이 문서는 백엔드 구현을 시작하기 전에 사람이 선택할 설계를 설명한다. 권장안은 현재 범위·기존 프론트·DomainLens 연결 조건을 고려한 제안이다. 권장안 표시가 선택 완료를 뜻하지 않는다. 이 문서 작성으로

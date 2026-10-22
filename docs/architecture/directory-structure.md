@@ -1,20 +1,31 @@
 # 백엔드 디렉토리 구조와 책임
 
-기준일: 2026-10-18 KST. 이 문서는 디렉토리 설계와 후속 구현 위치를 정의한다. 기능 구현·빌드 성공·ArchUnit 통과를 의미하지 않는다.
+기준일: 2026-10-22 KST. 현재 실제 src 배치와 후속 구현 위치를 정의한다. 2026-10-18의 다섯 계층 설계를 사용자 요청에 따라 일반적인 Controller·Service·Repository 구성으로 변경했다. 변경 경위와 검증은 [개발 기록](../development-log/2026-10-22-simplify-backend-package-layout.md)을 따른다. 과거 구조는 [이전 골격 보관본](../directory-architecture/README.md)과 기존 개발 기록에 보존한다.
 
-## 근거와 이번 범위
+## 기준과 현재 범위
 
-- [요구사항 명세서 v1.2](../../../docs/revised/2026-10-17/OpenStudy_요구사항_명세서_v1.2.docx): §3 P23~P36, §4 기능, §5 무결성, §6
-  DomainLens, §7 비기능.
-- [요구조건 식별서 및 WBS v1.2](../../../docs/revised/2026-10-17/OpenStudy_요구조건_식별서_및_WBS_v1.2.xlsx): `요구조건식별` 128개, `작업계획` W01~
-  W50, `백엔드Task` BE-002/003과 관련 기반 Task.
-- [기존 선택 기록](../design-decisions/decision-register.md): 단일 빌드·패키지 경계, Groovy DSL, 모듈 내부 JPA 모델/별도 DTO, 전용 MySQL 테스트 DB와
-  일치시켰다.
+- [요구사항 명세서 v1.2](../../../docs/revised/2026-10-17/OpenStudy_요구사항_명세서_v1.2.docx)와 [요구조건 식별서 및 WBS v1.2](../../../docs/revised/2026-10-17/OpenStudy_요구조건_식별서_및_WBS_v1.2.xlsx)의 업무 책임을 유지한다.
+- [설계 선택 기록](../design-decisions/decision-register.md)의 단일 빌드·기능별 패키지, Gradle Groovy DSL, JPA 엔티티와 별도 DTO, Docker 전용 MySQL 테스트 DB 결정을 유지한다.
+- Java 21·Spring Boot 4.1.1·Gradle Wrapper 9.8.1의 단일 Gradle 프로젝트다. modules 하위는 Java 패키지 경계이며 Gradle 서브프로젝트가 아니다.
+- 현재 업무 모듈은 디렉토리와 package-info.java만 있다. DB 설정·Flyway V1·Testcontainers 통합 테스트는 구현되어 있다. 업무 API와 ArchUnit 경계 검사는 아직 없다.
 
-문서에 적힌 실행 지시나 에이전트 배정 예시는 참고 자료다. 이번 요청에 해당하는 디렉토리 구성만 수행하며 서버 기능 구현, 저장소 생성, 문서 이관, 배포와 에이전트 배정을 시작하지 않는다.
-
-단일 빌드의 모듈러 모놀리스로 구성한다. `modules/`의 하위 디렉토리는 Java 패키지 경계이며 Gradle 서브프로젝트가 아니다. 기본 패키지 `com.openstudy`, 아래의 모듈 이름과 계층 구분은
-이번 설계 선택이다. JDK/Boot/Wrapper/엔진의 정확한 버전은 정하지 않았다.
+```text
+src/main/java/com/openstudy/
+├── OpenstudyBackendApplication.java
+├── config/
+├── common/
+│   └── exception/
+└── modules/
+    └── <module>/
+        ├── package-info.java
+        ├── controller/
+        ├── service/
+        ├── repository/
+        ├── entity/
+        └── dto/
+            ├── request/
+            └── response/
+```
 
 ## 업무 모듈
 
@@ -44,113 +55,85 @@
 | `home`          | 운영 홈과 설정 조회 | OS-HOME-001~004, OS-SET-001~003                                     | W06, W39     |
 | `ai`            | DomainLens 컨슈머   | OS-AI-001~007                                                       | W04, W42~W45 |
 
-`workforce`는 근무표·근태·휴가·대체근무를 묶는다. 전 지점 시간 충돌 검사와 승인/복원 트랜잭션이 겹치므로 지금 단계에서 네 개의 독립 모듈로 분리하지 않는다. `domain/schedule`,
-`domain/attendance`, `domain/leave`, `domain/substitution`으로 내부 책임을 나눈다. 다른 계층도 실제 구현량에 따라 같은 이름으로 세분화한다.
+`workforce`는 근무표·근태·휴가·대체근무를 묶는다. 전 지점 시간 충돌 검사와 승인/복원 트랜잭션이 겹치므로 지금 단계에서 네 개의 독립 모듈로 분리하지 않는다. 세부 업무 패키지는 구현량에 따라 service·entity 등 필요한 계층 아래에 추가한다. 빈 하위 업무 폴더를 미리 만들지는 않는다.
 
 고객 원장 (`customer`)과 직원 (`employee`)은 분리한다. `ticket`은 상품과 보유 이용권을 함께 소유한다. 예약은 `reservation`에서 룸 자원까지 소유하고 일반 좌석은 `seat`에
 둔다. 공지 (`notice`)와 초대 메일/SSE 기술 기반도 구분한다. 별도 알림 발송 모듈은 만들지 않는다.
 
 ## 모듈 내부
 
-모든 업무 모듈에 다음 다섯 디렉토리를 만들었다. 조회 전용 모듈에서는 필요하지 않은 계층에 클래스를 억지로 추가하지 않는다.
+| 디렉토리 | 배치 기준 |
+|---|---|
+| controller/ | @RestController, URL 매핑, 요청 검증과 응답 변환. 업무 처리는 Service에 위임하며 Repository를 직접 호출하지 않는다. |
+| service/ | @Service, 업무 흐름·권한 검사·트랜잭션·여러 모듈의 협력. 필요한 외부 연동 코드도 해당 책임 안에서 구현하고 별도 패키지는 규모에 따라 추가한다. |
+| repository/ | Spring Data JPA Repository 인터페이스, 조회·저장, 필요한 사용자 정의 저장소 구현. 인터페이스와 구현을 별도 최상위 계층으로 나누지 않는다. |
+| entity/ | JPA 엔티티, 값 객체와 상태 변경 규칙. Controller·Service·Repository·HTTP DTO에 의존하지 않는다. 복잡한 업무 정책은 Service 내 별도 클래스로 분리할 수 있다. |
+| dto/request/ | HTTP 입력 DTO. 허용할 입력 필드와 Bean Validation 제약을 명시한다. |
+| dto/response/ | HTTP 출력 DTO. 필요한 필드만 공개하며 엔티티를 직접 포함하지 않는다. |
 
-```text
-modules/<module>/
-├── package-info.java
-├── api/                         모듈 간 공개 계약
-├── presentation/                HTTP 컨트롤러와 요청/응답 DTO
-├── application/                 유스케이스와 트랜잭션
-├── domain/                      업무 규칙과 JPA 엔티티
-└── infrastructure/              저장소 구현과 외부 어댑터
-```
+예를 들어 예약 생성은 controller/ReservationController → service/ReservationService → repository/ReservationRepository 흐름으로 처리한다. entity/Reservation이 상태와 업무 규칙을 가지며 DTO는 dto/request와 dto/response에서 관리한다. 위 클래스명은 배치 예시이고 현재 구현된 클래스가 아니다.
 
-| 디렉토리          | 배치 기준                                                                                            |
-|-------------------|------------------------------------------------------------------------------------------------------|
-| `api/`            | 다른 모듈에 공개할 Java 인터페이스, 불변 DTO, 이벤트. HTTP 컨트롤러와 JPA 엔티티는 두지 않는다.      |
-| `presentation/`   | HTTP 컨트롤러, 요청/응답 DTO, 입력 매핑. 엔티티를 직접 반환하지 않는다.                              |
-| `application/`    | 유스케이스, 트랜잭션 경계, 외부 기능에 필요한 port. domain과 공개 api로 업무 흐름을 연결한다.        |
-| `domain/`         | 업무 규칙을 가진 JPA 엔티티, 값 객체, 상태 전이, 저장소 인터페이스. 요청/응답 DTO를 참조하지 않는다. |
-| `infrastructure/` | JPA 저장소 구현과 외부 서비스 어댑터. application의 port와 domain 저장소 인터페이스를 구현한다.      |
+JPA 업무 엔티티와 별도 영속 모델을 기계적으로 이중화하지 않는다. Service 인터페이스/구현도 필요할 때만 분리한다. 모듈 간 전달용 DTO가 필요하면 dto 아래에 별도 타입을 추가하며 HTTP 요청 DTO를 내부 명령으로 무조건 재사용하지 않는다.
 
-예를 들어 예약 생성은 `reservation/presentation`의 요청 DTO를 `reservation/application`에서 처리하고 `reservation/domain`의 룸/예약 모델을 변경한다.
-DB 저장은 `reservation/infrastructure`가 담당한다. 다른 모듈이 예약 정보를 읽을 때는 `reservation/api`의 인터페이스와 DTO를 사용한다. 아직 이 예시의 클래스나 인터페이스를
-구현하지 않았다.
+## 의존 방향과 모듈 경계
 
-JPA 업무 엔티티와 별도 영속 모델을 기계적으로 이중화하지 않는다. JPA 엔티티는 모듈 내부에 두고 컨트롤러 응답·다른 모듈의 인수/반환값으로 노출하지 않는다. 다른 모듈 엔티티를 직접 JPA 연관관계로 연결하지
-않고 식별자와 공개 계약으로 연결한다.
+- Controller → Service → Repository의 호출 흐름을 따른다. Service와 Repository는 해당 모듈 Entity를 사용한다.
+- Controller는 Entity를 요청·응답으로 직접 사용하지 않는다. Entity는 웹 처리나 저장소 호출을 담당하지 않는다.
+- 모듈 간 호출은 명시적으로 공개한 service 진입점과 DTO를 통해서만 수행한다. Java public 접근 제한자만으로 공개 계약을 정하지 않는다. 기능 구현 시 공개할 클래스·메서드·DTO와 호출 방향을 명시하고 후속 경계 검사에 반영한다.
+- 다른 모듈의 Controller·Repository·Entity는 직접 참조하지 않는다. 모듈 간 JPA 연관관계 대신 식별자와 공개 서비스 계약을 사용한다.
+- 모듈 전체 의존 그래프의 순환은 금지한다. 모든 Service를 서로 자유롭게 호출할 수 있다는 뜻이 아니다.
+- 공통 기술 코드는 common에 두고 업무 모듈을 직접 참조하지 않는다. 업무 코드는 config의 구성 클래스를 직접 호출하지 않는다.
 
-## 의존 방향과 트랜잭션
+우선 검토할 협력 방향은 payment → ticket.service(이용권 구매/환불), seat → ticket.service(차감/보정), reservation → payment.service(예약 선결제/취소), chat → task.service(업무 카드), ai → sales.service(의미/집계 기준)다. 구현 전 설계 방향이며 실제 호출 그래프는 아직 없다. 홈은 각 업무의 공개 조회를 조합한다. 인증·권한·직원 간 상호 참조가 생기면 호출 방향이나 이벤트 계약을 먼저 정리한다.
 
-모듈 내부의 기본 방향은 `presentation → application → domain`이다. `application`은 공개 `api`를 구현하고 필요한 외부 port를 정의할 수 있다.
-`infrastructure`는 domain 저장소와 application port의 구현을 제공한다. domain은 자기 업무 모델과 shared에만 의존하고 Spring MVC·Security·외부 SDK를
-참조하지 않는다. JPA 매핑은 예외로 허용한다. 모듈 공개 `api`도 내부 엔티티·HTTP·저장소·외부 SDK 타입에 의존하지 않는다.
+## 트랜잭션
 
-모듈 간에는 상대의 `api`만 참조한다. 모듈 전체 의존 그래프의 순환은 금지한다. 모든 모듈이 서로의 공개 API를 자유롭게 호출해도 된다는 뜻은 아니다. 실제 인터페이스를 추가할 때 호출 방향과 변경 소유자를
-함께 정한다.
+결제 승인+발급, 예약+선결제, 이용 종료+차감, 정정+보정, 승인+원장 반영은 상위 업무 Service가 같은 DB 트랜잭션으로 묶는다. 호출받는 모듈이 별도 커밋하거나 REQUIRES_NEW로 분리해 원자성을 깨지 않도록 한다. 공개 명령은 단독 호출 시에도 해당 업무의 불변조건을 검증해야 한다.
 
-우선 검토할 흐름은 `payment → ticket.api`(이용권 구매/환불), `seat → ticket.api`(차감/보정), `reservation → payment.api`(예약 선결제/취소),
-`chat → task.api`(업무 카드), `ai → sales.api`(의미/집계 기준)다. 이는 구현 전 설계 방향이며 실행 검증된 호출 그래프가 아니다. 홈은 각 원본의 공개 조회를 조합한다.
-인증/권한/직원 사이의 변경 전파는 port·이벤트와 bootstrap 조립으로 처리해 상호 내부 참조를 피한다.
+성공 변경·감사·outbox·멱등 완료는 함께 커밋하고 메일/SSE 전달은 커밋 뒤에 수행한다. outbox는 외부 전달을 위한 것이며 발급·차감·환불의 필수 동기 변경을 지연 처리하는 수단이 아니다. 잠금 순서와 version/멱등 키의 구체 계약은 스키마·업무 Service 설계에서 정한다.
 
-결제 승인+발급, 예약+선결제, 이용 종료+차감, 정정+보정, 승인+원장 반영은 상위 application 유스케이스가 같은 DB 트랜잭션으로 묶는다. 호출받는 모듈이 별도 커밋하거나 `REQUIRES_NEW`로
-분리해 원자성을 깨지 않도록 한다. 공개 명령은 단독 호출 시에도 해당 업무의 불변조건을 검증해야 한다.
+## 공통 설정과 기반 기능
 
-성공 변경·감사·outbox·멱등 완료는 함께 커밋하고 메일/SSE 전달은 커밋 뒤에 수행한다. outbox는 외부 전달을 위한 것이며 발급·차감·환불의 필수 동기 변경을 지연 처리하는 수단이 아니다. 잠금 순서와
-version/멱등 키의 구체 계약은 스키마/유스케이스 설계에서 정한다.
+현재는 config/와 common/exception/만 준비한다. 아래 후속 위치는 해당 기능을 실제 구현할 때 추가하며 빈 기술 계층을 미리 만들지 않는다.
 
-## 공통 기반과 조립
+| 위치 | 책임 |
+|---|---|
+| config/ | 보안 필터 체인·Clock·외부 클라이언트 등 Spring 설정. 업무 규칙은 두지 않는다. |
+| common/exception/ | 공통 오류 코드·예외·@RestControllerAdvice 기반 HTTP 예외 매핑. |
+| common/validation, time, money, pagination | 필요한 공통 검증·시간·금액·페이지 값. 매출·차감 정책은 각 업무 모듈에 둔다. |
+| common/audit, idempotency, outbox | 감사·멱등·발송 대기/재시도 기술 기반. 비밀값을 저장하지 않는다. |
+| common/mail, realtime, storage | 메일·SSE·이미지 저장 기술 기능. 수신 대상·현재 권한·이미지 정책은 업무 Service가 판단한다. |
+| modules/auth/service | 최초 사장님 초기화 업무. 전용 명령은 일반 기동과 분리해 후속 구현한다. |
+| common/seed | local/test 전용 시드 실행. 기능 구현 시 추가하고 명시적으로 실행한다. |
 
-| 위치                                               | 책임                                                                                |
-|----------------------------------------------------|-------------------------------------------------------------------------------------|
-| `bootstrap/config`                                 | 향후 실행 클래스의 구성, 보안 필터 체인·Clock·어댑터 조립. 업무 규칙은 두지 않음    |
-| `bootstrap/owner`                                  | 일반 서버 기동과 분리한 최초 사장님 전용 초기화 명령                                |
-| `bootstrap/seed`                                   | local/test 프로필의 명시적 시드 실행과 기준일 조립                                  |
-| `shared/error`, `shared/validation`                | 공통 오류 값/필드 검증. HTTP 예외 매핑은 presentation 또는 bootstrap의 웹 구성에 둠 |
-| `shared/time`, `shared/money`, `shared/pagination` | 시간 구간·Clock 사용 기준·금액/단위·페이지 값. 매출/차감 업무 정책은 각 모듈에 둠   |
-| `platform/audit`                                   | 성공 변경의 감사 기록 계약/DB 구현. 비밀값 저장 금지                                |
-| `platform/idempotency`                             | 요청 키·본문 충돌·진행/완료·결과 재생 기반                                          |
-| `platform/outbox`                                  | 업무 변경과 함께 기록할 발송 대기 및 전달/재시도 기반                               |
-| `platform/mail`                                    | 초대 이메일 전달 어댑터. 초대 상태/토큰 정책은 invitation 소유                      |
-| `platform/realtime`                                | SSE 연결/전달/재연결 기반. 참여자·현재 권한 판단은 업무 계약에 위임                 |
-| `platform/storage`                                 | 프로필 이미지 저장 어댑터. 크기/형식 검증 정책은 employee에서 적용                  |
-
-각 platform 기능의 `api/`에 기술 기능의 공개 인터페이스와 값 타입을, `infrastructure/`에 구현을 둔다. platform에서 업무 모듈을 직접 참조하지 않는다. 현재 사용자/수신 범위처럼
-업무 판단이 필요하면 업무 application에서 계산하거나 주입받는 계약을 정의하고 bootstrap이 조립한다. `shared`는 modules/platform/bootstrap을 참조하지 않는다. 업무 모듈은
-bootstrap을 참조하지 않는다. `common/service`처럼 모든 업무 로직을 모으는 영역은 두지 않는다.
+업무 로직을 모으는 common/service는 만들지 않는다. 외부 DomainLens 연결은 ai 모듈의 Service 책임으로 두며 실제 SDK와 규모를 확인한 뒤 필요한 client 등 하위 패키지를 추가한다.
 
 ## 리소스와 운영 명령
 
-`src/main/resources/db/migration/`은 단일 빌드의 순차 DDL 위치다. 업무 테이블과 Spring Session 테이블을 함께 버전 관리한다. 이번 작업은 위치만 확보했고 마이그레이션
-도구와 DDL은 추가하지 않았다. 여러 모듈이 임의로 같은 버전의 파일을 발행하지 않도록 스키마 작업에서 순서를 관리한다.
+application.yaml은 공통 DB·JPA·Flyway·JDBC 세션 설정을 관리한다. 비밀값은 환경변수 또는 Git에서 제외한 로컬 설정에 둔다.
 
-시연 데이터는 `db/seed/local/`, 테스트 fixture는 `src/test/resources/fixtures/`에 둔다. 시드는 자동 운영 적용 마이그레이션과 분리하고 환경 확인 뒤 명시적으로 실행한다.
-비밀번호는 SQL·명령 인자·로그에 기록하지 않는다. 전용 초기화 명령의 실제 구현은 BE-009다.
+src/main/resources/db/migration/은 순차 DDL의 정본이며 현재 V1__init_schema.sql이 있다. Hibernate는 ddl-auto=validate로 검증하고 JDBC 세션 스키마도 Flyway로 관리한다. 버전 충돌을 피하도록 여러 모듈의 마이그레이션 순서를 관리한다.
 
-`application.yml`, `application-local.yml`, `application-test.yml`은 설정 구현 단계에서 추가한다. 비밀값은 환경변수/로컬 미추적 설정으로 주입한다. MySQL
-8.4 (Debian)/InnoDB와 전용 테스트 DB를 기준으로 하며 개발/시연 DB 초기화 명령은 만들지 않았다.
-
-`scripts/`에는 후속 빌드/실행/명시적 초기화 보조 명령을 둔다. 인프라 프로비저닝·실제 PG·고객 QR·DomainLens 엔진 내부 코드를 위한 디렉토리는 이번 범위에 추가하지 않았다.
+로컬 시연 데이터는 db/seed/local/, 테스트 fixture는 src/test/resources/fixtures/에 둔다. 시드는 자동 스키마 마이그레이션과 분리하고 환경 확인 뒤 명시적으로 실행한다. 시드와 최초 사장님 전용 초기화 명령은 아직 구현하지 않았다. scripts/는 보조 명령 위치다. 인프라 프로비저닝·실제 PG·고객 QR·DomainLens 엔진 내부 구현은 이번 변경 범위에 포함하지 않는다.
 
 ## 테스트와 검사 위치
 
-모든 테스트는 우선 표준 `src/test/java` 소스 디렉토리를 사용한다. 패키지 이름만 나눈 상태이며 별도 Gradle source set이나 테스트 task를 구성한 상태는 아니다.
+표준 src/test/java/com/openstudy를 사용하며 별도 Gradle source set은 없다.
 
-| 위치                                                  | 후속 검증                                                                  |
-|-------------------------------------------------------|----------------------------------------------------------------------------|
-| `architecture/`                                       | ArchUnit: 모듈 내부 접근 금지, 모듈 순환, 계층 방향, API/DTO와 엔티티 경계 |
-| `modules/<module>/`                                   | 해당 모듈 업무 규칙·서비스·컨트롤러 및 저장소 테스트                       |
-| `platform/`                                           | 감사·멱등·outbox·전달 기반 검증                                            |
-| `integration/http/`                                   | 실제 HTTP 세션/CSRF/권한/계약과 커밋 결과                                  |
-| `integration/concurrency/`                            | 별도 DB 연결로 중복 승인·차감·예약·version 충돌·롤백 검증                  |
-| `integration/domainlens/`                             | 실제 공개 엔진+MySQL, 일반 매출과 값/권한 비교                             |
-| `support/database/`                                   | 전용 DB 확인·격리·테스트 후 정리                                           |
-| `support/fixture/`, `support/clock/`, `support/http/` | 재현 데이터·시간 경계·클라이언트 도우미                                    |
+| 위치 | 검증 책임 |
+|---|---|
+| architecture/ | 후속 ArchUnit: 모듈 순환·공개 Service/DTO 외 접근·Controller의 Repository 직접 호출·Entity/DTO 경계·common/config 의존 방향. |
+| modules/<module>/ | 해당 업무 규칙·Service·Controller·Repository 테스트. |
+| common/ | 감사·멱등·outbox·전달 기반 등 공통 기능 테스트. |
+| integration/http/ | 실제 HTTP·세션·CSRF·권한·계약·커밋 결과. 현재 DB 초기화/제약 테스트도 이 위치에 있다. |
+| integration/concurrency/ | 중복 승인·차감·예약·version 충돌·롤백 경합 검증. |
+| integration/domainlens/ | 실제 공개 엔진+MySQL, 일반 매출과 값/권한 비교. |
+| support/database/ | 구현된 MySqlIntegrationTest와 MySqlTestConfiguration. |
+| support/fixture, clock, http | 재현 데이터·시간 경계·클라이언트 도우미. |
 
-테스트 DB는 2026-10-19 변경된 M1-12에 따라 Docker 전용 MySQL 8.4/InnoDB를 사용하고 자동 테스트는 Testcontainers로 관리한다. 기본 CRUD 롤백과 HTTP/경합/커밋 후 정리를 구분하며 개발 DB 오접속을 차단하고 테스트 컨테이너 자원만 정리한다. 이미지 버전·digest·OS를 기록하고 Debian 운영 검수는 별도로 수행한다. 자동 연동·초기 DB 기반 검증은 구현됐으며 [검증 보고서 v1.0](../verification/database-initialization-v1.0.md)을 따른다. 더블과 실제 DB/서버/SMTP/엔진 검증 결과를 따로 기록한다. ArchUnit 규칙은 BE-002 빌드 설정 후 BE-003에서 구현하고, 허용/위반 예제로 검사 효력을 검증한다.
+Docker 전용 MySQL 8.4/InnoDB를 Testcontainers로 관리한다. 컨테이너 설정이 없을 때 개발 DB로 대체하지 않는다. 기존 32개 검증 결과는 [검증 보고서 v1.0](../verification/database-initialization-v1.0.md)에 기록되어 있으며 이번 구조 변경의 검증 결과와 구분한다. ArchUnit 의존성·실행 가능한 경계 검사는 아직 없으며 BE-003에서 허용/위반 예제로 검사 효력을 검증한다.
 
-OS-NFR-001~004는 auth/authorization 및 각 application과 platform, OS-NFR-007은 shared와 ticket/sales/ai, OS-NFR-008~010은
-migration/seed/테스트/실행 인계 문서에 연결된다. OS-NFR-005와 OS-HOME의 화면 접근성/반응형은 프론트 책임이며 백엔드는 관련 권한/오류 계약을 제공한다. OS-NFR-006의 성능 목표는
-실제 서버 부하 검증 때 측정한다.
+OS-NFR-001~004는 auth/authorization 및 각 Service와 common 기반, OS-NFR-007은 공통 값과 ticket/sales/ai, OS-NFR-008~010은 마이그레이션·시드·테스트·실행 인계 문서에 연결된다. 화면 접근성·반응형은 프론트 책임이고 성능 목표는 실제 서버 부하 검증 때 측정한다.
 
 ## 각 모듈의 구현 시 주의할 정책
 
@@ -194,13 +177,11 @@ migration/seed/테스트/실행 인계 문서에 연결된다. OS-NFR-005와 OS-
 
 - `ai`: 질문·실행/대화 참조·공개 starter/API/SPI 어댑터·의미/권한 바인딩. sales 지표를 공유한다. 엔진 내부·SQL 생성기를 구현하지 않고 실제 산출물 확인 전 연동을 미검증으로 둔다.
 
-## 후속 구현 순서
+## 후속 구현
 
-1. BE-002: 실제 JDK/Boot/Gradle/외부 의존성 호환성을 확인하고 Groovy 빌드·Wrapper·실행 클래스를 추가한다.
-2. BE-003/004: 이 문서의 경계를 ArchUnit으로 검사하고 공통 오류·입력 검증을 구현한다.
-3. BE-005~007: Docker/MySQL 테스트 DB·Testcontainers 격리·스키마·시드·Clock을 구현한다.
-4. 승인된 작은 Task에 따라 인증/직원/지점/권한 등을 구현하고 실제 HTTP·DB 경합을 검증한다. M1 전체 범위는 이 구조 작업으로 확정하지 않는다.
-5. 실제 DomainLens 산출물을 확인한 뒤 ai/infrastructure에 공개 어댑터를 구현한다.
+1. BE-003/004에서 현재 계층과 공개 Service/DTO 경계를 검사하고 공통 오류·입력 검증을 구현한다.
+2. 구현된 DB·Testcontainers 기반 위에 필요한 시드·Clock·업무 기능을 추가한다.
+3. 작은 Task별로 인증·직원·지점·권한 등을 구현하고 실제 HTTP·DB 경합을 검증한다.
+4. 실제 DomainLens 산출물을 확인한 뒤 ai 모듈의 외부 연동 코드를 구현한다.
 
-공통 요구사항/API 문서는 현재 상위 docs를 참조하며 별도 저장소 이동은 수행하지 않았다. 이 디렉토리에는 백엔드 전용 문서만 새로 추가했다. 기존 문서의 미착수/미검증 상태를 이번 구조 작업으로 완료 처리하지
-않았다.
+공통 요구사항/API 문서는 현재 상위 docs를 참조한다. 이번 변경은 패키지 배치와 관련 안내를 정리한 것이며 HTTP 계약·DB 스키마·업무 기능을 변경하지 않는다.
