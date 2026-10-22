@@ -1,5 +1,7 @@
 # OpenStudy · Codex 서브 에이전트 개발 실행 계획 (v1.1)
 
+> 2026-10-22 경로 갱신: 현재 구현 위치는 [디렉터리 설계](architecture/directory-structure.md)를 따른다. 업무 모듈은 controller/service/repository/entity/dto, 공통 설정·기반은 config/common으로 구성한다. 업무 범위와 Task ID는 유지한다.
+
 > 기준: 2026-10-19 자료 / 개정: v1.1 / 상태: **검토용 제안** / 주 사용 위치 (제안): `openstudy-backend/codex/agent-execution-plan.md`
 > 경고: 이 파일은 백로그 후보와 통합 규칙이다. 저장소 실물 확인과 사용자 범위 승인이 끝나기 전까지 모든 신규 Task는 CANDIDATE.
 
@@ -119,12 +121,12 @@
 | BE-001 | W02      | 계약/소유 파일과 Task 선행 관계 고정 | —                                                      | docs/설계·계약             | 계약 차이와 독립 작업/통합 게이트 대조     |
 | BE-002 | W03      | Gradle Wrapper/Groovy 빌드 기동      | BE-001                                                 | build.gradle·Wrapper       | 정확한 JDK/Boot/Wrapper 조합 build/startup |
 | BE-003 | W03      | 기능별 패키지와 ArchUnit 경계        | BE-002                                                 | 모듈 경계·ArchUnit         | 허용/위반 의존 예제로 경계 검증            |
-| BE-004 | W03      | 공통 오류/입력 allowlist             | BE-002                                                 | shared/error·validation    | 잘못된 enum/필드/본문과 비밀값 미노출      |
+| BE-004 | W03      | 공통 오류/입력 allowlist             | BE-002                                                 | common/exception·validation    | 잘못된 enum/필드/본문과 비밀값 미노출      |
 | BE-005 | W05 | Docker/MySQL 테스트 DB 격리 | BE-002 | Testcontainers·test 설정·DB fixture | 오접속 차단·컨테이너 기동/정리·Flyway·독립 연결·반복 실행 |
 | BE-006 | W05      | 계정·지점·소속 마이그레이션          | BE-001, BE-005                                         | migration·계정/지점 엔티티 | 깨끗한 DB migrate·중복 키/롤백             |
 | BE-007 | W05      | local/test 시드와 Clock fixture      | BE-006                                                 | seed·Clock                 | 재실행·운영 시드 비활성·UTC/KST            |
 | BE-008 | W07      | 비밀번호 해시/자격 증명 검증         | BE-004, BE-006                                         | auth credential            | 오류/해시/대기·제한·퇴사 거절              |
-| BE-009 | W07      | 최초 사장님 초기화 명령              | BE-008                                                 | bootstrap CLI              | 최초/존재/재실행·두 연결 동시 생성         |
+| BE-009 | W07      | 최초 사장님 초기화 명령              | BE-008                                                 | auth/service 초기화 명령              | 최초/존재/재실행·두 연결 동시 생성         |
 | BE-010 | W07      | JDBC 세션 테이블/저장                | BE-006, BE-008                                         | session 설정·DDL           | 로그인 저장·재기동 유지·폐기 접근 거절     |
 | BE-011 | W07      | 쿠키 로그인·세션 회전                | BE-010                                                 | auth login API             | 자격 증명/세션 고정·로그 비밀값            |
 | BE-012 | W07      | CSRF 발급/변경 요청 검증             | BE-011                                                 | security CSRF              | 누락/위조/다른 세션·로그아웃 후 거절       |
