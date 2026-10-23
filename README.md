@@ -19,7 +19,6 @@ openstudy-backend/
 │   ├── architecture/              현재 구조 설계와 요구사항/WBS 대응
 │   ├── db/                        DB 스키마와 ERD 설계 자료
 │   ├── design-decisions/          기존 설계 선택 기록
-│   ├── design/foundation/         1차 기반 기능 DB·API 목표 설계
 │   ├── development-log/           날짜별 작업 기록
 │   └── directory-architecture/    이전 골격 보관본
 ├── scripts/                      향후 보조 명령
