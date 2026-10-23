@@ -1,0 +1,84 @@
+package com.openstudy.modules.auth.controller;
+
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.Map;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
+
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.authentication.session.SessionAuthenticationStrategy;
+import org.springframework.security.web.context.SecurityContextRepository;
+import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.openstudy.modules.auth.dto.CurrentUser;
+import com.openstudy.modules.auth.dto.LoginRequest;
+import com.openstudy.modules.auth.service.CurrentUserService;
+import com.openstudy.modules.auth.service.LoginAttemptLimiter;
+import com.openstudy.modules.employee.service.EmployeeAccountService;
+
+@RestController
+public class AuthController {
+    private final AuthenticationManager authenticationManager;
+    private final SecurityContextRepository contexts;
+    private final SessionAuthenticationStrategy sessionStrategy;
+    private final CurrentUserService users;
+    private final EmployeeAccountService employees;
+    private final LoginAttemptLimiter limiter;
+
+    public AuthController(AuthenticationManager authenticationManager, SecurityContextRepository contexts,
+            SessionAuthenticationStrategy sessionStrategy, CurrentUserService users,
+            EmployeeAccountService employees, LoginAttemptLimiter limiter) {
+        this.authenticationManager = authenticationManager;
+        this.contexts = contexts;
+        this.sessionStrategy = sessionStrategy;
+        this.users = users;
+        this.employees = employees;
+        this.limiter = limiter;
+    }
+
+    @GetMapping("/api/auth/csrf")
+    public ResponseEntity<Map<String, String>> csrf(CsrfToken token) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(Map.of("token", token.getToken()));
+    }
+
+    @PostMapping("/api/auth/login")
+    public ResponseEntity<CurrentUser> login(@Valid @RequestBody LoginRequest body,
+            HttpServletRequest request, HttpServletResponse response) {
+        limiter.check(body.email());
+        if (body.password().getBytes(StandardCharsets.UTF_8).length > 72) {
+            throw new BadCredentialsException("Invalid credentials");
+        }
+        var authentication = authenticationManager.authenticate(
+                UsernamePasswordAuthenticationToken.unauthenticated(body.email().trim(), body.password()));
+        long employeeId = Long.parseLong(authentication.getName());
+        var current = users.current(employeeId);
+        employees.recordLogin(employeeId);
+        sessionStrategy.onAuthentication(authentication, request, response);
+        var context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(authentication);
+        SecurityContextHolder.setContext(context);
+        request.getSession().setAttribute("authenticatedAt", Instant.now().getEpochSecond());
+        contexts.saveContext(context, request, response);
+        limiter.success(body.email());
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(current);
+    }
+
+    @GetMapping("/api/me")
+    public ResponseEntity<CurrentUser> me(Authentication authentication) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(users.current(Long.parseLong(authentication.getName())));
+    }
+}

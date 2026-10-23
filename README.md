@@ -3,7 +3,7 @@ OpenStudy 스터디카페 백오피스 백엔드 API
 
 ## 현재 구성
 
-Java 21, Spring Boot 4.1.1, Gradle Wrapper 9.8.1 기반의 단일 Gradle 프로젝트입니다. 빌드는 Groovy DSL, 애플리케이션 설정은 YAML을 사용합니다. 실행 클래스는 `com.openstudy.OpenstudyBackendApplication`입니다. 20개 업무 모듈의 골격, DB 연결 설정과 Flyway 초기 마이그레이션을 준비했고 Docker 전용 MySQL에서 앱 기동·마이그레이션·세션 저장·관련 제약을 검증했습니다. 업무 API 구현과 운영 환경 검수는 후속 범위입니다.
+Java 21, Spring Boot 4.1.1, Gradle Wrapper 9.8.1 기반의 단일 Gradle 프로젝트입니다. 빌드는 Groovy DSL, 애플리케이션 설정은 YAML을 사용합니다. 실행 클래스는 `com.openstudy.OpenstudyBackendApplication`입니다. 20개 업무 모듈의 골격, DB 연결 설정과 Flyway 초기 마이그레이션을 준비했고 Docker 전용 MySQL에서 앱 기동·마이그레이션·세션 저장·관련 제약을 검증했습니다. 기본 로그인·로그아웃·현재 사용자 조회와 JDBC 세션 인증을 구현했으며 나머지 업무 API와 운영 환경 검수는 후속 범위입니다.
 
 ## 디렉토리 구조
 
@@ -56,7 +56,7 @@ openstudy-backend/
 | 근무·집계 | workforce, sales, home |
 | 외부 엔진 연동 | ai |
 
-각 모듈은 다음 구조를 사용합니다. 클래스 이름은 배치 예시이며 아직 업무 클래스는 구현하지 않았습니다.
+각 모듈은 다음 구조를 사용합니다. 아래 reservation 클래스 이름은 배치 예시입니다. 현재 auth와 인증에 필요한 employee·branch 조회를 구현했습니다.
 
 ```text
 modules/reservation/
@@ -98,4 +98,26 @@ macOS/Linux에서는 `./gradlew build`를 사용합니다. JDK 21과 실행 중�
 
 DB·계정 수동 준비와 Flyway 변경 절차는 [DB 관리 안내](docs/db/README.md)를 따릅니다. v0.4·v0.5 설계 폴더와 ZIP은 로컬 참고용으로만 보존하고 커밋하지 않습니다. SQL 정본은 Flyway 마이그레이션이며 최초 적용 전 전용 MySQL 8.4 DB에서 검증해야 합니다.
 
-공통 설정은 Git에 포함하고, 개인별 DB 접속 정보·메일 비밀번호 등은 환경 변수 또는 Git에서 제외하는 `application-local.yaml`, `application-*-local.yaml` 등에 둡니다. `.env` 파일의 자동 로딩은 별도로 구성해야 합니다. Gradle 캐시·빌드 결과·IDE 설정·로그·업로드 파일은 커밋하지 않습니다.
+### 로컬 서버 실행
+
+`openstudy-backend` 폴더에서 `.env.example`을 `.env`로 복사하고 실제 MySQL 계정과 비밀번호를 입력합니다. `.env`가 이미 있다면 복사로 덮어쓰지 말고 기존 파일을 수정합니다.
+
+```powershell
+Copy-Item .env.example .env
+# .env의 DB_URL, DB_USERNAME, DB_PASSWORD를 로컬 DB에 맞게 수정
+.\gradlew.bat bootRun
+```
+
+Spring Boot가 실행 작업 디렉터리의 `.env`를 Java properties 형식으로 읽습니다. 값에 따옴표나 `export`를 사용하지 않고, 실제 역슬래시는 `\\`로 이스케이프합니다. IntelliJ에서는 백엔드 실행 구성의 Working directory를 `openstudy-backend` 폴더의 절대 경로로 지정합니다. 별도 프로필은 필요하지 않습니다. 이 설정은 Spring 설정으로 로딩되며 OS 프로세스의 환경 변수를 생성하지는 않습니다.
+
+`.env`는 선택 사항이며 OS 환경 변수 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`가 파일의 같은 이름 값보다 우선합니다. 운영에서는 `.env` 없이 ECS가 동일한 이름으로 주입하도록 설정합니다. DB 주소는 RDS 접속 주소로, 계정과 비밀번호는 운영용 값으로 지정합니다. 세 값이 모두 제공되어야 DB에 연결할 수 있습니다.
+
+공통 설정과 `.env.example`은 Git에 포함하고, 실제 비밀값을 담은 `.env`는 Git과 배포 이미지에 포함하지 않습니다. `.env`는 이미 Git에서 제외되어 있습니다. 개인별 설정은 Git에서 제외하는 `application-local.yaml`, `application-*-local.yaml` 등에도 둘 수 있습니다. Gradle 캐시·빌드 결과·IDE 설정·로그·업로드 파일은 커밋하지 않습니다.
+
+### 로그인
+
+프론트엔드 로그인 폼의 이메일·비밀번호로 `/api/auth/login`을 호출하고 JDBC 쿠키 세션을 사용합니다. 기본 Spring Security 로그인 화면과 HTTP Basic은 비활성화했습니다. `/api/auth/csrf`, `/api/me`, `/api/auth/logout`과 세션 만료·계정 상태 검사도 구현했습니다.
+
+빈 DB에서 사용할 최초 관리자 계정 생성은 `local` 프로필에서 `.env`의 `BOOTSTRAP_OWNER_EMAIL`, `BOOTSTRAP_OWNER_PASSWORD`로 명시적으로 요청합니다. 기존 OWNER의 비밀번호는 덮어쓰지 않습니다. 프론트엔드는 `npm run dev:live`로 실행합니다. 상세 설정·API·검증 결과와 미구현 범위는 [기본 로그인 안내](docs/authentication.md)를 참고하세요.
+
+`local` 프로필에서는 [로컬 워크스페이스 샘플](docs/local-preview.md)도 기본 제공하여 로그인 후 홈·기본 목록을 볼 수 있습니다. 지점이 없으면 샘플 지점 두 개만 준비하고, 나머지 샘플은 조회 전용 가상 데이터로 반환합니다. 실제 업무 API가 준비되면 `openstudy.local-preview.enabled=false`로 비활성화합니다.
