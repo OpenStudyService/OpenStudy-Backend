@@ -1,7 +1,6 @@
 package com.openstudy.modules.auth.controller;
 
 import java.nio.charset.StandardCharsets;
-import java.time.Instant;
 import java.util.Map;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -28,6 +27,7 @@ import com.openstudy.modules.auth.dto.LoginRequest;
 import com.openstudy.modules.auth.service.CurrentUserService;
 import com.openstudy.modules.auth.service.LoginAttemptLimiter;
 import com.openstudy.modules.employee.service.EmployeeAccountService;
+import com.openstudy.modules.auth.service.SessionBoundaryPolicy;
 
 @RestController
 public class AuthController {
@@ -37,16 +37,18 @@ public class AuthController {
     private final CurrentUserService users;
     private final EmployeeAccountService employees;
     private final LoginAttemptLimiter limiter;
+    private final SessionBoundaryPolicy sessions;
 
     public AuthController(AuthenticationManager authenticationManager, SecurityContextRepository contexts,
             SessionAuthenticationStrategy sessionStrategy, CurrentUserService users,
-            EmployeeAccountService employees, LoginAttemptLimiter limiter) {
+            EmployeeAccountService employees, LoginAttemptLimiter limiter, SessionBoundaryPolicy sessions) {
         this.authenticationManager = authenticationManager;
         this.contexts = contexts;
         this.sessionStrategy = sessionStrategy;
         this.users = users;
         this.employees = employees;
         this.limiter = limiter;
+        this.sessions = sessions;
     }
 
     @GetMapping("/api/auth/csrf")
@@ -70,15 +72,15 @@ public class AuthController {
         var context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(authentication);
         SecurityContextHolder.setContext(context);
-        request.getSession().setAttribute("authenticatedAt", Instant.now().getEpochSecond());
+        sessions.start(request.getSession(), current.sessionMode());
         contexts.saveContext(context, request, response);
         limiter.success(body.email());
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(current);
     }
 
     @GetMapping("/api/me")
-    public ResponseEntity<CurrentUser> me(Authentication authentication) {
+    public ResponseEntity<CurrentUser> me(Authentication authentication, HttpServletRequest request) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                .body(users.current(Long.parseLong(authentication.getName())));
+                .body(users.current(Long.parseLong(authentication.getName()), sessions.mode(request.getSession(false))));
     }
 }
