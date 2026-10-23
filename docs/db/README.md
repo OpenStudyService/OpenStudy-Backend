@@ -19,6 +19,8 @@ JDBC 연결과 Hibernate의 시간대는 UTC이며 영업일 계산은 애플리
 
 ## 변경 관리
 
+기반 계약 0.1.2의 실행 DDL은 V2/V3까지 작성·Docker 검증했다. 기존 상품·초대가 있으면 [V1 → V3 적용 절차](foundation-upgrade.md)에 따라 target=2에서 명시 매핑을 검토한다. 팀 전달용 [전체 구축 SQL·ERD·API 엑셀](../releases/foundation-0.1.2/README.md)은 같은 V3/계약 버전의 산출물이다.
+
 `V1__init_schema.sql`은 초기 스키마다. 적용된 버전의 파일은 수정하지 않고 `V2__...sql` 등 새 버전을 추가한다. 운영 데이터와 충돌 가능성이 있는 DDL은 전용 테스트 DB에서 먼저 확인한다.
 
 `v0.4/`, `v0.5/`와 해당 `OpenStudy_DB_Initial_v0.*.zip` 설계 스냅샷은 로컬 참고용으로 보존하며 Git 추적 대상에서 제외한다. 과거 개발 기록의 해당 경로는 당시 산출물을 가리킨다. 추적 제거 커밋을 원격에 반영해도 과거 Git 이력은 유지된다.

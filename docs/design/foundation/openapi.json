@@ -1,0 +1,6042 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "OpenStudy 1차 기반 기능 API 설계",
+    "version": "0.1.2-design",
+    "description": "검토 완료 8중분류/61요구사항의 구현 전 목표 계약. Q1~Q12은 2026-10-23 사용자 답변으로 확정. decisions.md 참고. 기존 서버 전체 구현 명세가 아니다. ID문자열·API version=DB+1. 상태 변경은 CSRF, 지점과 행위 인가를 함께 검증한다."
+  },
+  "servers": [
+    {
+      "url": "/api"
+    }
+  ],
+  "security": [
+    {
+      "SessionCookie": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "auth"
+    },
+    {
+      "name": "branches"
+    },
+    {
+      "name": "employees"
+    },
+    {
+      "name": "invitations"
+    },
+    {
+      "name": "lookups"
+    },
+    {
+      "name": "me"
+    },
+    {
+      "name": "permission-presets"
+    },
+    {
+      "name": "permissions"
+    },
+    {
+      "name": "product-categories"
+    },
+    {
+      "name": "products"
+    },
+    {
+      "name": "workspace"
+    }
+  ],
+  "x-source": {
+    "workbook": "OpenStudy_Service_SRS_v0.6.xlsx",
+    "sheet": "요구사항 명세",
+    "sha256": "9378c39e28d88168f944b8c7599b95d43c30c4417b3f0f49e00c933e2b44310f"
+  },
+  "x-common-requirement-ids": [
+    "FR-COM-01",
+    "FR-COM-02",
+    "FR-COM-03",
+    "FR-COM-04",
+    "FR-COM-05",
+    "FR-COM-06",
+    "FR-COM-07",
+    "FR-COM-08",
+    "FR-COM-10",
+    "FR-COM-11",
+    "FR-COM-12",
+    "FR-COM-13",
+    "FR-COM-14",
+    "FR-COM-15"
+  ],
+  "x-non-http-requirements": {
+    "FR-AUTH-15": "제한된 별도 OWNER 초기화 명령. 공개 HTTP endpoint 없음.",
+    "FR-COM-08": "거래 참조 FK RESTRICT, 조건부 상품 삭제 시 거래0건 확인 및 감사·변경 이력 보존.",
+    "FR-COM-12": "URL 조회조건 복원·권한 변경 시 캐시 정리 프론트 계약"
+  },
+  "paths": {
+    "/auth/csrf": {
+      "get": {
+        "operationId": "getCsrf",
+        "summary": "CSRF 토큰 발급",
+        "tags": [
+          "auth"
+        ],
+        "description": "익명·제한·업무 세션에서 사용. CSRF 토큰만 반환하며 세션 비밀값은 응답하지 않는다.",
+        "x-requirement-ids": [
+          "FR-AUTH-10"
+        ],
+        "x-permission": "익명·제한·업무 세션 모두 허용",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "ANONYMOUS",
+          "APPROVAL_ONLY",
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CsrfToken"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "security": []
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "operationId": "login",
+        "summary": "이메일·비밀번호 로그인",
+        "tags": [
+          "auth"
+        ],
+        "description": "ACTIVE는 WORKSPACE, PENDING은 APPROVAL_ONLY(Q1). 세션 ID·CSRF 교체. 잘못된 ID/비밀번호/제한 계정은 같은 401 AUTHENTICATION_FAILED. 서버 비밀번호·세션 비밀값 미노출. 유휴60분·최대12시간. 로그인 제한은 429.",
+        "x-requirement-ids": [
+          "FR-AUTH-01",
+          "FR-AUTH-02",
+          "FR-AUTH-03",
+          "FR-AUTH-04",
+          "FR-AUTH-08",
+          "FR-AUTH-09",
+          "FR-AUTH-11"
+        ],
+        "x-permission": "익명 허용; 입력 자격증명 검증 후 계정 상태별 세션 발급",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "ANONYMOUS",
+          "APPROVAL_ONLY",
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUser"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "security": [],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Login"
+              }
+            }
+          }
+        },
+        "x-policy-decisions": [
+          "Q1",
+          "Q10"
+        ]
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "operationId": "logout",
+        "summary": "현재 세션 종료",
+        "tags": [
+          "auth"
+        ],
+        "description": "유효 세션이면 CSRF 필수. 이미 세션이 없으면 CSRF 없이도 성공. SESSION 쿠키 삭제, 스트림 종료. 모든 결과 {ok:true}.",
+        "x-requirement-ids": [
+          "FR-AUTH-06",
+          "FR-AUTH-10",
+          "FR-INV-08"
+        ],
+        "x-permission": "현재 세션 종료; 세션이 없으면 멱등 성공",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "ANONYMOUS",
+          "APPROVAL_ONLY",
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "security": [],
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "유효한 세션에서는 필수. 세션이 없는 경우만 생략 가능."
+          }
+        ]
+      }
+    },
+    "/me": {
+      "get": {
+        "operationId": "getCurrentUser",
+        "summary": "현재 사용자·허용 지점·권한",
+        "tags": [
+          "me"
+        ],
+        "description": "현재 DB의 계정·소속·권한 재조회. APPROVAL_ONLY는 본인 최소 정보와 빈 memberships/branches. 승인 확인 후 업무 세션은 재로그인으로 발급.",
+        "x-requirement-ids": [
+          "FR-AUTH-04",
+          "FR-AUTH-05",
+          "FR-AUTH-07",
+          "FR-BR-06"
+        ],
+        "x-permission": "인증된 본인; APPROVAL_ONLY는 최소 정보만",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "APPROVAL_ONLY",
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUser"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "x-policy-decisions": [
+          "Q1",
+          "Q10"
+        ]
+      }
+    },
+    "/branches": {
+      "get": {
+        "operationId": "listBranches",
+        "summary": "허용 지점 목록",
+        "tags": [
+          "branches"
+        ],
+        "description": "허용 지점 목록",
+        "x-requirement-ids": [
+          "FR-BR-01",
+          "FR-BR-06"
+        ],
+        "x-permission": "활성 계정 + 허용 지점",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BranchPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "$ref": "#/components/parameters/Q"
+          },
+          {
+            "$ref": "#/components/parameters/Direction"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "createdAt",
+                "name"
+              ]
+            },
+            "description": "기본 createdAt. 동률은 id로 안정 정렬."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "운영 중",
+                "운영 중지"
+              ]
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createBranch",
+        "summary": "지점 등록",
+        "tags": [
+          "branches"
+        ],
+        "description": "전역 OWNER 명령이므로 기존 지점 scope 불필요. code/ID/감사 필드는 서버 생성. 이름 중복은 허용하고 code 유일성 보장.",
+        "x-requirement-ids": [
+          "FR-BR-03",
+          "FR-COM-07"
+        ],
+        "x-permission": "OWNER",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "201": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Branch"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BranchCreate"
+              }
+            }
+          }
+        },
+        "x-policy-decisions": [
+          "Q6"
+        ]
+      }
+    },
+    "/branches/{id}": {
+      "get": {
+        "operationId": "getBranch",
+        "summary": "지점 상세",
+        "tags": [
+          "branches"
+        ],
+        "description": "지점 상세",
+        "x-requirement-ids": [
+          "FR-BR-02",
+          "FR-BR-10"
+        ],
+        "x-permission": "활성 계정 + 허용 지점",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Branch"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "updateBranch",
+        "summary": "지점 기본 정보·운영시간 수정",
+        "tags": [
+          "branches"
+        ],
+        "description": "지점 기본 정보·운영시간 수정",
+        "x-requirement-ids": [
+          "FR-BR-04",
+          "FR-BR-10"
+        ],
+        "x-permission": "OWNER 또는 대상 지점 MANAGER + operations:write",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Branch"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BranchUpdate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/branches/{id}/status": {
+      "post": {
+        "operationId": "changeBranchStatus",
+        "summary": "지점 운영 중지·재개",
+        "tags": [
+          "branches"
+        ],
+        "description": "기존 기록 삭제 없음. 신규 거래 제한은 branch 정책 서비스로 후속 판매·배정·예약에 적용. 진행 중 이용 종료·정산은 별도 허용.",
+        "x-requirement-ids": [
+          "FR-BR-05",
+          "FR-BR-08"
+        ],
+        "x-permission": "OWNER 또는 대상 지점 MANAGER + operations:write",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Branch"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BranchStatus"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/employees": {
+      "get": {
+        "operationId": "listEmployees",
+        "summary": "관리 범위 직원 목록",
+        "tags": [
+          "employees"
+        ],
+        "description": "조회·검색·total을 허용 지점 직원으로 제한한다. memberships도 보이는 지점만 반환. OWNER만 전역 미배정 계정 조회 가능.",
+        "x-requirement-ids": [
+          "FR-STAFF-02"
+        ],
+        "x-permission": "OWNER 또는 조회 지점 MANAGER + people:manage",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployeePage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "$ref": "#/components/parameters/Q"
+          },
+          {
+            "$ref": "#/components/parameters/Direction"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "createdAt",
+                "name"
+              ]
+            },
+            "description": "기본 createdAt. 동률은 id로 안정 정렬."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "활성",
+                "승인 대기",
+                "이용 제한",
+                "비활성"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "/employees/{id}": {
+      "get": {
+        "operationId": "getEmployee",
+        "summary": "관리 범위 직원 상세",
+        "tags": [
+          "employees"
+        ],
+        "description": "관리 범위 직원 상세",
+        "x-requirement-ids": [
+          "FR-STAFF-02",
+          "FR-STAFF-06"
+        ],
+        "x-permission": "OWNER 또는 대상과 공유하는 관리 지점 MANAGER + people:manage",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Employee"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "updateEmployee",
+        "summary": "직원 이름·전역 계정 상태 수정",
+        "tags": [
+          "employees"
+        ],
+        "description": "로그인 이메일·owner·소속 입력은 422. PENDING 활성화는 초대 승인으로만 가능. 마지막 활성 OWNER 제한은409. 제한/비활성화는 세션·스트림 폐기.",
+        "x-requirement-ids": [
+          "FR-STAFF-03",
+          "FR-STAFF-05",
+          "FR-STAFF-07",
+          "FR-AUTH-11"
+        ],
+        "x-permission": "OWNER (Q3)",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Employee"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmployeeUpdate"
+              }
+            }
+          }
+        },
+        "x-policy-decisions": [
+          "Q3"
+        ]
+      }
+    },
+    "/employees/{employeeId}/memberships/{branchId}": {
+      "put": {
+        "operationId": "updateMembership",
+        "summary": "한 지점의 역할·권한·회수 저장",
+        "tags": [
+          "employees"
+        ],
+        "description": "기존 소속의 employeeVersion·membership version을 모두 검사. 신규 배정/승인 우회 불가. 프리셋 복사 후 최종 grants 저장. 타 지점은 변경하지 않는다. 관리자 전용 권한의 STAFF 부여 거부. Q4: MANAGER 호출은 대상 계정 EMPLOYEE·actor와 다른 직원·대상 지점 현재 role=staff·요청 role=staff만 허용. 현재 MANAGER의 강등/권한 변경/회수, STAFF의 MANAGER 승격은 OWNER만 가능. Q11: 회수 소속은 이 API로 직접 활성화하지 않고 재초대·수락·승인으로 복구.",
+        "x-requirement-ids": [
+          "FR-STAFF-04",
+          "FR-STAFF-06",
+          "FR-STAFF-07",
+          "FR-STAFF-08",
+          "FR-STAFF-10"
+        ],
+        "x-permission": "OWNER 또는 대상 지점 MANAGER + people:manage (본인 이외 일반 직원만)",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "employeeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "name": "branchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MembershipUpdate"
+              }
+            }
+          }
+        },
+        "x-target-role-policy": {
+          "manager": {
+            "currentRoles": [
+              "staff"
+            ],
+            "requestedRoles": [
+              "staff"
+            ],
+            "allowSelfPermissionChange": false,
+            "allowOwnerTarget": false
+          },
+          "owner": {
+            "allowedRoles": [
+              "admin",
+              "staff"
+            ]
+          }
+        },
+        "x-policy-decisions": [
+          "Q4",
+          "Q5",
+          "Q11"
+        ]
+      }
+    },
+    "/permissions": {
+      "get": {
+        "operationId": "listPermissionDefinitions",
+        "summary": "행위 권한 사전",
+        "tags": [
+          "permissions"
+        ],
+        "description": "행위 권한 사전",
+        "x-requirement-ids": [
+          "FR-STAFF-10"
+        ],
+        "x-permission": "활성 계정",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PermissionDefinition"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        }
+      }
+    },
+    "/permission-presets": {
+      "get": {
+        "operationId": "listPermissionPresets",
+        "summary": "권한 프리셋 목록",
+        "tags": [
+          "permission-presets"
+        ],
+        "description": "권한 프리셋 목록 최초 기본 프리셋: STAFF permissions=[], MANAGER 9종 전체. 선택 적용 시 복사하며 기존 직원에 자동 소급하지 않음.",
+        "x-requirement-ids": [
+          "FR-STAFF-04",
+          "FR-STAFF-10"
+        ],
+        "x-permission": "OWNER 또는 관리 지점 MANAGER + people:manage",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionPresetPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "$ref": "#/components/parameters/Q"
+          },
+          {
+            "$ref": "#/components/parameters/Direction"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "createdAt",
+                "name"
+              ]
+            },
+            "description": "기본 createdAt. 동률은 id로 안정 정렬."
+          }
+        ],
+        "x-policy-decisions": [
+          "Q5"
+        ]
+      },
+      "post": {
+        "operationId": "createPermissionPreset",
+        "summary": "사용자 정의 권한 프리셋 생성",
+        "tags": [
+          "permission-presets"
+        ],
+        "description": "사용자 정의 권한 프리셋 생성",
+        "x-requirement-ids": [
+          "FR-STAFF-04",
+          "FR-STAFF-10"
+        ],
+        "x-permission": "OWNER",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "201": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionPreset"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresetCreate"
+              }
+            }
+          }
+        },
+        "x-policy-decisions": [
+          "Q5"
+        ]
+      }
+    },
+    "/permission-presets/{id}": {
+      "patch": {
+        "operationId": "updatePermissionPreset",
+        "summary": "사용자 정의 권한 프리셋 수정",
+        "tags": [
+          "permission-presets"
+        ],
+        "description": "system=true 수정 거부. 변경해도 기존 소속·진행 중 초대 권한에는 자동 반영하지 않는다.",
+        "x-requirement-ids": [
+          "FR-STAFF-04",
+          "FR-STAFF-10"
+        ],
+        "x-permission": "OWNER",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionPreset"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresetUpdate"
+              }
+            }
+          }
+        },
+        "x-policy-decisions": [
+          "Q5"
+        ]
+      }
+    },
+    "/invitations": {
+      "get": {
+        "operationId": "listInvitations",
+        "summary": "초대·발송·승인 상태 목록",
+        "tags": [
+          "invitations"
+        ],
+        "description": "초대·발송·승인 상태 목록",
+        "x-requirement-ids": [
+          "FR-INV-01"
+        ],
+        "x-permission": "OWNER 또는 해당 지점 MANAGER + people:manage",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "$ref": "#/components/parameters/Q"
+          },
+          {
+            "$ref": "#/components/parameters/Direction"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "createdAt",
+                "expiresAt",
+                "name"
+              ]
+            },
+            "description": "기본 createdAt. 동률은 id로 안정 정렬."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "초대 대기",
+                "승인 대기",
+                "활성",
+                "취소",
+                "거절",
+                "만료"
+              ]
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createInvitation",
+        "summary": "직원 초대·메일 발송 요청",
+        "tags": [
+          "invitations"
+        ],
+        "description": "현재 활성 소속·진행 초대 중복409. 초대+예정 권한+outbox만 생성. 발송 대기 응답이며 발송 성공과 승인 별개. 서버 응답에는 token 없음. Q4: MANAGER 초대 명령은 OWNER만. 지점 관리자는 STAFF 초대만 처리하고 현재 대상 소속이 MANAGER이거나 OWNER 계정이면 우회 처리 불가. 역할 변경 경합도 현재 DB에서 재검사.",
+        "x-requirement-ids": [
+          "FR-INV-02",
+          "FR-STAFF-01"
+        ],
+        "x-permission": "OWNER 또는 해당 지점 MANAGER + people:manage (STAFF 초대만)",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "201": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invitation"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationCreate"
+              }
+            }
+          }
+        },
+        "x-manager-allowed-invitation-roles": [
+          "staff"
+        ],
+        "x-policy-decisions": [
+          "Q4"
+        ]
+      }
+    },
+    "/invitations/{id}": {
+      "get": {
+        "operationId": "getInvitation",
+        "summary": "초대 상태 상세",
+        "tags": [
+          "invitations"
+        ],
+        "description": "초대 상태 상세",
+        "x-requirement-ids": [
+          "FR-INV-01"
+        ],
+        "x-permission": "OWNER 또는 해당 지점 MANAGER + people:manage",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invitation"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ]
+      }
+    },
+    "/invitations/{id}/reissue": {
+      "post": {
+        "operationId": "reissueInvitation",
+        "summary": "수락 전 초대 재발급",
+        "tags": [
+          "invitations"
+        ],
+        "description": "미수락 PENDING/EXPIRED만 가능. 같은 이메일·지점의 다른 진행 초대가 있으면409. 이전 token 폐기, 새 발송 작업과 새24h TTL(Q12 확정). 자동 메일 재시도는 TTL 연장 없음. Q4: MANAGER 초대 명령은 OWNER만. 지점 관리자는 STAFF 초대만 처리하고 현재 대상 소속이 MANAGER이거나 OWNER 계정이면 우회 처리 불가. 역할 변경 경합도 현재 DB에서 재검사.",
+        "x-requirement-ids": [
+          "FR-INV-03",
+          "FR-STAFF-01"
+        ],
+        "x-permission": "OWNER 또는 해당 지점 MANAGER + people:manage (STAFF 초대만)",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invitation"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionCommand"
+              }
+            }
+          }
+        },
+        "x-policy-decisions": [
+          "Q1",
+          "Q4",
+          "Q12"
+        ],
+        "x-manager-allowed-invitation-roles": [
+          "staff"
+        ]
+      }
+    },
+    "/invitations/{id}/cancel": {
+      "post": {
+        "operationId": "cancelInvitation",
+        "summary": "수락 전 초대 취소",
+        "tags": [
+          "invitations"
+        ],
+        "description": "PENDING만 가능. token 폐기, 발송 작업 무효화. 이미 취소면 현재 결과 반환. Q4: MANAGER 초대 명령은 OWNER만. 지점 관리자는 STAFF 초대만 처리하고 현재 대상 소속이 MANAGER이거나 OWNER 계정이면 우회 처리 불가. 역할 변경 경합도 현재 DB에서 재검사.",
+        "x-requirement-ids": [
+          "FR-INV-04",
+          "FR-STAFF-01"
+        ],
+        "x-permission": "OWNER 또는 해당 지점 MANAGER + people:manage (STAFF 초대만)",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invitation"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionCommand"
+              }
+            }
+          }
+        },
+        "x-policy-decisions": [
+          "Q1",
+          "Q4"
+        ],
+        "x-manager-allowed-invitation-roles": [
+          "staff"
+        ]
+      }
+    },
+    "/invitations/{id}/reject": {
+      "post": {
+        "operationId": "rejectInvitation",
+        "summary": "승인 대기 반려",
+        "tags": [
+          "invitations"
+        ],
+        "description": "ACCEPTED만 가능. 사유 필수. 이 초대의 대기 소속만 회수. 다른 유효 소속은 보존(Q1). 이미 거절이면 현재 결과 반환. Q4: MANAGER 초대 명령은 OWNER만. 지점 관리자는 STAFF 초대만 처리하고 현재 대상 소속이 MANAGER이거나 OWNER 계정이면 우회 처리 불가. 역할 변경 경합도 현재 DB에서 재검사.",
+        "x-requirement-ids": [
+          "FR-INV-04",
+          "FR-STAFF-01"
+        ],
+        "x-permission": "OWNER 또는 해당 지점 MANAGER + people:manage (STAFF 초대만)",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invitation"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationReject"
+              }
+            }
+          }
+        },
+        "x-policy-decisions": [
+          "Q1",
+          "Q4"
+        ],
+        "x-manager-allowed-invitation-roles": [
+          "staff"
+        ]
+      }
+    },
+    "/invitations/{id}/approve": {
+      "post": {
+        "operationId": "approveInvitation",
+        "summary": "승인 대기 최종 승인",
+        "tags": [
+          "invitations"
+        ],
+        "description": "ACCEPTED만 가능. 계정 상태·소속 중복·예정 권한 재검증. 계정/소속/권한/초대 상태를 한 트랜잭션으로 활성화. 이미 승인된 요청은 현재 승인 결과 반환. 다른 종료 상태는409. Q4: MANAGER 초대 명령은 OWNER만. 지점 관리자는 STAFF 초대만 처리하고 현재 대상 소속이 MANAGER이거나 OWNER 계정이면 우회 처리 불가. 역할 변경 경합도 현재 DB에서 재검사.",
+        "x-requirement-ids": [
+          "FR-INV-07",
+          "FR-STAFF-01"
+        ],
+        "x-permission": "OWNER 또는 해당 지점 MANAGER + people:manage (STAFF 초대만)",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invitation"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionCommand"
+              }
+            }
+          }
+        },
+        "x-policy-decisions": [
+          "Q1",
+          "Q4",
+          "Q11"
+        ],
+        "x-manager-allowed-invitation-roles": [
+          "staff"
+        ]
+      }
+    },
+    "/invitations/preview": {
+      "post": {
+        "operationId": "previewInvitation",
+        "summary": "유효 링크의 본인 초대 확인",
+        "tags": [
+          "invitations"
+        ],
+        "description": "토큰을 URL query에 싣지 않는 계약으로 변경. 이메일 링크의 fragment에서 읽어 JSON body로 전송. 틀림/만료/사용됨은 동일422 INVITATION_LINK_INVALID. 신규/기존 수락 방법 안내 외 계정 정보 없음.",
+        "x-requirement-ids": [
+          "FR-INV-05"
+        ],
+        "x-permission": "익명 허용; 제출한 초대 토큰의 상태·TTL 검증",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "ANONYMOUS",
+          "APPROVAL_ONLY",
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationPreview"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "security": [],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationPreviewRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/invitations/accept": {
+      "post": {
+        "operationId": "acceptInvitation",
+        "summary": "신규·기존 직원의 초대 수락",
+        "tags": [
+          "invitations"
+        ],
+        "description": "token/email 일치·만료·revision을 잠금 후 재검증. NEW_ACCOUNT는 비밀번호 해시와 PENDING 계정/소속 생성, 세션 자동 발급 안 함. EXISTING_ACCOUNT는 같은 이메일의 ACTIVE WORKSPACE 세션 필수이며 다른 계정 세션은403. 기존 비밀번호 변경 없음. 일회성 토큰 소비. 이전 유효 소속 업무는 유지(Q1). 성공 뒤 CSRF 토큰 다시 조회.",
+        "x-requirement-ids": [
+          "FR-INV-06",
+          "FR-STAFF-01",
+          "FR-AUTH-10"
+        ],
+        "x-permission": "신규 계정은 유효 토큰·신규 자격증명; 기존 계정은 초대 이메일과 같은 본인 업무 세션",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "ANONYMOUS:NEW_ACCOUNT",
+          "WORKSPACE:EXISTING_ACCOUNT"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptanceResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "security": [],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationAccept"
+              }
+            }
+          }
+        },
+        "x-policy-decisions": [
+          "Q1",
+          "Q10",
+          "Q11"
+        ]
+      }
+    },
+    "/invitations/approval-status": {
+      "get": {
+        "operationId": "getApprovalStatus",
+        "summary": "본인 승인 상태 확인",
+        "tags": [
+          "invitations"
+        ],
+        "description": "본인의 수락된 초대만 반환. 제한 세션은 거절 후에도 상태/로그아웃만 허용. 계정 제한·퇴사는401. 승인 후 제한세션을 자동 업무승격하지 않고 requiresLogin=true 안내. Q12: 수락 후 승인 대기에는 별도 만료 기한이 없다.",
+        "x-requirement-ids": [
+          "FR-INV-08",
+          "FR-AUTH-04"
+        ],
+        "x-permission": "인증된 본인; APPROVAL_ONLY/WORKSPACE의 본인 승인 상태만",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "APPROVAL_ONLY",
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "x-policy-decisions": [
+          "Q1",
+          "Q10",
+          "Q12"
+        ]
+      }
+    },
+    "/product-categories": {
+      "get": {
+        "operationId": "listProductCategories",
+        "summary": "상품 통계 분류 목록",
+        "tags": [
+          "product-categories"
+        ],
+        "description": "상품 통계 분류 목록",
+        "x-requirement-ids": [
+          "FR-PROD-07"
+        ],
+        "x-permission": "활성 계정 + 허용 지점",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductCategoryPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "$ref": "#/components/parameters/Q"
+          },
+          {
+            "$ref": "#/components/parameters/Direction"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "createdAt",
+                "name",
+                "code"
+              ]
+            },
+            "description": "기본 createdAt. 동률은 id로 안정 정렬."
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "시간권",
+                "기간권",
+                "정액권"
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "활성",
+                "비활성"
+              ]
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createProductCategory",
+        "summary": "통계 분류 생성",
+        "tags": [
+          "product-categories"
+        ],
+        "description": "통계 분류 생성",
+        "x-requirement-ids": [
+          "FR-PROD-07"
+        ],
+        "x-permission": "OWNER",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "201": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductCategory"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryCreate"
+              }
+            }
+          }
+        },
+        "x-policy-decisions": [
+          "Q6"
+        ]
+      }
+    },
+    "/product-categories/{id}": {
+      "patch": {
+        "operationId": "updateProductCategory",
+        "summary": "통계 분류명·상태 변경",
+        "tags": [
+          "product-categories"
+        ],
+        "description": "code/kind 변경 거부. 과거 상품 revision·구매 snapshot 유지.",
+        "x-requirement-ids": [
+          "FR-PROD-07"
+        ],
+        "x-permission": "OWNER",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductCategory"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryUpdate"
+              }
+            }
+          }
+        },
+        "x-policy-decisions": [
+          "Q6"
+        ]
+      }
+    },
+    "/products": {
+      "get": {
+        "operationId": "listProducts",
+        "summary": "허용 상품 목록",
+        "tags": [
+          "products"
+        ],
+        "description": "허용 상품 목록",
+        "x-requirement-ids": [
+          "FR-PROD-01",
+          "FR-PROD-05"
+        ],
+        "x-permission": "활성 계정 + 허용 지점",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "$ref": "#/components/parameters/Q"
+          },
+          {
+            "$ref": "#/components/parameters/Direction"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "createdAt",
+                "name",
+                "priceKrw"
+              ]
+            },
+            "description": "기본 createdAt. 동률은 id로 안정 정렬."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "판매 중",
+                "판매 중지"
+              ]
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "시간권",
+                "기간권",
+                "정액권"
+              ]
+            }
+          },
+          {
+            "name": "categoryId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createProduct",
+        "summary": "상품 등록",
+        "tags": [
+          "products"
+        ],
+        "description": "branchIds를 구체적으로 지정. scope=all은 전체 판매 지점 의미가 아니다. 모든 지점 허용 여부와 유형·분류 일치 검증. code/최초 revision 서버 생성.",
+        "x-requirement-ids": [
+          "FR-PROD-02",
+          "FR-PROD-06",
+          "FR-PROD-09"
+        ],
+        "x-permission": "OWNER 또는 명시한 모든 지점 operations:write",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "201": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Product"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductCreate"
+              }
+            }
+          }
+        },
+        "x-policy-decisions": [
+          "Q2",
+          "Q6",
+          "Q7",
+          "Q9"
+        ]
+      }
+    },
+    "/products/{id}": {
+      "get": {
+        "operationId": "getProduct",
+        "summary": "허용 상품 상세",
+        "tags": [
+          "products"
+        ],
+        "description": "허용 상품 상세",
+        "x-requirement-ids": [
+          "FR-PROD-01"
+        ],
+        "x-permission": "활성 계정 + 허용 지점",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Product"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "updateProduct",
+        "summary": "상품명·가격·조건 변경",
+        "tags": [
+          "products"
+        ],
+        "description": "새 revision 생성. 기존 구매·발급 조건은 수정하지 않는다. 일부 지점 권한만 있으면 공유 상품 수정403. terms.kind 변경422.",
+        "x-requirement-ids": [
+          "FR-PROD-03",
+          "FR-PROD-06",
+          "FR-PROD-09"
+        ],
+        "x-permission": "OWNER 또는 현재 모든 적용 지점 operations:write",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Product"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductUpdate"
+              }
+            }
+          }
+        },
+        "x-policy-decisions": [
+          "Q2",
+          "Q6",
+          "Q7",
+          "Q9"
+        ]
+      },
+      "delete": {
+        "operationId": "deleteProduct",
+        "summary": "거래 이력 없는 상품 물리 삭제",
+        "tags": [
+          "products"
+        ],
+        "description": "구매·결제·발급 참조0건일 때만 삭제. 실패·환불 결제도 이력에 포함하며 참조 존재409 PRODUCT_IN_USE. version 필수·불일치409. 현재 판매 지점 연결 제거와 상품 삭제, DELETED revision·감사·이벤트를 한 트랜잭션으로 처리. 변경 이력의 원래 상품 ID와 snapshot은 보존. 삭제 후 일반 상세404, history는 기존 지점 인가로 조회 가능. 반복 삭제404이며 감사 중복 없음.",
+        "x-requirement-ids": [
+          "FR-PROD-08",
+          "FR-PROD-11",
+          "FR-COM-08",
+          "FR-COM-10",
+          "FR-COM-14"
+        ],
+        "x-permission": "OWNER 또는 현재 모든 적용 지점 MANAGER + operations:write",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Version"
+            },
+            "description": "조회한 상품 version. DELETE는 JSON 본문 없이 이 query 값을 사용."
+          }
+        ],
+        "x-policy-decisions": [
+          "Q7",
+          "Q8"
+        ]
+      }
+    },
+    "/products/{id}/status": {
+      "post": {
+        "operationId": "changeProductStatus",
+        "summary": "상품 판매 중지·재개",
+        "tags": [
+          "products"
+        ],
+        "description": "판매 중지는 기존 구매·발급 이력을 삭제하지 않는다. 거래 이력 없는 상품만 별도 DELETE 허용(Q8). DB FK로 구매 참조 삭제도 제한.",
+        "x-requirement-ids": [
+          "FR-PROD-04",
+          "FR-PROD-08"
+        ],
+        "x-permission": "OWNER 또는 현재 모든 적용 지점 MANAGER + operations:write",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Product"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductStatus"
+              }
+            }
+          }
+        },
+        "x-policy-decisions": [
+          "Q6",
+          "Q7"
+        ]
+      }
+    },
+    "/products/{id}/branches": {
+      "put": {
+        "operationId": "replaceProductBranches",
+        "summary": "상품 판매 지점 집합 변경",
+        "tags": [
+          "products"
+        ],
+        "description": "최소1개 지점. 범위 밖 ID 유입·기존 적용 지점 숨김 제거를403으로 거부. 새 revision으로 과거 적용 범위 보존.",
+        "x-requirement-ids": [
+          "FR-PROD-05"
+        ],
+        "x-permission": "OWNER 또는 현재·변경후 모든 지점 MANAGER + operations:write",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Product"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductBranches"
+              }
+            }
+          }
+        },
+        "x-policy-decisions": [
+          "Q6",
+          "Q7"
+        ]
+      }
+    },
+    "/products/{id}/history": {
+      "get": {
+        "operationId": "listProductHistory",
+        "summary": "상품 가격·구성 변경 이력",
+        "tags": [
+          "products"
+        ],
+        "description": "before/after에 당시 분류·조건·지점 snapshot. 이력은 immutable. 일부 지점 사용자에게 타 지점 이력 노출 금지. 삭제된 상품도 원래 상품 ID의 보존 이력으로 조회. 삭제 직전/과거 snapshot의 모든 지점 인가를 검사. DELETED 행의 after=null.",
+        "x-requirement-ids": [
+          "FR-PROD-07",
+          "FR-PROD-11"
+        ],
+        "x-permission": "OWNER 또는 현재·이력의 모든 관련 지점 MANAGER + operations:write",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductRevisionPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "$ref": "#/components/parameters/Q"
+          },
+          {
+            "$ref": "#/components/parameters/Direction"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "changedAt"
+              ]
+            },
+            "description": "기본 createdAt. 동률은 id로 안정 정렬."
+          }
+        ],
+        "x-policy-decisions": [
+          "Q8"
+        ]
+      }
+    },
+    "/lookups": {
+      "get": {
+        "operationId": "getLookups",
+        "summary": "허용된 기반 선택 데이터",
+        "tags": [
+          "lookups"
+        ],
+        "description": "빈 데이터는 빈 배열. 직원은 허용 지점의 활성 업무 대상 최소 ID/이름만. 초대/PENDING·타지점 정보 미포함. 선택 데이터가 크면 별도 페이지 조회로 전환; 전체 관리 목록의 total/인가를 대신하지 않는다.",
+        "x-requirement-ids": [
+          "FR-BR-06",
+          "FR-STAFF-06",
+          "FR-COM-02"
+        ],
+        "x-permission": "활성 계정 + 허용 지점",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Lookups"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ]
+      }
+    },
+    "/workspace/events": {
+      "get": {
+        "operationId": "subscribeWorkspaceEvents",
+        "summary": "권한별 화면 갱신 SSE",
+        "tags": [
+          "workspace"
+        ],
+        "description": "event: invalidate/authorization.changed/resync. data는 WorkspaceEvent JSON. 커밋 후 전달 직전 현재 권한 재검사. heartbeat는 유효 활동 아님. 재연결 즉시 resync 후 현재 화면 재조회. 재생 보장 없음. 권한 회수·만료면 연결 종료. logout 시 클라이언트가 연결/캐시 정리.",
+        "x-requirement-ids": [
+          "FR-COM-13",
+          "FR-BR-06"
+        ],
+        "x-permission": "활성 계정 + 허용 지점",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              },
+              "X-Accel-Buffering": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "event: invalidate\ndata: {\"type\":\"invalidate\",\"resource\":\"products\",\"entityId\":\"1\",\"branchId\":\"1\",\"at\":\"2026-10-23T00:00:00Z\"}\n\n"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "x-event-data-schema": {
+          "$ref": "#/components/schemas/WorkspaceEvent"
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "SessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "SESSION",
+        "description": "HttpOnly, SameSite=Lax. 운영 HTTPS Secure. 동일 origin /api. 세션 ID를 JS에서 저장하지 않는다."
+      }
+    },
+    "parameters": {
+      "Scope": {
+        "name": "scope",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "default": "all",
+          "pattern": "^(all|[1-9][0-9]{0,19})$"
+        },
+        "description": "all은 허용 지점의 합집합. path/body의 구체적 지점과 교차 검사. 접근 불가 ID는 403."
+      },
+      "Csrf": {
+        "name": "X-CSRF-Token",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": "GET /auth/csrf에서 발급. login/logout/accept 후 토큰 재발급."
+      },
+      "Idempotency": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 128
+        },
+        "description": "등록 중복 방지. 같은 키·입력은 저장된 결과, 다른 입력은 409. 기본 24시간 보존 제안."
+      },
+      "Page": {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "default": 1
+        }
+      },
+      "PageSize": {
+        "name": "pageSize",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20
+        }
+      },
+      "Q": {
+        "name": "q",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "description": "허용한 name/code/email만 검색. SQL/필드명 직접 입력 아님."
+      },
+      "Direction": {
+        "name": "direction",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": [
+            "asc",
+            "desc"
+          ]
+        },
+        "description": "기본 desc. 최종 id tie-breaker도 같은 방향 적용."
+      }
+    },
+    "responses": {
+      "Error401": {
+        "description": "유효한 세션/자격증명 없음",
+        "headers": {
+          "X-Request-ID": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "Error403": {
+        "description": "지점·역할·행위 권한 부족 또는 CSRF 오류",
+        "headers": {
+          "X-Request-ID": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "Error404": {
+        "description": "허용된 범위 안의 대상 없음",
+        "headers": {
+          "X-Request-ID": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "Error409": {
+        "description": "버전·상태·중복·멱등성·최종 관리자 충돌",
+        "headers": {
+          "X-Request-ID": {
+            "schema": {
+              "type": "string"
+            }
+          },
+          "Retry-After": {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "description": "다시 시도할 때까지 초. 409는 REQUEST_IN_PROGRESS인 경우에만 포함."
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "Error422": {
+        "description": "입력 필드·형식·범위 오류",
+        "headers": {
+          "X-Request-ID": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "Error429": {
+        "description": "요청 제한. Retry-After 참고",
+        "headers": {
+          "X-Request-ID": {
+            "schema": {
+              "type": "string"
+            }
+          },
+          "Retry-After": {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "description": "다시 시도할 때까지 초. 409는 REQUEST_IN_PROGRESS인 경우에만 포함."
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "Error500": {
+        "description": "내부 오류. 안전한 message와 requestId만 반환",
+        "headers": {
+          "X-Request-ID": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[1-9][0-9]{0,19}$",
+        "description": "BIGINT UNSIGNED를 표현하는 10진 문자열. 서버는 DB 상한도 검증한다.",
+        "example": "1"
+      },
+      "Version": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991,
+        "description": "API version=DB version+1. 쓰기 요청에 조회한 값을 전송한다.",
+        "example": 1
+      },
+      "PermissionCode": {
+        "type": "string",
+        "enum": [
+          "members:write",
+          "operations:write",
+          "payments:read",
+          "payments:write",
+          "sales:read",
+          "facilities:write",
+          "notices:write",
+          "people:manage",
+          "ai:read"
+        ]
+      },
+      "Permissions": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/PermissionCode"
+        },
+        "uniqueItems": true
+      },
+      "ApiError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "fieldErrors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "latestVersion": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "reloadUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "requestId"
+        ],
+        "additionalProperties": false,
+        "example": {
+          "code": "VERSION_CONFLICT",
+          "message": "최신 정보를 확인한 뒤 다시 저장해 주세요.",
+          "requestId": "req-example-1",
+          "latestVersion": 3,
+          "reloadUrl": "/api/branches/1"
+        }
+      },
+      "Success": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "additionalProperties": false,
+        "example": {
+          "ok": true
+        }
+      },
+      "CsrfToken": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "additionalProperties": false,
+        "example": {
+          "token": "opaque-csrf-value"
+        }
+      },
+      "PageMeta": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "additionalProperties": false,
+        "example": {
+          "page": 1,
+          "pageSize": 20,
+          "total": 0
+        }
+      },
+      "WeeklyHours": {
+        "type": "object",
+        "properties": {
+          "weekday": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7
+          },
+          "isClosed": {
+            "type": "boolean"
+          },
+          "opensMinute": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1439,
+            "nullable": true
+          },
+          "closesMinute": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2880,
+            "nullable": true
+          }
+        },
+        "required": [
+          "weekday",
+          "isClosed",
+          "opensMinute",
+          "closesMinute"
+        ],
+        "additionalProperties": false,
+        "description": "월1~일7. 휴무면 분 필드 모두 null. 영업이면 opensMinute<closesMinute. 하루 뒤 종료는 1440 초과."
+      },
+      "Branch": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "hours": {
+            "type": "string",
+            "description": "weeklyHours로 만든 표시용 문자열"
+          },
+          "weeklyHours": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WeeklyHours"
+            },
+            "minItems": 7,
+            "maxItems": 7,
+            "description": "요일 중복 없이 7개 모두 지정한다."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "운영 중",
+              "운영 중지"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "createdAt",
+          "updatedAt",
+          "branchId",
+          "code",
+          "name",
+          "address",
+          "phone",
+          "hours",
+          "weeklyHours",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "BranchCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "address": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 30
+          },
+          "weeklyHours": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WeeklyHours"
+            },
+            "minItems": 7,
+            "maxItems": 7,
+            "description": "요일 중복 없이 7개 모두 지정한다."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "운영 중",
+              "운영 중지"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "address",
+          "phone",
+          "weeklyHours",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "BranchUpdate": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "address": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 30
+          },
+          "weeklyHours": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WeeklyHours"
+            },
+            "minItems": 7,
+            "maxItems": 7,
+            "description": "요일 중복 없이 7개 모두 지정한다."
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "additionalProperties": false,
+        "minProperties": 2
+      },
+      "BranchStatus": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "운영 중",
+              "운영 중지"
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "Membership": {
+        "type": "object",
+        "properties": {
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "staff"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "승인 대기",
+              "활성",
+              "회수"
+            ]
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/Permissions"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          }
+        },
+        "required": [
+          "branchId",
+          "role",
+          "status",
+          "permissions",
+          "version"
+        ],
+        "additionalProperties": false,
+        "description": "me는 ACTIVE 소속만 반환한다. 현재 응답에 status/version을 추가하는 목표 계약이다. 관리 조회는 보이는 소속의 상태/version도 반환한다."
+      },
+      "Employee": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "branchId": {
+            "type": "string",
+            "description": "기존 화면 호환값. 인가 근거가 아니며 허용된 첫 지점 ID 또는 all."
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "활성",
+              "승인 대기",
+              "이용 제한",
+              "비활성"
+            ]
+          },
+          "nickname": {
+            "type": "string"
+          },
+          "avatar": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "boolean"
+          },
+          "memberships": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Membership"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "createdAt",
+          "updatedAt",
+          "branchId",
+          "name",
+          "email",
+          "status",
+          "nickname",
+          "avatar",
+          "owner",
+          "memberships"
+        ],
+        "additionalProperties": false
+      },
+      "CurrentUser": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/Employee"
+          },
+          "branches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Branch"
+            }
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "snapshotVersion": {
+            "type": "string"
+          },
+          "sessionMode": {
+            "type": "string",
+            "enum": [
+              "WORKSPACE",
+              "APPROVAL_ONLY"
+            ]
+          }
+        },
+        "required": [
+          "user",
+          "branches",
+          "asOf",
+          "snapshotVersion",
+          "sessionMode"
+        ],
+        "additionalProperties": false,
+        "description": "확정 정책 Q1: APPROVAL_ONLY의 branches/memberships는 빈 배열이며 업무 정보를 반환하지 않는다."
+      },
+      "Login": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 72,
+            "writeOnly": true,
+            "description": "UTF-8 72바이트 초과 거부. 공백 제거 금지."
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "additionalProperties": false,
+        "example": {
+          "email": "employee@openstudy.example",
+          "password": "example-only-password"
+        }
+      },
+      "EmployeeUpdate": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "활성",
+              "이용 제한",
+              "비활성"
+            ]
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "additionalProperties": false,
+        "minProperties": 2,
+        "description": "Q3: OWNER만. PENDING을 ACTIVE로 바꾸는 승인 우회 금지. email/owner/memberships 입력 거부."
+      },
+      "MembershipUpdate": {
+        "type": "object",
+        "properties": {
+          "employeeVersion": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "staff"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "활성",
+              "회수"
+            ]
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/Permissions"
+          },
+          "presetId": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": [
+          "employeeVersion",
+          "version",
+          "role",
+          "status",
+          "permissions"
+        ],
+        "additionalProperties": false,
+        "description": "기존 소속만 수정. 신규 활성 소속은 초대 최종 승인으로만 생성. presetId가 있으면 그 프리셋을 복사한 뒤 permissions를 최종 집합으로 검증한다."
+      },
+      "MembershipResult": {
+        "type": "object",
+        "properties": {
+          "employeeVersion": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "membership": {
+            "$ref": "#/components/schemas/Membership"
+          }
+        },
+        "required": [
+          "employeeVersion",
+          "membership"
+        ],
+        "additionalProperties": false
+      },
+      "PermissionDefinition": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/PermissionCode"
+          },
+          "description": {
+            "type": "string"
+          },
+          "adminOnly": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "description",
+          "adminOnly"
+        ],
+        "additionalProperties": false
+      },
+      "PermissionPreset": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "staff"
+            ]
+          },
+          "system": {
+            "type": "boolean"
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/Permissions"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "createdAt",
+          "updatedAt",
+          "name",
+          "role",
+          "system",
+          "permissions"
+        ],
+        "additionalProperties": false
+      },
+      "PresetCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "staff"
+            ]
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/Permissions"
+          }
+        },
+        "required": [
+          "name",
+          "role",
+          "permissions"
+        ],
+        "additionalProperties": false
+      },
+      "PresetUpdate": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/Permissions"
+          }
+        },
+        "required": [
+          "version",
+          "name",
+          "permissions"
+        ],
+        "additionalProperties": false
+      },
+      "Invitation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "staff"
+            ]
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/Permissions"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "초대 대기",
+              "승인 대기",
+              "활성",
+              "취소",
+              "거절",
+              "만료"
+            ]
+          },
+          "delivery": {
+            "type": "string",
+            "enum": [
+              "발송 대기",
+              "발송 중",
+              "발송 완료",
+              "발송 실패",
+              "발송 생략"
+            ]
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "employeeId": {
+            "type": "string",
+            "nullable": true
+          },
+          "rejectionReason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "createdAt",
+          "updatedAt",
+          "branchId",
+          "name",
+          "email",
+          "role",
+          "permissions",
+          "status",
+          "delivery",
+          "expiresAt",
+          "employeeId",
+          "rejectionReason"
+        ],
+        "additionalProperties": false,
+        "description": "관리자 응답에도 원문 토큰/해시/메일 링크를 포함하지 않는다."
+      },
+      "InvitationCreate": {
+        "type": "object",
+        "properties": {
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "staff"
+            ]
+          },
+          "presetId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/Permissions"
+          }
+        },
+        "required": [
+          "branchId",
+          "name",
+          "email",
+          "role",
+          "permissions"
+        ],
+        "additionalProperties": false
+      },
+      "VersionCommand": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "InvitationReject": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "version",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "InvitationPreviewRequest": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 32,
+            "maxLength": 512,
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "additionalProperties": false
+      },
+      "InvitationPreview": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "branch": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "staff"
+            ]
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "acceptanceMode": {
+            "type": "string",
+            "enum": [
+              "NEW_ACCOUNT",
+              "EXISTING_ACCOUNT"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "branch",
+          "role",
+          "expiresAt",
+          "acceptanceMode"
+        ],
+        "additionalProperties": false,
+        "description": "유효 토큰으로 확인한 본인의 최소 초대 정보. Cache-Control: no-store, Referrer-Policy: no-referrer."
+      },
+      "InvitationAccept": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "NEW_ACCOUNT"
+                ]
+              },
+              "token": {
+                "type": "string",
+                "minLength": 32,
+                "maxLength": 512,
+                "writeOnly": true
+              },
+              "email": {
+                "type": "string",
+                "format": "email"
+              },
+              "password": {
+                "type": "string",
+                "minLength": 8,
+                "maxLength": 72,
+                "writeOnly": true,
+                "description": "UTF-8 72바이트 이하. 서버에서 검증."
+              }
+            },
+            "required": [
+              "mode",
+              "token",
+              "email",
+              "password"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "EXISTING_ACCOUNT"
+                ]
+              },
+              "token": {
+                "type": "string",
+                "minLength": 32,
+                "maxLength": 512,
+                "writeOnly": true
+              },
+              "email": {
+                "type": "string",
+                "format": "email"
+              }
+            },
+            "required": [
+              "mode",
+              "token",
+              "email"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "description": "기존 계정은 같은 email의 유효 WORKSPACE 세션 필수. 신규 수락은 PENDING 계정 생성. 확정 정책 Q1을 적용한다."
+      },
+      "AcceptanceResult": {
+        "type": "object",
+        "properties": {
+          "invitationId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "승인 대기"
+            ]
+          },
+          "nextAction": {
+            "type": "string",
+            "enum": [
+              "LOGIN_FOR_APPROVAL_STATUS",
+              "REFRESH_APPROVAL_STATUS"
+            ]
+          }
+        },
+        "required": [
+          "invitationId",
+          "status",
+          "nextAction"
+        ],
+        "additionalProperties": false,
+        "description": "수락만으로 업무 권한을 발급하지 않는다. 신규 수락 후 승인 확인용 로그인 필요(Q1)."
+      },
+      "ApprovalItem": {
+        "type": "object",
+        "properties": {
+          "invitationId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "branchName": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "승인 대기",
+              "활성",
+              "거절",
+              "취소"
+            ]
+          },
+          "rejectionReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "invitationId",
+          "branchId",
+          "branchName",
+          "status",
+          "rejectionReason",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ApprovalStatus": {
+        "type": "object",
+        "properties": {
+          "accountStatus": {
+            "type": "string",
+            "enum": [
+              "승인 대기",
+              "활성"
+            ]
+          },
+          "invitations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApprovalItem"
+            }
+          },
+          "requiresLogin": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "accountStatus",
+          "invitations",
+          "requiresLogin"
+        ],
+        "additionalProperties": false,
+        "description": "본인 초대만. 제한 세션에서 승인 완료 확인 시 requiresLogin=true. 업무 데이터 없음."
+      },
+      "ProductCategory": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,39}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "시간권",
+              "기간권",
+              "정액권"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "활성",
+              "비활성"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "createdAt",
+          "updatedAt",
+          "code",
+          "name",
+          "kind",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "CategoryCreate": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,39}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "시간권",
+              "기간권",
+              "정액권"
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "kind"
+        ],
+        "additionalProperties": false
+      },
+      "CategoryUpdate": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "활성",
+              "비활성"
+            ]
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "additionalProperties": false,
+        "minProperties": 2
+      },
+      "TimeTerms": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "시간권"
+            ]
+          },
+          "includedMinutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4294967295
+          },
+          "validDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4294967295,
+            "nullable": true
+          }
+        },
+        "required": [
+          "kind",
+          "includedMinutes",
+          "validDays"
+        ],
+        "additionalProperties": false,
+        "example": {
+          "kind": "시간권",
+          "includedMinutes": 600,
+          "validDays": null
+        }
+      },
+      "PeriodTerms": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "기간권"
+            ]
+          },
+          "periodDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4294967295
+          }
+        },
+        "required": [
+          "kind",
+          "periodDays"
+        ],
+        "additionalProperties": false,
+        "description": "Q2: 상품에는 일수, 발급 시 실제 시작·종료 결정.",
+        "example": {
+          "kind": "기간권",
+          "periodDays": 30
+        }
+      },
+      "StoredValueTerms": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "정액권"
+            ]
+          },
+          "creditKrw": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "hourlyRateKrw": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "validDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4294967295,
+            "nullable": true
+          }
+        },
+        "required": [
+          "kind",
+          "creditKrw",
+          "hourlyRateKrw",
+          "validDays"
+        ],
+        "additionalProperties": false,
+        "example": {
+          "kind": "정액권",
+          "creditKrw": 50000,
+          "hourlyRateKrw": 2000,
+          "validDays": 90
+        }
+      },
+      "ProductTerms": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TimeTerms"
+          },
+          {
+            "$ref": "#/components/schemas/PeriodTerms"
+          },
+          {
+            "$ref": "#/components/schemas/StoredValueTerms"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "kind",
+          "mapping": {
+            "시간권": "#/components/schemas/TimeTerms",
+            "기간권": "#/components/schemas/PeriodTerms",
+            "정액권": "#/components/schemas/StoredValueTerms"
+          }
+        }
+      },
+      "Product": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "priceKrw": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "terms": {
+            "$ref": "#/components/schemas/ProductTerms"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "판매 중",
+              "판매 중지"
+            ]
+          },
+          "category": {
+            "$ref": "#/components/schemas/ProductCategory"
+          },
+          "branchIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Id"
+            },
+            "uniqueItems": true,
+            "minItems": 1,
+            "maxItems": 100
+          },
+          "canEdit": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "createdAt",
+          "updatedAt",
+          "code",
+          "name",
+          "priceKrw",
+          "terms",
+          "status",
+          "category",
+          "branchIds",
+          "canEdit"
+        ],
+        "additionalProperties": false,
+        "description": "branchIds는 현재 사용자가 볼 수 있는 적용 지점만. canEdit은 공유 원본 전체 관리 가능 여부이며 서버 검증을 대체하지 않는다."
+      },
+      "ProductCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "priceKrw": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "terms": {
+            "$ref": "#/components/schemas/ProductTerms"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "판매 중",
+              "판매 중지"
+            ]
+          },
+          "categoryId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "branchIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Id"
+            },
+            "uniqueItems": true,
+            "minItems": 1,
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "name",
+          "priceKrw",
+          "terms",
+          "status",
+          "categoryId",
+          "branchIds"
+        ],
+        "additionalProperties": false,
+        "example": {
+          "name": "10시간권",
+          "priceKrw": 15000,
+          "terms": {
+            "kind": "시간권",
+            "includedMinutes": 600,
+            "validDays": null
+          },
+          "status": "판매 중",
+          "categoryId": "1",
+          "branchIds": [
+            "1"
+          ]
+        }
+      },
+      "ProductUpdate": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "priceKrw": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "terms": {
+            "$ref": "#/components/schemas/ProductTerms"
+          },
+          "categoryId": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "additionalProperties": false,
+        "minProperties": 2,
+        "description": "terms.kind 변경 금지. 제공되지 않은 필드는 유지. terms는 유형 전체 조건 교체."
+      },
+      "ProductStatus": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "판매 중",
+              "판매 중지"
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "ProductBranches": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "branchIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Id"
+            },
+            "uniqueItems": true,
+            "minItems": 1,
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "version",
+          "branchIds"
+        ],
+        "additionalProperties": false
+      },
+      "ProductSnapshot": {
+        "type": "object",
+        "properties": {
+          "schemaVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "priceKrw": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "terms": {
+            "$ref": "#/components/schemas/ProductTerms"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "판매 중",
+              "판매 중지"
+            ]
+          },
+          "categoryCode": {
+            "type": "string"
+          },
+          "categoryName": {
+            "type": "string"
+          },
+          "branchIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Id"
+            },
+            "uniqueItems": true,
+            "minItems": 1,
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "code",
+          "name",
+          "priceKrw",
+          "terms",
+          "status",
+          "categoryCode",
+          "categoryName",
+          "branchIds"
+        ],
+        "additionalProperties": false
+      },
+      "ProductRevision": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "productId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "changedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "actorId": {
+            "type": "string",
+            "nullable": true
+          },
+          "changeType": {
+            "type": "string",
+            "enum": [
+              "CREATED",
+              "UPDATED",
+              "DELETED",
+              "BASELINE"
+            ]
+          },
+          "before": {
+            "type": "object",
+            "properties": {
+              "schemaVersion": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1
+              },
+              "code": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "priceKrw": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "terms": {
+                "$ref": "#/components/schemas/ProductTerms"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "판매 중",
+                  "판매 중지"
+                ]
+              },
+              "categoryCode": {
+                "type": "string"
+              },
+              "categoryName": {
+                "type": "string"
+              },
+              "branchIds": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Id"
+                },
+                "uniqueItems": true,
+                "minItems": 1,
+                "maxItems": 100
+              }
+            },
+            "required": [
+              "schemaVersion",
+              "code",
+              "name",
+              "priceKrw",
+              "terms",
+              "status",
+              "categoryCode",
+              "categoryName",
+              "branchIds"
+            ],
+            "additionalProperties": false,
+            "nullable": true
+          },
+          "after": {
+            "type": "object",
+            "properties": {
+              "schemaVersion": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1
+              },
+              "code": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "priceKrw": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "terms": {
+                "$ref": "#/components/schemas/ProductTerms"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "판매 중",
+                  "판매 중지"
+                ]
+              },
+              "categoryCode": {
+                "type": "string"
+              },
+              "categoryName": {
+                "type": "string"
+              },
+              "branchIds": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Id"
+                },
+                "uniqueItems": true,
+                "minItems": 1,
+                "maxItems": 100
+              }
+            },
+            "required": [
+              "schemaVersion",
+              "code",
+              "name",
+              "priceKrw",
+              "terms",
+              "status",
+              "categoryCode",
+              "categoryName",
+              "branchIds"
+            ],
+            "additionalProperties": false,
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "productId",
+          "version",
+          "changedAt",
+          "actorId",
+          "changeType",
+          "before",
+          "after"
+        ],
+        "additionalProperties": false,
+        "description": "productId는 원래 상품 ID로 삭제 후에도 유지. 최초 이력 before=null, DELETED 이력 after=null. 모든 관련 지점 관리 권한 확인."
+      },
+      "BranchPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Branch"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "additionalProperties": false
+      },
+      "EmployeePage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Employee"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "additionalProperties": false
+      },
+      "InvitationPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Invitation"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "additionalProperties": false
+      },
+      "ProductPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Product"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "additionalProperties": false
+      },
+      "ProductRevisionPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductRevision"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "additionalProperties": false
+      },
+      "PermissionPresetPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PermissionPreset"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "additionalProperties": false
+      },
+      "ProductCategoryPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductCategory"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "additionalProperties": false
+      },
+      "Lookups": {
+        "type": "object",
+        "properties": {
+          "branches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Branch"
+            }
+          },
+          "employees": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "$ref": "#/components/schemas/Id"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "products": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Product"
+            }
+          },
+          "permissionDefinitions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PermissionDefinition"
+            }
+          },
+          "permissionPresets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PermissionPreset"
+            }
+          },
+          "productCategories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductCategory"
+            }
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "snapshotVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "branches",
+          "employees",
+          "products",
+          "permissionDefinitions",
+          "permissionPresets",
+          "productCategories",
+          "asOf",
+          "snapshotVersion"
+        ],
+        "additionalProperties": false,
+        "description": "이번 범위의 보조 조회 모델. 직원 관리 목록의 대체가 아니다. 데이터가 없으면 빈 배열. permissionPresets는 관리 권한이 없는 직원에게 빈 배열로 반환해 개별 API 인가와 일치시킨다."
+      },
+      "WorkspaceEvent": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "invalidate",
+              "authorization.changed",
+              "resync"
+            ]
+          },
+          "resource": {
+            "type": "string",
+            "enum": [
+              "branches",
+              "employees",
+              "invitations",
+              "products",
+              "lookups",
+              "permissions"
+            ]
+          },
+          "entityId": {
+            "type": "string",
+            "nullable": true
+          },
+          "branchId": {
+            "type": "string",
+            "nullable": true
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "type",
+          "resource",
+          "entityId",
+          "branchId",
+          "at"
+        ],
+        "additionalProperties": false,
+        "description": "변경 본문·타 지점 목록·개인정보는 보내지 않는다. 수신 후 현재 권한으로 재조회."
+      }
+    }
+  },
+  "x-confirmed-policies": {
+    "Q1": {
+      "status": "confirmed",
+      "confirmedBy": "user",
+      "confirmedAt": "2026-10-23",
+      "decision": "신규 직원은 승인 확인용 제한 세션. 기존 직원은 기존 유효 지점 업무를 유지하고 추가 지점만 승인 대기."
+    },
+    "Q2": {
+      "status": "confirmed",
+      "confirmedBy": "user",
+      "confirmedAt": "2026-10-23",
+      "decision": "상품에 기간 일수를 저장하고 실제 시작일·종료일은 구매·발급 때 결정."
+    },
+    "Q3": {
+      "status": "confirmed",
+      "confirmedBy": "user",
+      "confirmedAt": "2026-10-23",
+      "decision": "직원 이름·전역 계정 상태는 OWNER만 변경. 지점 관리자는 자기 지점 소속·역할·권한만 변경."
+    },
+    "Q4": {
+      "status": "confirmed",
+      "confirmedBy": "user",
+      "confirmedAt": "2026-10-23",
+      "decision": "지점 관리자는 본인 이외의 일반 직원만 관리. 관리자 임명·권한 변경·승인은 OWNER만, 자기 권한 변경 불가."
+    },
+    "Q5": {
+      "status": "confirmed",
+      "confirmedBy": "user",
+      "confirmedAt": "2026-10-23",
+      "decision": "기본 프리셋은 STAFF 행위 권한 없음·기본 지점/상품 조회만, MANAGER 담당 지점9종 업무 권한 전부. 적용 시 복사."
+    },
+    "Q6": {
+      "status": "confirmed",
+      "confirmedBy": "user",
+      "confirmedAt": "2026-10-23",
+      "decision": "operations:write를 가진 STAFF도 상품 등록·가격·구성 수정 가능. 지점 등록·공통 상품 분류는 OWNER만. 판매 상태·판매 지점 변경은 관리자."
+    },
+    "Q7": {
+      "status": "confirmed",
+      "confirmedBy": "user",
+      "confirmedAt": "2026-10-23",
+      "decision": "상품 가격·구성을 지점 간 공유. 지점별 가격이 다르면 별도 상품. 공유 수정은 모든 적용 지점 권한 필요."
+    },
+    "Q8": {
+      "status": "confirmed",
+      "confirmedBy": "user",
+      "confirmedAt": "2026-10-23",
+      "decision": "구매·결제·발급 이력이 없는 상품만 물리 삭제 허용. 삭제 감사와 변경 이력은 보존."
+    },
+    "Q9": {
+      "status": "confirmed",
+      "confirmedBy": "user",
+      "confirmedAt": "2026-10-23",
+      "decision": "등록 후 상품 유형 변경 금지. 다른 유형은 새 상품 등록."
+    },
+    "Q10": {
+      "status": "confirmed",
+      "confirmedBy": "user",
+      "confirmedAt": "2026-10-23",
+      "decision": "신규 직원의 최종 승인 후 재로그인으로 업무 세션 발급."
+    },
+    "Q11": {
+      "status": "confirmed",
+      "confirmedBy": "user",
+      "confirmedAt": "2026-10-23",
+      "decision": "소속 회수 복구는 기존 계정·비밀번호로 재초대·본인 수락·최종 승인. 관리자 소속 복구는 OWNER만."
+    },
+    "Q12": {
+      "status": "confirmed",
+      "confirmedBy": "user",
+      "confirmedAt": "2026-10-23",
+      "decision": "수동 재발급 시 새24시간, 자동 재시도는 원래 TTL 유지. 수락 후 승인 대기는 별도 기한 없음."
+    }
+  },
+  "x-default-permission-presets": [
+    {
+      "name": "일반 직원 기본",
+      "role": "staff",
+      "system": true,
+      "permissions": []
+    },
+    {
+      "name": "지점 관리자 기본",
+      "role": "admin",
+      "system": true,
+      "permissions": [
+        "members:write",
+        "operations:write",
+        "payments:read",
+        "payments:write",
+        "sales:read",
+        "facilities:write",
+        "notices:write",
+        "people:manage",
+        "ai:read"
+      ]
+    }
+  ]
+}

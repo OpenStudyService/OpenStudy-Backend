@@ -55,4 +55,7 @@ tasks.named('test') {
     systemProperty 'spring.profiles.active', 'test'
     systemProperty 'spring.datasource.url', 'jdbc:mysql://127.0.0.1:1/testcontainers_required'
     systemProperty 'spring.flyway.url', 'jdbc:mysql://127.0.0.1:1/testcontainers_required'
+    if (providers.gradleProperty('foundationExportDir').isPresent()) {
+        systemProperty 'foundation.exportDir', file(providers.gradleProperty('foundationExportDir').get()).absolutePath
+    }
 }

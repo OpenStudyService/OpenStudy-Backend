@@ -1,0 +1,271 @@
+{
+  "version": "0.1.2-design",
+  "githubRegistrationPerformed": false,
+  "contractSha256": "45d6d629cbc2ecfc7efe81ee182b6a0366fe8224a0d7c67d47981119e90c5947",
+  "repositories": {
+    "backend": "OpenStudyService/OpenStudy-Backend",
+    "frontend": "OpenStudyService/OpenStudy-Frontend"
+  },
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "1차 기반 인증·조직 관리",
+      "description": "사장님 초기화·로그인·지점·직원 권한·회수 흐름. B11의 권한 회수/최소 갱신 부분도 이 단계에서 검증한다.",
+      "repositories": [
+        "OpenStudyService/OpenStudy-Backend",
+        "OpenStudyService/OpenStudy-Frontend"
+      ]
+    },
+    {
+      "id": "M2",
+      "title": "1차 직원 초대·승인",
+      "description": "메일 초대·신규/기존 본인 수락·승인 대기·승인/반려·허용 지점 진입.",
+      "repositories": [
+        "OpenStudyService/OpenStudy-Backend",
+        "OpenStudyService/OpenStudy-Frontend"
+      ]
+    },
+    {
+      "id": "M3",
+      "title": "1차 상품·실시간 갱신",
+      "description": "상품 유형·판매 지점·변경/삭제 이력·판매 상태·갱신·전체 통합 시나리오.",
+      "repositories": [
+        "OpenStudyService/OpenStudy-Backend",
+        "OpenStudyService/OpenStudy-Frontend"
+      ]
+    }
+  ],
+  "releaseGates": {
+    "M1": "B11 권한 회수·최소 갱신 부분 검증 필요",
+    "M3": "V01 실제 통합 검증 성공"
+  },
+  "issues": [
+    {
+      "id": "B01",
+      "title": "B01. 기반 API 계약·공통 오류·목록 규칙 정리",
+      "repository": "OpenStudyService/OpenStudy-Backend",
+      "milestone": "M1",
+      "dependsOn": [],
+      "bodyFile": "B01.md",
+      "status": "not-started",
+      "registrationDisposition": "create-after-review"
+    },
+    {
+      "id": "B02",
+      "title": "B02. 기반 테이블 확장·기존 데이터 업그레이드",
+      "repository": "OpenStudyService/OpenStudy-Backend",
+      "milestone": "M1",
+      "dependsOn": [
+        "B01"
+      ],
+      "bodyFile": "B02.md",
+      "status": "implemented-in-delivery-branch",
+      "registrationDisposition": "record-completed-or-skip"
+    },
+    {
+      "id": "B03",
+      "title": "B03. 현재 권한 판정·지점 범위·관리자 보호",
+      "repository": "OpenStudyService/OpenStudy-Backend",
+      "milestone": "M1",
+      "dependsOn": [
+        "B01",
+        "B02"
+      ],
+      "bodyFile": "B03.md",
+      "status": "not-started",
+      "registrationDisposition": "create-after-review"
+    },
+    {
+      "id": "B04",
+      "title": "B04. 인증 보완·승인 제한 세션·운영 사장님 초기화",
+      "repository": "OpenStudyService/OpenStudy-Backend",
+      "milestone": "M1",
+      "dependsOn": [
+        "B03"
+      ],
+      "bodyFile": "B04.md",
+      "status": "not-started",
+      "registrationDisposition": "create-after-review"
+    },
+    {
+      "id": "B05",
+      "title": "B05. 지점 목록·상세·등록·운영 설정",
+      "repository": "OpenStudyService/OpenStudy-Backend",
+      "milestone": "M1",
+      "dependsOn": [
+        "B01",
+        "B02",
+        "B03",
+        "B04"
+      ],
+      "bodyFile": "B05.md",
+      "status": "not-started",
+      "registrationDisposition": "create-after-review"
+    },
+    {
+      "id": "B06",
+      "title": "B06. 직원 조회·지점 소속 권한·프리셋",
+      "repository": "OpenStudyService/OpenStudy-Backend",
+      "milestone": "M1",
+      "dependsOn": [
+        "B03",
+        "B04",
+        "B05"
+      ],
+      "bodyFile": "B06.md",
+      "status": "not-started",
+      "registrationDisposition": "create-after-review"
+    },
+    {
+      "id": "B07",
+      "title": "B07. 초대 관리 명령·예정 권한·발송 작업",
+      "repository": "OpenStudyService/OpenStudy-Backend",
+      "milestone": "M2",
+      "dependsOn": [
+        "B02",
+        "B03",
+        "B04",
+        "B05",
+        "B06"
+      ],
+      "bodyFile": "B07.md",
+      "status": "not-started",
+      "registrationDisposition": "create-after-review"
+    },
+    {
+      "id": "B08",
+      "title": "B08. 초대 이메일 worker·revision·재시도",
+      "repository": "OpenStudyService/OpenStudy-Backend",
+      "milestone": "M2",
+      "dependsOn": [
+        "B07"
+      ],
+      "bodyFile": "B08.md",
+      "status": "not-started",
+      "registrationDisposition": "create-after-review"
+    },
+    {
+      "id": "B09",
+      "title": "B09. 신규·기존 초대 수락·승인·대기 조회",
+      "repository": "OpenStudyService/OpenStudy-Backend",
+      "milestone": "M2",
+      "dependsOn": [
+        "B04",
+        "B06",
+        "B07",
+        "B08"
+      ],
+      "bodyFile": "B09.md",
+      "status": "not-started",
+      "registrationDisposition": "create-after-review"
+    },
+    {
+      "id": "B10",
+      "title": "B10. 상품 조건·판매 지점·분류·revision",
+      "repository": "OpenStudyService/OpenStudy-Backend",
+      "milestone": "M3",
+      "dependsOn": [
+        "B02",
+        "B03",
+        "B04",
+        "B05",
+        "B06"
+      ],
+      "bodyFile": "B10.md",
+      "status": "not-started",
+      "registrationDisposition": "create-after-review"
+    },
+    {
+      "id": "B11",
+      "title": "B11. 기반 lookups·커밋 후 SSE·권한 회수",
+      "repository": "OpenStudyService/OpenStudy-Backend",
+      "milestone": "M3",
+      "dependsOn": [
+        "B03"
+      ],
+      "bodyFile": "B11.md",
+      "status": "not-started",
+      "registrationDisposition": "create-after-review"
+    },
+    {
+      "id": "F01",
+      "title": "F01. 계약 타입·공통 오류·scope·캐시 갱신",
+      "repository": "OpenStudyService/OpenStudy-Frontend",
+      "milestone": "M1",
+      "dependsOn": [
+        "B01"
+      ],
+      "bodyFile": "F01.md",
+      "status": "not-started",
+      "registrationDisposition": "create-after-review"
+    },
+    {
+      "id": "F02",
+      "title": "F02. 지점·직원·소속 권한 관리 화면",
+      "repository": "OpenStudyService/OpenStudy-Frontend",
+      "milestone": "M1",
+      "dependsOn": [
+        "F01",
+        "B05",
+        "B06"
+      ],
+      "bodyFile": "F02.md",
+      "status": "not-started",
+      "registrationDisposition": "create-after-review"
+    },
+    {
+      "id": "F03",
+      "title": "F03. 초대 관리·수락·승인 대기 화면",
+      "repository": "OpenStudyService/OpenStudy-Frontend",
+      "milestone": "M2",
+      "dependsOn": [
+        "F01",
+        "B07",
+        "B08",
+        "B09"
+      ],
+      "bodyFile": "F03.md",
+      "status": "not-started",
+      "registrationDisposition": "create-after-review"
+    },
+    {
+      "id": "F04",
+      "title": "F04. 상품 유형·무기한·다지점·변경 이력 화면",
+      "repository": "OpenStudyService/OpenStudy-Frontend",
+      "milestone": "M3",
+      "dependsOn": [
+        "F01",
+        "B10"
+      ],
+      "bodyFile": "F04.md",
+      "status": "not-started",
+      "registrationDisposition": "create-after-review"
+    },
+    {
+      "id": "V01",
+      "title": "V01. 1차 기반 흐름의 DB·HTTP·브라우저 검증",
+      "repository": "OpenStudyService/OpenStudy-Backend",
+      "milestone": "M3",
+      "dependsOn": [
+        "B01",
+        "B02",
+        "B03",
+        "B04",
+        "B05",
+        "B06",
+        "B07",
+        "B08",
+        "B09",
+        "B10",
+        "B11",
+        "F01",
+        "F02",
+        "F03",
+        "F04"
+      ],
+      "bodyFile": "V01.md",
+      "status": "not-started",
+      "registrationDisposition": "create-after-review"
+    }
+  ]
+}
