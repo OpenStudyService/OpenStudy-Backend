@@ -3,6 +3,10 @@ spring:
     import: "optional:file:./.env[.properties]"
   application:
     name: openstudy-backend
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+      fail-on-null-for-primitives: true
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}

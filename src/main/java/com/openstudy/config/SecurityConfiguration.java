@@ -5,6 +5,7 @@ import java.util.Map;
 
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -32,6 +33,7 @@ import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
 import tools.jackson.databind.ObjectMapper;
 
 import com.openstudy.common.exception.ApiError;
+import com.openstudy.common.web.ApiRequestFilter;
 import com.openstudy.modules.auth.service.AccountSessionFilter;
 import com.openstudy.modules.employee.service.EmployeeAccountService;
 
@@ -93,10 +95,10 @@ public class SecurityConfiguration {
                         .anyRequest().authenticated())
                 .exceptionHandling(errors -> errors
                         .authenticationEntryPoint((request, response, exception) ->
-                                error(response, json, 401, "UNAUTHENTICATED", "로그인이 필요합니다."))
+                                error(request, response, json, 401, "SESSION_EXPIRED", "로그인이 필요합니다."))
                         .accessDeniedHandler((request, response, exception) -> {
                             boolean csrfError = exception instanceof CsrfException;
-                            error(response, json, 403, csrfError ? "CSRF_INVALID" : "ACCESS_DENIED",
+                            error(request, response, json, 403, csrfError ? "CSRF_INVALID" : "FORBIDDEN",
                                     csrfError ? "인증 요청을 다시 시도해 주세요." : "접근 권한이 없습니다.");
                         }))
                 .logout(logout -> logout.logoutUrl("/api/auth/logout")
@@ -110,11 +112,12 @@ public class SecurityConfiguration {
                 .build();
     }
 
-    public static void error(HttpServletResponse response, ObjectMapper json, int status, String code, String message)
+    public static void error(HttpServletRequest request, HttpServletResponse response, ObjectMapper json,
+            int status, String code, String message)
             throws java.io.IOException {
         response.setStatus(status);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setHeader("Cache-Control", "no-store");
-        json.writeValue(response.getOutputStream(), new ApiError(code, message));
+        json.writeValue(response.getOutputStream(), new ApiError(code, message, ApiRequestFilter.requestId(request), null, null, null));
     }
 }

@@ -11,7 +11,6 @@ import jakarta.validation.Valid;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -24,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.openstudy.modules.auth.dto.CurrentUser;
+import com.openstudy.common.exception.ApiException;
 import com.openstudy.modules.auth.dto.LoginRequest;
 import com.openstudy.modules.auth.service.CurrentUserService;
 import com.openstudy.modules.auth.service.LoginAttemptLimiter;
@@ -59,7 +59,7 @@ public class AuthController {
             HttpServletRequest request, HttpServletResponse response) {
         limiter.check(body.email());
         if (body.password().getBytes(StandardCharsets.UTF_8).length > 72) {
-            throw new BadCredentialsException("Invalid credentials");
+            throw ApiException.validation("password", "비밀번호는 UTF-8 72바이트 이하여야 합니다.");
         }
         var authentication = authenticationManager.authenticate(
                 UsernamePasswordAuthenticationToken.unauthenticated(body.email().trim(), body.password()));

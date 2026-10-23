@@ -45,13 +45,13 @@ public class AccountSessionFilter extends OncePerRequestFilter {
             if (expired || account == null || !account.canLogin()) {
                 session.invalidate();
                 SecurityContextHolder.clearContext();
-                SecurityConfiguration.error(response, json, 401, "UNAUTHENTICATED", "다시 로그인해 주세요.");
+                SecurityConfiguration.error(request, response, json, 401, "SESSION_EXPIRED", "다시 로그인해 주세요.");
                 return;
             }
             String path = request.getRequestURI().substring(request.getContextPath().length());
             if ("PENDING".equals(account.status()) && !path.equals("/api/me") && !path.equals("/api/auth/csrf")
                     && !path.equals("/api/auth/login")) {
-                SecurityConfiguration.error(response, json, 403, "ACCOUNT_PENDING", "관리자 승인이 필요합니다.");
+                SecurityConfiguration.error(request, response, json, 403, "FORBIDDEN", "관리자 승인이 필요합니다.");
                 return;
             }
         }
