@@ -1,4 +1,9 @@
 .gradle
+
+# Local references from the initial project scaffold
+/docs/directory-architecture/
+/HELP.md
+/scripts/README.md
 **/build/
 !**/src/**/build/
 
