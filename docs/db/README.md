@@ -5,7 +5,7 @@
 ## 로컬 사전 준비
 
 1. MySQL 8.4의 전용 개발 DB와 계정을 관리자가 생성한다. [`db_setup_local.sql`](db_setup_local.sql)은 수동 준비용 예시이며 Flyway가 실행하지 않는다. `CHANGE_ME`를 실제 비밀번호로 바꾼 사본은 Git에 추가하지 않는다.
-2. IntelliJ 실행 구성이나 로컬 환경에 `DB_USERNAME`, `DB_PASSWORD`를 설정한다. 현재 공통 JDBC 주소는 `localhost:3306/openstudy`이며, 주소 변경은 추적하지 않는 `application-local.yaml` 등으로 재정의하고 해당 프로필을 활성화한다.
+2. 백엔드 루트의 `.env.example`을 `.env`로 복사하고 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`를 실제 로컬 DB 정보로 설정한다. 예제 JDBC 주소는 `localhost:3306/openstudy`다. 실행 작업 디렉터리를 `openstudy-backend`로 지정하면 별도 프로필 없이 `.env`를 읽는다. Java properties 형식이므로 값에 따옴표나 `export`를 사용하지 않고 실제 역슬래시는 `\\`로 이스케이프한다. IntelliJ 실행 구성이나 OS 환경 변수에 같은 이름을 설정하면 `.env`보다 우선한다. 운영에서는 `.env` 없이 ECS 환경 변수와 Secrets Manager/Parameter Store 참조로 같은 이름의 설정을 주입한다.
 3. 검토된 마이그레이션을 아직 초기화되지 않은 전용 DB에 적용한다. 이미 설계 SQL을 수동 적용한 DB라면 초기 V1 실행과 충돌할 수 있으므로 현재 상태를 먼저 확인한다. 기존 데이터가 있는 DB를 자동 초기화하거나 임의로 baseline 처리하지 않는다.
 4. Flyway 이력, 테이블·제약 조건, 세션 저장과 앱 기동을 확인한다. 설정 파일이나 정적 검사만으로 실DB 적용 성공을 판단하지 않는다.
 
