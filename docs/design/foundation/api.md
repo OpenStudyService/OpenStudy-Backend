@@ -42,7 +42,7 @@
 
 지점은 소속이 유효하면 운영 중지 상태도 조회 가능하다. 신규 운영 거래 가능 여부와 데이터 열람 가능 여부를 분리한다. 매 요청은 현재 계정 ACTIVE, 유효 소속, 지점, 역할 및 행위 권한을 검사한다. 세션·메뉴·lookup에 과거 권한이 남아 있어도 허용하지 않는다.
 
-목록 page는 1부터, pageSize 기본20·최대100. 정렬 기본 createdAt desc(상품 이력은 changedAt desc)이며 같은 값이면 id desc로 정한다. sort/direction은 OpenAPI의 endpoint별 허용값만 받는다. q는 이름·코드·직원/초대 이메일처럼 명시한 필드의 검색어이며 SQL·정렬 필드가 아니다. 직원/초대 이메일 검색은 관리 API에서만 가능하다. page 범위를 넘으면 빈 items와 실제 total을 반환한다. 같은 정적 데이터·같은 조건에서 순서를 보장하며 동시 변경 중 모든 페이지의 고정 snapshot을 보장하지 않는다.
+목록 page는 1부터, pageSize 기본20·최대100. 정렬 기본 createdAt desc(상품 이력은 changedAt desc)이며 같은 값이면 id를 최종 정렬 기준으로 사용한다. OpenAPI direction 규칙에 따라 id도 선택한 direction과 같은 방향으로 정렬한다(기본 desc). sort/direction은 OpenAPI의 endpoint별 허용값만 받는다. q는 이름·코드·직원/초대 이메일처럼 명시한 필드의 검색어이며 SQL·정렬 필드가 아니다. 직원/초대 이메일 검색은 관리 API에서만 가능하다. page 범위를 넘으면 빈 items와 실제 total을 반환한다. 같은 정적 데이터·같은 조건에서 순서를 보장하며 동시 변경 중 모든 페이지의 고정 snapshot을 보장하지 않는다.
 
 URL에 검색·지점·필터·정렬·page를 저장하고 목록 복귀 시 복원한다. 사용자·권한·지점 변경 시 기존 fetch를 Abort하고 관련 캐시를 비우며 현재 허용 scope로 다시 조회한다. API 요청이 끝나기 전에 scope가 달라졌다면 이전 응답을 화면에 반영하지 않는다.
 

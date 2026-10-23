@@ -3,6 +3,11 @@ package com.openstudy.localpreview;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Comparator;
+import java.util.Set;
+import java.math.BigInteger;
+import com.openstudy.common.web.ListQuery;
+import com.openstudy.common.web.PageResponse;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -47,18 +52,30 @@ public class LocalPreviewController {
     }
 
     @GetMapping("/api/{resource:tasks|seats|facilities|inquiries|notices|shifts|rooms|products|members|employees|branches|passes|attendance|channels|payments|reservations|usage|lockers|invitations|corrections|leaveGrants|leaveRequests|substitutions|audit}")
-    public Map<String, Object> list(Authentication auth, @PathVariable String resource,
-            @RequestParam(defaultValue = "all") String scope, @RequestParam(defaultValue = "1") int page,
+    public PageResponse<Map<String, Object>> list(Authentication auth, @PathVariable String resource,
+            @RequestParam(defaultValue = "all") String scope, @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "20") int pageSize, @RequestParam(defaultValue = "") String q,
-            @RequestParam(defaultValue = "") String status) {
+            @RequestParam(defaultValue = "") String status, @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String direction) {
+        // Preview keeps its legacy resource fields; operational endpoints define their own whitelist.
+        Set<String> sorts = switch (resource) {
+            case "tasks" -> Set.of("createdAt", "name", "status", "due");
+            default -> Set.of("createdAt", "name", "status");
+        };
+        var query = ListQuery.parse(page, pageSize, q, sort, direction, sorts, "createdAt");
         var rows = preview.snapshot(Long.parseLong(auth.getName()), scope).get(resource).stream()
                 .filter(row -> status.isBlank() || status.equals(row.get("status")))
-                .filter(row -> q.isBlank() || row.values().stream().anyMatch(value -> value.toString().contains(q)))
+                .filter(row -> query.q().isBlank() || java.util.stream.Stream.of("name", "title", "code")
+                        .anyMatch(field -> String.valueOf(row.getOrDefault(field, "")).contains(query.q())))
                 .toList();
-        if (page < 1 || pageSize < 1 || pageSize > 100) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "페이지 범위를 확인해 주세요.");
-        int from = (int) Math.min((long) (page - 1) * pageSize, rows.size());
-        int to = Math.min(from + pageSize, rows.size());
-        return Map.of("items", rows.subList(from, to), "total", rows.size(), "page", page, "pageSize", pageSize);
+        return PageResponse.fromAuthorized(rows, query,
+                Comparator.comparing(row -> String.valueOf(row.getOrDefault(query.sort(), ""))),
+                (left, right) -> compareIds(String.valueOf(left.get("id")), String.valueOf(right.get("id"))));
+    }
+
+    private static int compareIds(String left, String right) {
+        if (left.matches("[0-9]+") && right.matches("[0-9]+")) return new BigInteger(left).compareTo(new BigInteger(right));
+        return left.compareTo(right); // Preview IDs also contain resource prefixes.
     }
 
     @GetMapping("/api/{resource:tasks|seats|facilities|inquiries|notices|shifts|rooms|products|members|employees|branches}/{id}")

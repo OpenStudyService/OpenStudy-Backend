@@ -62,10 +62,14 @@ class AuthHttpTests {
 
     @Test
     void anonymousRequestsReturnJsonWithoutBasicAuthChallengeOrLoginPage() throws Exception {
-        mvc.perform(get("/api/me")).andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"))
+        var result = mvc.perform(get("/api/me").header("X-Request-ID", "untrusted-client-id")).andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_EXPIRED"))
+                .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(header().doesNotExist("WWW-Authenticate"))
-                .andExpect(header().doesNotExist("Location"));
+                .andExpect(header().doesNotExist("Location")).andReturn();
+        String id = result.getResponse().getHeader("X-Request-ID");
+        assertThat(id).isNotBlank().isNotEqualTo("untrusted-client-id");
+        assertThat(json.readTree(result.getResponse().getContentAsString()).get("requestId").asString()).isEqualTo(id);
     }
 
     @Test
@@ -99,12 +103,12 @@ class AuthHttpTests {
     void unknownEmailWrongPasswordAndInactiveAccountHaveSameFailure() throws Exception {
         var csrf = csrf(null);
         login(csrf, "missing@example.com", PASSWORD).andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
+                .andExpect(jsonPath("$.code").value("AUTHENTICATION_FAILED"));
         login(csrf, email, "incorrect-password").andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
+                .andExpect(jsonPath("$.code").value("AUTHENTICATION_FAILED"));
         doReturn(account("SUSPENDED")).when(employees).byEmail(email);
         login(csrf, email, PASSWORD).andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
+                .andExpect(jsonPath("$.code").value("AUTHENTICATION_FAILED"));
     }
 
     @Test
@@ -129,7 +133,7 @@ class AuthHttpTests {
         login(csrf, email, PASSWORD).andExpect(status().isOk()).andExpect(jsonPath("$.user.status").value("승인 대기"));
         mvc.perform(get("/api/me").session(csrf.session())).andExpect(status().isOk());
         mvc.perform(get("/api/protected").session(csrf.session()))
-                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("ACCOUNT_PENDING"));
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("FORBIDDEN"));
     }
 
     @Test
@@ -170,6 +174,40 @@ class AuthHttpTests {
     void logoutWithoutAnExistingSessionStillClearsCookie() throws Exception {
         mvc.perform(post("/api/auth/logout")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.ok").value(true)).andExpect(cookie().maxAge("SESSION", 0));
+    }
+
+    @Test
+    void rejectsUnknownFieldsAndMalformedJsonWithoutEchoingCredentials() throws Exception {
+        var csrf = csrf(null);
+        for (String payload : List.of("{\"email\":\"" + email + "\",\"password\":\"secret-password\",\"owner\":true}",
+                "{\"password\":\"secret-password\",", "{\"email\":null,\"password\":null}")) {
+            var result = mvc.perform(post("/api/auth/login").session(csrf.session()).header("X-CSRF-Token", csrf.token())
+                    .contentType(MediaType.APPLICATION_JSON).content(payload)).andExpect(status().isUnprocessableContent())
+                    .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                    .andExpect(jsonPath("$.fieldErrors").isMap()).andReturn();
+            assertThat(result.getResponse().getContentAsString()).doesNotContain("secret-password", "UnrecognizedProperty", "owner");
+        }
+    }
+
+    @Test
+    void unsupportedBodyMediaTypeReturns415WithoutInternalError() throws Exception {
+        var csrf = csrf(null);
+        mvc.perform(post("/api/auth/login").session(csrf.session()).header("X-CSRF-Token", csrf.token())
+                        .contentType(MediaType.TEXT_PLAIN).content("secret-password"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"))
+                .andExpect(jsonPath("$.requestId").isString());
+    }
+
+    @Test
+    void trimsEmailButPreservesPasswordAndAllowsLegacyShortPasswordAuthentication() throws Exception {
+        var csrf = csrf(null);
+        login(csrf, "  " + email + "  ", PASSWORD).andExpect(status().isOk());
+        csrf = csrf(csrf.session());
+        login(csrf, email, PASSWORD + " ").andExpect(status().isUnauthorized());
+        login(csrf, email, "short").andExpect(status().isUnauthorized());
+        login(csrf, email, "가".repeat(25)).andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.fieldErrors.password").exists());
     }
 
     private EmployeeAccount account(String status) {

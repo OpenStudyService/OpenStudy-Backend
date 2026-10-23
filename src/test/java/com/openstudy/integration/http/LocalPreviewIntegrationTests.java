@@ -63,6 +63,15 @@ class LocalPreviewIntegrationTests {
     }
 
     @Test
+    void previewKeepsExistingUiSortOptionsButRejectsPrivateFields() throws Exception {
+        assertThat(get("/api/tasks?sort=status").statusCode()).isEqualTo(200);
+        assertThat(get("/api/tasks?sort=due").statusCode()).isEqualTo(200);
+        assertThat(get("/api/products?sort=status").statusCode()).isEqualTo(200);
+        assertThat(get("/api/tasks?sort=password_hash").statusCode()).isEqualTo(422);
+        assertThat(get("/api/products?sort=due").statusCode()).isEqualTo(422);
+    }
+
+    @Test
     void homeAndLookupsContainConsistentSampleDataAfterRealLogin() throws Exception {
         var me = json.readTree(get("/api/me").body());
         assertThat(me.get("branches").size()).isEqualTo(2);
@@ -94,13 +103,13 @@ class LocalPreviewIntegrationTests {
         for (var seat : scoped.get("seats")) assertThat(seat.get("branchId").asString()).isEqualTo(branch);
         assertThat(get("/api/home?scope=999999999").statusCode()).isEqualTo(403);
         var page = json.readTree(get("/api/tasks?scope=" + branch + "&page=2&pageSize=2").body());
-        assertThat(page.get("total").asInt()).isEqualTo(3);
+        assertThat(page.at("/meta/total").asInt()).isEqualTo(3);
         assertThat(page.get("items").size()).isEqualTo(1);
         String id = page.at("/items/0/id").asString();
         assertThat(get("/api/tasks/" + id + "?scope=" + branch).statusCode()).isEqualTo(200);
         String otherBranch = json.readTree(get("/api/me").body()).at("/branches/1/id").asString();
         assertThat(get("/api/tasks/" + id + "?scope=" + otherBranch).statusCode()).isEqualTo(404);
-        assertThat(get("/api/tasks?page=0").statusCode()).isEqualTo(400);
+        assertThat(get("/api/tasks?page=0").statusCode()).isEqualTo(422);
     }
 
     @Test
