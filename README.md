@@ -76,7 +76,7 @@ Controller는 요청 처리와 입력 검증, Service는 업무 흐름·권한·
 
 workforce는 근무표·근태·휴가·대체근무를 하나의 업무 모듈로 유지합니다. 세부 패키지는 실제 구현량에 따라 필요한 계층에 추가합니다. 공통 설정은 config, 업무에 종속되지 않는 공통 기능은 common에 두며 common/exception 외의 세부 폴더는 기능 구현 시 추가합니다.
 
-각 모듈의 package-info.java는 책임을 설명하고 .gitkeep은 빈 디렉터리를 보존합니다. ArchUnit과 업무 구현·시드·초기화 명령은 아직 추가하지 않았습니다. 실행용 스키마 SQL은 src/main/resources/db/migration/에서 관리합니다.
+각 모듈의 package-info.java는 책임을 설명하고 .gitkeep은 빈 디렉터리를 보존합니다. 업무 구현은 순차 진행하며 운영 사장님 초기화 명령을 제공합니다. 실행용 스키마 SQL은 src/main/resources/db/migration/에서 관리합니다.
 
 현재 구조는 [디렉터리 설계](docs/architecture/directory-structure.md)와 [2026-10-22 변경 기록](docs/development-log/2026-10-22-simplify-backend-package-layout.md)을 따릅니다. 이전 골격은 Git 이력에서 확인할 수 있으며, 과거 개발 기록은 결정의 맥락을 보존합니다.
 
@@ -113,6 +113,23 @@ Spring Boot가 실행 작업 디렉터리의 `.env`를 Java properties 형식으
 `.env`는 선택 사항이며 OS 환경 변수 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`가 파일의 같은 이름 값보다 우선합니다. 운영에서는 `.env` 없이 ECS가 동일한 이름으로 주입하도록 설정합니다. DB 주소는 RDS 접속 주소로, 계정과 비밀번호는 운영용 값으로 지정합니다. 세 값이 모두 제공되어야 DB에 연결할 수 있습니다.
 
 공통 설정과 `.env.example`은 Git에 포함하고, 실제 비밀값을 담은 `.env`는 Git과 배포 이미지에 포함하지 않습니다. `.env`는 이미 Git에서 제외되어 있습니다. 개인별 설정은 Git에서 제외하는 `application-local.yaml`, `application-*-local.yaml` 등에도 둘 수 있습니다. Gradle 캐시·빌드 결과·IDE 설정·로그·업로드 파일은 커밋하지 않습니다.
+
+### 운영 사장님 최초 초기화
+
+일반 서버 부팅과 분리된 `./gradlew ownerBootstrap --no-daemon`(Windows: `.\gradlew.bat ownerBootstrap --no-daemon`) 명령을 제공합니다. 서버, 웹 포트, preview 시드, 메일을 실행하지 않습니다. 검토한 Flyway V3 이상 스키마에만 연결하며 마이그레이션을 자동 적용하지 않습니다. 먼저 [DB 업그레이드 절차](docs/db/foundation-upgrade.md)를 완료합니다.
+
+명령 실행 프로세스에 다음 환경 변수를 주입합니다. 운영에서는 비밀값 관리 서비스 또는 제한된 작업 실행 환경이 주입하도록 합니다. 비밀번호를 CLI 인자나 Gradle `-P` 인자로 전달하지 않습니다.
+
+| 환경 변수 | 용도 |
+|---|---|
+| `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | 대상 MySQL 접속 정보 |
+| `OWNER_EMAIL` | 최초 사장님 이메일. 앞뒤 공백 제거·소문자 정규화 |
+| `OWNER_NAME` | 이름, 1~100자. 최초 별명도 같은 값 사용 |
+| `OWNER_PASSWORD` | 8자 이상, UTF-8 기준 72바이트 이하. BCrypt 저장 |
+
+이 명령은 Spring 설정 로더를 사용하지 않으므로 `.env`와 `application*.yaml`을 자동으로 읽지 않습니다. 로컬에서는 IDE/쉘의 환경 변수 주입 기능으로 위 이름의 값을 설정하고 명령을 실행합니다. 서버용 `.env`를 사용하려면 실행 도구가 내용을 실제 프로세스 환경으로 주입해야 합니다. 프로젝트의 `.env`는 Java properties 형식이므로 쉘 스크립트처럼 실행하지 않습니다. 초기화 후 `OWNER_PASSWORD`를 실행 환경에서 제거합니다.
+
+동시·반복 실행은 관리자 가드 행과 DB 유일 제약으로 보호합니다. 기존 OWNER가 있으면 상태와 비밀번호를 포함한 모든 계정 정보를 변경하지 않고 성공 종료합니다. OWNER가 없더라도 같은 이메일의 일반 직원이 있으면 실패하며 승격하지 않습니다. 신규 생성과 시스템 감사 기록은 한 트랜잭션입니다. Java 명령은 성공 시 종료 코드 0, 입력·계정 충돌 시 2, DB·스키마 실패 시 1을 반환하며 이메일·비밀번호·접속 URL·드라이버 예외 원문을 출력하지 않습니다. Gradle 실행 시 Java의 비정상 종료는 task 실패로 보고되며 Gradle 자체 종료 코드는 1입니다.
 
 ### 로그인
 
