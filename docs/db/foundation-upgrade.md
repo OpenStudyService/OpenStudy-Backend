@@ -6,7 +6,7 @@
 
 일반 개발·배포는 **앱의 Flyway V1 → V2 → V3**를 사용한다. `.env` 설정 후 기존 방식으로 백엔드를 실행하면 된다. 직원·상품 샘플은 추가하지 않으며, 기본 권한 9종·시스템 프리셋 2종·관리자 가드 1행만 준비한다. 현재 로컬 OWNER 초기화 방식은 그대로다.
 
-팀원이 SQL로 빈 DB를 구축해야 한다면 [전체 구축 SQL](../releases/foundation-0.1.2/schema-full.sql)을 사용할 수 있다. **테이블이 하나도 없는 DB에서만** 실행한다. DB·계정 생성과 GRANT는 포함하지 않는다. `mysql --default-character-set=utf8mb4 -u <사용자> -p <빈DB명> < schema-full.sql`로 적용한다. PowerShell은 입력 리다이렉션 대신 MySQL 콘솔의 `SOURCE D:/.../schema-full.sql;`을 사용할 수 있다.
+팀원이 SQL로 빈 DB를 구축해야 한다면 [전체 구축 SQL](schema-full.sql)을 사용할 수 있다. **테이블이 하나도 없는 DB에서만** 실행한다. DB·계정 생성과 GRANT는 포함하지 않는다. `mysql --default-character-set=utf8mb4 -u <사용자> -p <빈DB명> < schema-full.sql`로 적용한다. PowerShell은 입력 리다이렉션 대신 MySQL 콘솔의 `SOURCE D:/.../schema-full.sql;`을 사용할 수 있다.
 
 전체 SQL은 검증된 V3의 `SHOW CREATE TABLE`과 실제 V1-V3 Flyway 이력을 함께 내보낸 것이다. 적용 후 같은 버전의 앱이 `validate`하고 추가 마이그레이션 0건으로 기동하는 것을 테스트했다. **전체 SQL과 V1/V2/V3를 중복 수동 실행하지 않는다.** 이후 변경은 새 Flyway 버전으로 적용한다. 이력이 포함되지 않은 과거 설계 SQL에 이 SQL을 덧붙이거나 `baselineOnMigrate=true`로 건너뛰지 않는다.
 

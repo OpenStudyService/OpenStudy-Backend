@@ -1,6 +1,6 @@
 # 기반 기능 DB 설계
 
-작성일: 2026-10-23. 갱신일: 2026-10-24. MySQL 8.4/InnoDB, 기존 V1 확장 설계. 실행 정본은 Flyway V2/V3이며 [전체 구축 SQL·ERD](../../releases/foundation-0.1.2/README.md)와 [기존 DB 적용 절차](../../db/foundation-upgrade.md)를 제공한다. 사용자가 확정한 [Q1~Q12 정책](decisions.md)을 반영했다.
+작성일: 2026-10-23. 갱신일: 2026-10-24. MySQL 8.4/InnoDB, 기존 V1 확장 설계. 실행 정본은 Flyway V2/V3이며 [전체 구축 SQL·ERD](../../db/README.md)와 [기존 DB 적용 절차](../../db/foundation-upgrade.md)를 제공한다. 사용자가 확정한 [Q1~Q12 정책](decisions.md)을 반영했다.
 
 ## 저장 규칙
 

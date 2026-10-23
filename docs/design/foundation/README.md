@@ -1,6 +1,6 @@
 # 1차 기반 기능 DB·API 설계
 
-작성일: 2026-10-23. 갱신일: 2026-10-24. 상태: **DB V2/V3 구현·Docker 검증 완료, 업무 API는 구현 전 목표 계약**. 검토 완료된 8개 중분류의 61개 요구사항을 대상으로 한다. 최초3개와 후속9개 정책 선택을 [decisions.md](decisions.md)에 기록했다. [팀 전달 패키지](../../releases/foundation-0.1.2/README.md)에 전체 DDL·ERD·API 엑셀을 제공한다.
+작성일: 2026-10-23. 갱신일: 2026-10-24. 상태: **DB V2/V3 구현·Docker 검증 완료, 업무 API는 구현 전 목표 계약**. 검토 완료된 8개 중분류의 61개 요구사항을 대상으로 한다. 최초3개와 후속9개 정책 선택을 [decisions.md](decisions.md)에 기록했다. [DB 구축 자료](../../db/README.md), [API 엑셀](OpenStudy-Foundation-API.xlsx), [ERD PDF](OpenStudy-Foundation-ERD.pdf)를 제공한다.
 
 ## 범위와 근거
 
@@ -27,6 +27,14 @@
 3. [API 설계](api.md) 및 [OpenAPI JSON](openapi.json): 인증·권한표, 상태 전이, 요청·응답·오류·실시간 갱신 계약.
 4. [요구사항 추적표](traceability.md): 61개 요구사항과 저장 모델·API·인수 시나리오 연결.
 5. [개발 단위와 완료 조건](implementation-plan.md): 마일스톤 후보, 저장소별 이슈 초안, 선행 관계와 검증 범위.
+
+## 자료 위치
+
+- 실행 스키마 정본: `src/main/resources/db/migration/`의 V1~V3. 기존 DB는 Flyway로 증분 적용한다.
+- 팀원용 빈 DB 전체 구축 SQL: [schema-full.sql](../../db/schema-full.sql). 실제 V1~V3 Flyway 이력과 기본 권한 seed가 포함되어 있다.
+- ERD: [전체 Mermaid 원본](../../db/erd.mmd), [기반 21개 테이블 PDF](OpenStudy-Foundation-ERD.pdf).
+- API: [OpenAPI 정본](openapi.json), [사람이 읽는 엑셀](OpenStudy-Foundation-API.xlsx). 변경 시 두 자료의 계약 버전을 맞춘다.
+- 개발 계획은 implementation-plan.md 한 곳에서 관리한다. 등록용 개별 복제 파일·제작 도구·패키징 중간 파일은 저장소에서 관리하지 않는다.
 
 ## 이번 단계의 경계
 

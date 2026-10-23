@@ -2,6 +2,8 @@
 
 검증일: 2026-10-24 (Asia/Seoul). 기반 계약 `0.1.2-design`, SRS v0.6 61개 요구사항·8개 중분류, 사용자 확정 Q1~Q12. 실제 개발/운영 DB를 사용하지 않았다.
 
+저장소 정리 후 자료 위치는 [DB 관리 안내](../db/README.md)와 [설계 안내](../design/foundation/README.md)를 따른다. 아래 제작·검증 당시의 scripts/ 명령은 로컬 제작 도구이며 현재 Git 추적 대상이 아니다. 현재 DB 통합 테스트는 Gradle로 실행하고 전체 SQL을 build/schema-export로 내보낼 수 있다. 원래 검증 결과와 생성 당시 파일 개수는 기록으로 유지한다.
+
 ## 실행 환경과 명령
 
 - Windows / Docker Desktop Engine 27.2.0 / JDK 21 / Gradle Wrapper 9.8.1.

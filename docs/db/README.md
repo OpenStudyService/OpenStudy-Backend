@@ -19,7 +19,19 @@ JDBC 연결과 Hibernate의 시간대는 UTC이며 영업일 계산은 애플리
 
 ## 변경 관리
 
-기반 계약 0.1.2의 실행 DDL은 V2/V3까지 작성·Docker 검증했다. 기존 상품·초대가 있으면 [V1 → V3 적용 절차](foundation-upgrade.md)에 따라 target=2에서 명시 매핑을 검토한다. 팀 전달용 [전체 구축 SQL·ERD·API 엑셀](../releases/foundation-0.1.2/README.md)은 같은 V3/계약 버전의 산출물이다.
+기반 계약 0.1.2의 실행 DDL은 V2/V3까지 작성·Docker 검증했다. 기존 상품·초대가 있으면 [V1 → V3 적용 절차](foundation-upgrade.md)에 따라 target=2에서 명시 매핑을 검토한다.
+
+| 자료 | 위치·사용법 |
+| --- | --- |
+| 실행 DDL 정본 | `src/main/resources/db/migration/`의 V1~V3. 기존 DB는 Flyway 증분 적용. |
+| 전체 구축 SQL | [schema-full.sql](schema-full.sql). 테이블 없는 MySQL 8.4 DB 전용. 실제 Flyway 이력 포함. |
+| ERD 원본 | [erd.mmd](erd.mmd). 전체 65개 업무·세션 테이블. |
+| ERD PDF | [기반 ERD](../design/foundation/OpenStudy-Foundation-ERD.pdf). 기반 21개 테이블과 전체 색인. |
+| API 계약·엑셀 | [OpenAPI](../design/foundation/openapi.json), [API 엑셀](../design/foundation/OpenStudy-Foundation-API.xlsx). |
+
+전체 SQL과 migration을 중복 수동 실행하지 않는다. 전체 SQL에는 실제 계정·비밀번호·상품·거래 데이터가 없으며 DB·사용자 생성과 GRANT는 포함하지 않는다. DDL 변경 시 같은 스키마 버전의 전체 SQL·ERD를 갱신한다. 전달용 중복 폴더·metadata JSON·파일 해시 목록은 Git 추적 대상이 아니다.
+
+전체 SQL을 갱신하려면 JDK 21·Docker에서 `./gradlew test --tests '*FoundationMigrationTests' -PfoundationExportDir=build/schema-export`를 실행한다. Windows는 `gradlew.bat`을 사용하고 `-P...` 인수 전체를 작은따옴표로 감싼다. 이 테스트는 전용 컨테이너에 migration을 적용하고 내보낸 SQL의 복원·Flyway 검증을 수행한다. 성공 후 `build/schema-export/schema-full.sql`을 이 폴더의 전체 SQL로 반영하고 변경한 구조의 ERD도 갱신한다. 원시 metadata는 build/ 안에만 둔다.
 
 `V1__init_schema.sql`은 초기 스키마다. 적용된 버전의 파일은 수정하지 않고 `V2__...sql` 등 새 버전을 추가한다. 운영 데이터와 충돌 가능성이 있는 DDL은 전용 테스트 DB에서 먼저 확인한다.
 
