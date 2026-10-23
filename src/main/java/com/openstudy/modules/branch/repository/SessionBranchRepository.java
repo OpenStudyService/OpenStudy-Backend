@@ -16,12 +16,12 @@ public class SessionBranchRepository {
     }
 
     public List<SessionBranch> accessible(long employeeId, boolean owner) {
-        return jdbc.query("SELECT b.* FROM branches b WHERE b.status = 'ACTIVE' AND (? OR EXISTS "
+        return jdbc.query("SELECT b.* FROM branches b WHERE (? OR EXISTS "
                 + "(SELECT 1 FROM branch_memberships m WHERE m.branch_id = b.id AND m.employee_id = ? "
                 + "AND m.status = 'ACTIVE')) ORDER BY b.id", (rs, row) -> new SessionBranch(
                         rs.getString("id"), rs.getString("id"), ApiVersion.fromDatabase(rs.getLong("version")),
                         rs.getTimestamp("created_at").toInstant().toString(), rs.getTimestamp("updated_at").toInstant().toString(),
                         rs.getString("name"), rs.getString("address"), rs.getString("phone") == null ? "" : rs.getString("phone"),
-                        "", "운영 중"), owner, employeeId);
+                        "", "ACTIVE".equals(rs.getString("status")) ? "운영 중" : "운영 중지"), owner, employeeId);
     }
 }

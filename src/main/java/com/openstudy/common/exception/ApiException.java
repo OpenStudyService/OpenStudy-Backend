@@ -24,6 +24,10 @@ public class ApiException extends RuntimeException {
         return new ApiException(422, "VALIDATION_FAILED", "입력 형식을 확인해 주세요.", Map.of(field, message), null, null);
     }
 
+    public static ApiException conflict(String code, String message) {
+        return new ApiException(409, code, message, null, null, null);
+    }
+
     public static ApiException versionConflict(long latestVersion, String reloadUrl) {
         if (latestVersion < 1 || latestVersion > 9_007_199_254_740_991L
                 || reloadUrl == null || !reloadUrl.startsWith("/api/") || reloadUrl.contains("\r") || reloadUrl.contains("\n")) {
