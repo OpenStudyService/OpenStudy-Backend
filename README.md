@@ -17,9 +17,7 @@ openstudy-backend/
 │   ├── architecture/              현재 구조 설계와 요구사항/WBS 대응
 │   ├── db/                        DB 스키마와 ERD 설계 자료
 │   ├── design-decisions/          기존 설계 선택 기록
-│   ├── development-log/           날짜별 작업 기록
-│   └── directory-architecture/    이전 골격 보관본
-├── scripts/                      향후 보조 명령
+│   └── development-log/           날짜별 작업 기록
 └── src/
     ├── main/
     │   ├── java/com/openstudy/
@@ -43,7 +41,7 @@ openstudy-backend/
         └── resources/fixtures/
 ```
 
-디렉터리의 `.gitkeep`과 `package-info.java`는 구조와 책임을 보존합니다. 상세 설명은 [디렉터리 설계](docs/architecture/directory-structure.md), [설계 결정](docs/design-decisions/README.md), [DB 관리 안내](docs/db/README.md)를 참고하세요. `docs/directory-architecture/`는 기존 구조 제안의 보관본입니다.
+현재 소스 디렉터리의 `.gitkeep`과 `package-info.java`는 업무 패키지 구조와 책임을 보존합니다. 상세 설명은 [디렉터리 설계](docs/architecture/directory-structure.md), [설계 결정](docs/design-decisions/README.md), [DB 관리 안내](docs/db/README.md)를 참고하세요. 사용하지 않는 이전 골격과 초기 자동 생성 안내 파일은 추적하지 않습니다.
 
 ## 업무 패키지
 
@@ -78,7 +76,7 @@ workforce는 근무표·근태·휴가·대체근무를 하나의 업무 모듈�
 
 각 모듈의 package-info.java는 책임을 설명하고 .gitkeep은 빈 디렉터리를 보존합니다. ArchUnit과 업무 구현·시드·초기화 명령은 아직 추가하지 않았습니다. 실행용 스키마 SQL은 src/main/resources/db/migration/에서 관리합니다.
 
-현재 구조는 [디렉터리 설계](docs/architecture/directory-structure.md)와 [2026-10-22 변경 기록](docs/development-log/2026-10-22-simplify-backend-package-layout.md)을 따릅니다. docs/directory-architecture/와 과거 개발 기록은 이전 구조의 보관 자료이며 실제 Gradle 소스 경로가 아닙니다.
+현재 구조는 [디렉터리 설계](docs/architecture/directory-structure.md)와 [2026-10-22 변경 기록](docs/development-log/2026-10-22-simplify-backend-package-layout.md)을 따릅니다. 이전 골격은 Git 이력에서 확인할 수 있으며, 과거 개발 기록은 결정의 맥락을 보존합니다.
 
 ## 개발과 검증
 

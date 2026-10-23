@@ -1,6 +1,6 @@
 # 백엔드 디렉토리 구조와 책임
 
-기준일: 2026-10-22 KST. 현재 실제 src 배치와 후속 구현 위치를 정의한다. 2026-10-18의 다섯 계층 설계를 사용자 요청에 따라 일반적인 Controller·Service·Repository 구성으로 변경했다. 변경 경위와 검증은 [개발 기록](../development-log/2026-10-22-simplify-backend-package-layout.md)을 따른다. 과거 구조는 [이전 골격 보관본](../directory-architecture/README.md)과 기존 개발 기록에 보존한다.
+기준일: 2026-10-22 KST. 현재 실제 src 배치와 후속 구현 위치를 정의한다. 2026-10-18의 다섯 계층 설계를 사용자 요청에 따라 일반적인 Controller·Service·Repository 구성으로 변경했다. 변경 경위와 검증은 [개발 기록](../development-log/2026-10-22-simplify-backend-package-layout.md)을 따른다. 과거 구조는 Git 이력과 기존 개발 기록에서 확인한다. 사용하지 않는 골격의 전체 복제본은 현재 저장소에서 추적하지 않는다.
 
 ## 기준과 현재 범위
 
@@ -114,7 +114,7 @@ application.yaml은 공통 DB·JPA·Flyway·JDBC 세션 설정을 관리한다. 
 
 src/main/resources/db/migration/은 순차 DDL의 정본이며 현재 V1__init_schema.sql이 있다. Hibernate는 ddl-auto=validate로 검증하고 JDBC 세션 스키마도 Flyway로 관리한다. 버전 충돌을 피하도록 여러 모듈의 마이그레이션 순서를 관리한다.
 
-로컬 시연 데이터는 db/seed/local/, 테스트 fixture는 src/test/resources/fixtures/에 둔다. 시드는 자동 스키마 마이그레이션과 분리하고 환경 확인 뒤 명시적으로 실행한다. 시드와 최초 사장님 전용 초기화 명령은 아직 구현하지 않았다. scripts/는 보조 명령 위치다. 인프라 프로비저닝·실제 PG·고객 QR·DomainLens 엔진 내부 구현은 이번 변경 범위에 포함하지 않는다.
+로컬 시연 데이터는 db/seed/local/, 테스트 fixture는 src/test/resources/fixtures/에 둔다. 시드는 자동 스키마 마이그레이션과 분리하고 환경 확인 뒤 명시적으로 실행한다. 시드와 최초 사장님 전용 초기화 명령은 아직 구현하지 않았다. scripts/는 실제 프로젝트 실행 도구가 필요할 때 추가하며 빈 안내 파일을 미리 두지 않는다. 인프라 프로비저닝·실제 PG·고객 QR·DomainLens 엔진 내부 구현은 이번 변경 범위에 포함하지 않는다.
 
 ## 테스트와 검사 위치
 
