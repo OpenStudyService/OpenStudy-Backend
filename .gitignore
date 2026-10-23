@@ -86,3 +86,13 @@ Desktop.ini
 /docs/db/v0.5/
 /docs/db/OpenStudy_DB_Initial_v0.4.zip
 /docs/db/OpenStudy_DB_Initial_v0.5.zip
+
+# Local document-authoring tools and intermediate handoff bundles
+/docs/releases/
+/docs/design/foundation/github-drafts/
+/docs/design/foundation/agent-workflow.md
+/scripts/export_foundation_api.mjs
+/scripts/export_foundation_erd.py
+/scripts/package_foundation_release.py
+/scripts/prepare_foundation_issue_drafts.py
+/scripts/validate_foundation_design.py

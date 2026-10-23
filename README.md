@@ -5,6 +5,8 @@ OpenStudy 스터디카페 백오피스 백엔드 API
 
 Java 21, Spring Boot 4.1.1, Gradle Wrapper 9.8.1 기반의 단일 Gradle 프로젝트입니다. 빌드는 Groovy DSL, 애플리케이션 설정은 YAML을 사용합니다. 실행 클래스는 `com.openstudy.OpenstudyBackendApplication`입니다. 20개 업무 모듈의 골격, DB 연결 설정과 Flyway 초기 마이그레이션을 준비했고 Docker 전용 MySQL에서 앱 기동·마이그레이션·세션 저장·관련 제약을 검증했습니다. 기본 로그인·로그아웃·현재 사용자 조회와 JDBC 세션 인증을 구현했으며 나머지 업무 API와 운영 환경 검수는 후속 범위입니다.
 
+검토 완료된 SRS 8개 중분류·61개 요구사항의 [1차 DB·API 설계](docs/design/foundation/README.md)를 관리합니다. 기반 DB는 Flyway V2/V3로 구현·검증했습니다. [전체 구축 SQL·ERD](docs/db/README.md), [API 엑셀](docs/design/foundation/OpenStudy-Foundation-API.xlsx), [개발 계획](docs/design/foundation/implementation-plan.md)을 제공합니다. 업무 API는 구현 전 목표 계약이며 GitHub 마일스톤·이슈는 아직 등록하지 않았습니다.
+
 ## 디렉토리 구조
 
 ```text

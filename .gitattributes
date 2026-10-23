@@ -1,3 +1,8 @@
 /gradlew text eol=lf
 *.bat text eol=crlf
 *.jar binary
+
+# Keep the API source hash stable for the generated workbook.
+docs/design/foundation/** text eol=lf
+*.xlsx binary
+*.pdf binary
