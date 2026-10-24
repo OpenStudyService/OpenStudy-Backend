@@ -101,3 +101,9 @@ Desktop.ini
 /scripts/package_foundation_release.py
 /scripts/prepare_foundation_issue_drafts.py
 /scripts/validate_foundation_design.py
+
+# Superseded planning drafts and design option explanations (local archive)
+/docs/OpenStudy_에이전트_개발_실행계획_v1.0.md
+/docs/OpenStudy_에이전트_개발_실행계획_v1.1.md
+/docs/design-decisions/01-m1-decisions.md
+/docs/design-decisions/02-domain-decisions.md
