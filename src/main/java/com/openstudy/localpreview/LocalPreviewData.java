@@ -12,6 +12,8 @@ import org.springframework.security.access.AccessDeniedException;
 
 import com.openstudy.modules.auth.dto.CurrentUser;
 import com.openstudy.modules.auth.service.CurrentUserService;
+import com.openstudy.modules.authorization.dto.BranchAction;
+import com.openstudy.modules.authorization.service.AuthorizationService;
 
 public class LocalPreviewData {
     public static final List<String> RESOURCES = List.of("branches", "employees", "members", "products", "passes", "rooms",
@@ -19,9 +21,11 @@ public class LocalPreviewData {
             "payments", "reservations", "usage", "lockers", "invitations", "corrections", "leaveGrants", "leaveRequests",
             "substitutions", "audit");
     private final CurrentUserService users;
+    private final AuthorizationService authorization;
 
-    public LocalPreviewData(CurrentUserService users) {
+    public LocalPreviewData(CurrentUserService users, AuthorizationService authorization) {
         this.users = users;
+        this.authorization = authorization;
     }
 
     public Map<String, List<Map<String, Object>>> snapshot(long employeeId, String scope) {
@@ -81,7 +85,16 @@ public class LocalPreviewData {
             data.get("products").add(row("preview-product-" + id, id, now, "name", "집중 10시간권", "kind", "시간권",
                     "price", 20000, "amount", 600, "hourlyRate", 2000, "days", 30, "status", "판매 중"));
         }
+        // Preview fixtures follow the same current role/grant boundary as operational selection data.
+        var allowedPeople = authorization.scope(employeeId, scope, BranchAction.MANAGE_PEOPLE);
+        data.get("employees").removeIf(row -> !(user.owner() && user.id().equals(row.get("id")))
+                && !allowedPeople.contains(parseBranch(row.get("branchId"))));
         return data;
+    }
+
+    private static long parseBranch(Object id) {
+        try { return Long.parseLong(String.valueOf(id)); }
+        catch (NumberFormatException exception) { return -1; }
     }
 
     private static Map<String, Object> row(String id, String branchId, String now, Object... fields) {

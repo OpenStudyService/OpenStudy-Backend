@@ -23,6 +23,7 @@ import com.openstudy.config.SecurityConfiguration;
 import com.openstudy.modules.auth.controller.AuthController;
 import com.openstudy.modules.auth.service.CurrentUserService;
 import com.openstudy.modules.auth.service.LoginAttemptLimiter;
+import com.openstudy.modules.authorization.service.AuthorizationService;
 import com.openstudy.modules.branch.dto.SessionBranch;
 import com.openstudy.modules.branch.service.SessionBranchService;
 import com.openstudy.modules.employee.dto.EmployeeAccount;
@@ -44,6 +45,7 @@ class AuthHttpTests {
     @Autowired ObjectMapper json;
     @MockitoBean EmployeeAccountService employees;
     @MockitoBean SessionBranchService branches;
+    @MockitoBean AuthorizationService authorization;
 
     private String email;
     private static final String PASSWORD = "test-password-123";
