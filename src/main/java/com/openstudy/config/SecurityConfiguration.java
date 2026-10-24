@@ -2,6 +2,7 @@ package com.openstudy.config;
 
 import java.util.List;
 import java.util.Map;
+import java.time.Clock;
 
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
@@ -9,6 +10,7 @@ import jakarta.servlet.http.HttpServletRequest;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
@@ -35,10 +37,18 @@ import tools.jackson.databind.ObjectMapper;
 import com.openstudy.common.exception.ApiError;
 import com.openstudy.common.web.ApiRequestFilter;
 import com.openstudy.modules.auth.service.AccountSessionFilter;
+import com.openstudy.modules.auth.service.SessionBoundaryPolicy;
 import com.openstudy.modules.employee.service.EmployeeAccountService;
 
 @Configuration(proxyBeanMethods = false)
 public class SecurityConfiguration {
+    @Bean
+    @ConditionalOnMissingBean(Clock.class)
+    Clock authenticationClock() { return Clock.systemUTC(); }
+
+    @Bean
+    SessionBoundaryPolicy sessionBoundaryPolicy(Clock clock) { return new SessionBoundaryPolicy(clock); }
+
     @Bean
     PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder(12);
@@ -78,7 +88,7 @@ public class SecurityConfiguration {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, SecurityContextRepository contexts,
-            CsrfTokenRepository csrf, EmployeeAccountService employees, ObjectMapper json) throws Exception {
+            CsrfTokenRepository csrf, EmployeeAccountService employees, ObjectMapper json, SessionBoundaryPolicy sessions) throws Exception {
         return http
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
@@ -108,7 +118,7 @@ public class SecurityConfiguration {
                             response.setHeader("Cache-Control", "no-store");
                             json.writeValue(response.getOutputStream(), Map.of("ok", true));
                         }))
-                .addFilterBefore(new AccountSessionFilter(employees, json), AuthorizationFilter.class)
+                .addFilterBefore(new AccountSessionFilter(employees, json, sessions), AuthorizationFilter.class)
                 .build();
     }
 

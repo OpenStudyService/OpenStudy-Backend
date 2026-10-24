@@ -28,16 +28,21 @@ npm run dev:live
 |---|---|
 | `GET /api/auth/csrf` | 익명 세션과 CSRF 토큰 `{token}` 발급, `Cache-Control: no-store` |
 | `POST /api/auth/login` | JSON `{email,password}`와 `X-CSRF-Token` 검증, DB의 BCrypt 해시 확인, 세션 ID 및 CSRF 교체, `CurrentUser` 응답 |
-| `GET /api/me` | 현재 직원·유효 소속 권한·접근 가능한 운영 지점 반환 |
+| `GET /api/me` | WORKSPACE는 현재 직원·유효 소속 권한·접근 지점. APPROVAL_ONLY는 최소 본인 정보 및 빈 branches/memberships |
+| `GET /api/invitations/approval-status` | 본인의 수락된 초대 상태만 반환. 제한 세션에서 계정이 승인되면 requiresLogin=true |
 | `POST /api/auth/logout` | 유효 세션의 CSRF 검증 후 세션과 SESSION 쿠키 삭제, `{ok:true}` 반환. 세션이 이미 없으면 CSRF 없이도 성공 |
 
 프론트엔드 API 클라이언트는 이미 `credentials: include`, CSRF 요청과 로그인·로그아웃 후 토큰 재발급을 처리한다. 비인증 요청은 로그인 화면 리다이렉트나 브라우저 비밀번호 팝업 대신 JSON 401을 받는다. 비밀번호는 JSON 응답과 세션 principal에 저장하지 않는다.
 
-JDBC 세션은 미사용 60분 또는 로그인 후 12시간에 만료된다. 인증된 요청에서 직원 상태를 DB로 다시 확인하므로 정지·탈퇴·삭제된 계정의 세션은 폐기된다. 승인 대기 직원은 로그인과 `/api/me` 조회가 가능하고 업무 API는 거부된다. `/api/me`는 소속과 권한을 재조회한다. 응답의 직원·지점 version은 프론트 계약에 맞춰 DB의 0 기반 version에 1을 더해 표시한다. 향후 업무 API는 각 자원·지점에 대한 별도 권한 검증을 구현해야 한다.
+로그인 시 `sessionMode`를 JDBC 세션과 CurrentUser 응답에 저장한다. ACTIVE는 WORKSPACE, PENDING은 APPROVAL_ONLY다. 제한 세션은 본인 최소 정보·승인 상태·CSRF·로그아웃만 허용한다. 승인 후 실제 계정 상태는 활성으로 표시하되 제한 세션을 자동으로 승격하지 않는다. 프론트는 `requiresLogin=true` 또는 APPROVAL_ONLY+활성 상태에서 재로그인을 안내하고 새 로그인으로 세션 ID·CSRF를 교체한다. 기존 ACTIVE 직원이 추가 지점의 승인을 기다릴 때는 기존 WORKSPACE를 유지하며 미승인 소속은 업무 접근에 사용하지 않는다.
+
+JDBC 세션은 유효 활동 후 60분 또는 로그인 후 12시간 중 먼저 도달한 시각에 만료된다. 인증 시작 시각과 유효 활동 시각은 별도 세션 속성으로 저장하고 서버 Clock으로 경계 이상(`>=`)을 거부한다. 성공한 업무 API 요청(일반 GET 포함)은 활동으로 계산한다. 자동 조회인 `/api/me`, `/api/auth/csrf`, `/api/invitations/approval-status`, `/api/lookups`, SSE `/api/workspace/events`와 `Accept: text/event-stream` 연결·재접속, HEAD/OPTIONS 및 실패 응답은 유효 활동 시각을 갱신하지 않는다. Servlet/JDBC의 단순 접근 시각이 polling으로 늘어나도 업무 유휴 만료를 연장하지 못한다. 새 업무 API에 자동 polling을 도입할 때는 이 비활동 분류를 함께 추가해야 한다.
+
+인증된 요청마다 직원 상태를 DB로 다시 확인하므로 정지·퇴사·삭제된 계정의 세션은 폐기된다. WORKSPACE 계정이 PENDING으로 바뀌는 경우도 기존 업무 세션을 폐기한다. `/api/me`는 업무 세션의 현재 소속과 권한을 재조회한다. 응답의 직원·지점 version은 프론트 계약에 맞춰 DB의 0 기반 version에 1을 더해 표시한다. 새 속성이 없는 배포 이전 로그인 세션은 안전하게 만료되어 재로그인이 필요하다.
 
 계정별 15분 내 10회 로그인 시도 제한을 적용한다. 이 제한은 프로세스 메모리 기준이므로 ECS 다중 인스턴스 운영 시 공유 저장소 등의 제한으로 확장해야 한다. 운영 HTTPS에서는 `SERVER_SERVLET_SESSION_COOKIE_SECURE=true`를 주입한다. SESSION 쿠키는 HttpOnly와 SameSite=Lax를 사용하며 프론트/API는 같은 origin의 `/api` 프록시를 전제로 한다.
 
-실제 기능 구현 범위는 로그인·로그아웃·현재 사용자와 기본 세션 보호다. 직원 초대, 프로필 수정, 지점 업무 API, 홈 통계와 SSE 등은 아직 구현하지 않았다. `local` 프로필에서는 [조회 전용 샘플](local-preview.md)을 제공하여 홈·기본 목록을 확인할 수 있다. 다른 미구현 API 오류는 별도 작업 대상이다.
+실제 기능 구현 범위는 로그인·로그아웃·현재 사용자·제한 세션·본인 승인 상태 조회와 세션 보호다. 직원 초대 생성·수락·승인 명령, 프로필 수정, 지점 업무 API, 홈 통계와 SSE 스트림 전달은 후속 구현 범위다. `local` 프로필에서는 [조회 전용 샘플](local-preview.md)을 제공하여 홈·기본 목록을 확인할 수 있다. 다른 미구현 API 오류는 별도 작업 대상이다.
 
 ## 검증
 
