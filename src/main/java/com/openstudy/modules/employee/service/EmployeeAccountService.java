@@ -11,6 +11,9 @@ import org.springframework.transaction.annotation.Transactional;
 import com.openstudy.modules.employee.dto.EmployeeAccount;
 import com.openstudy.modules.employee.dto.EmployeeMembership;
 import com.openstudy.modules.employee.dto.EmployeeLookup;
+import com.openstudy.modules.employee.dto.InvitationTarget;
+import java.util.Optional;
+import org.springframework.transaction.annotation.Propagation;
 import com.openstudy.modules.employee.repository.EmployeeAccountRepository;
 import com.openstudy.modules.employee.repository.EmployeeManagementRepository;
 import com.openstudy.modules.authorization.service.AuthorizedCommands;
@@ -41,6 +44,21 @@ public class EmployeeAccountService {
 
     public List<EmployeeMembership> memberships(long id) {
         return repository.memberships(id);
+    }
+
+    /** Caller holds AuthorizedCommands' guard, employee/branch and invitation parent locks. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<InvitationTarget> invitationTarget(String email, long branch) {
+        return repository.invitationTarget(email, branch);
+    }
+
+    /** The invitation service verifies its ACCEPTED employee/branch before invoking this operation. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void revokePendingInvitationMembership(long employee, long branch, long actor, String requestId) {
+        if (repository.revokePendingInvitationMembership(employee, branch, actor)) {
+            changes.changed(actor, branch, employee, "REJECT_INVITATION", Map.of("status", "PENDING"),
+                    Map.of("status", "REVOKED"), requestId);
+        }
     }
 
     public List<EmployeeLookup> lookup(Set<Long> authorizedBranches) { return repository.lookup(authorizedBranches); }
