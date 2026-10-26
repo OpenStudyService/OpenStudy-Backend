@@ -2,6 +2,7 @@ package com.openstudy.modules.auth.service;
 
 import java.time.Clock;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.stereotype.Service;
@@ -11,6 +12,7 @@ import com.openstudy.modules.auth.dto.CurrentUser;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.modules.branch.service.SessionBranchService;
 import com.openstudy.modules.employee.service.EmployeeAccountService;
+import com.openstudy.modules.authorization.service.AuthorizationService;
 
 @Service
 public class CurrentUserService {
@@ -27,6 +29,13 @@ public class CurrentUserService {
     @Transactional(readOnly = true)
     public CurrentUser current(long employeeId) {
         return current(employeeId, null);
+    }
+
+    @Transactional
+    public CurrentUser updateProfile(long employeeId, String sessionMode, Map<String, Object> body, String requestId) {
+        if (!SessionBoundaryPolicy.WORKSPACE.equals(sessionMode)) throw AuthorizationService.forbidden();
+        employees.updateProfile(employeeId, body, requestId);
+        return current(employeeId, sessionMode);
     }
 
     @Transactional(readOnly = true)

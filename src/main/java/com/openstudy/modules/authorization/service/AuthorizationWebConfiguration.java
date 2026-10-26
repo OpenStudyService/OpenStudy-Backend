@@ -23,8 +23,8 @@ public class AuthorizationWebConfiguration implements WebMvcConfigurer {
                 if (authentication == null || !authentication.isAuthenticated()
                         || "anonymousUser".equals(authentication.getPrincipal())) return true;
                 String path = request.getRequestURI().substring(request.getContextPath().length());
-                // Approval-only /me is intentionally permitted by the existing session boundary.
-                if (path.equals("/api/me") || path.startsWith("/api/auth/")
+                // Self-account endpoints have no branch scope; session and command boundaries guard profile writes.
+                if (path.equals("/api/me") || path.equals("/api/me/profile") || path.startsWith("/api/auth/")
                         || path.startsWith("/api/invitations/approval-status")) return true;
                 var state = authorization.current(Long.parseLong(authentication.getName()));
                 String scope = request.getParameter("scope");

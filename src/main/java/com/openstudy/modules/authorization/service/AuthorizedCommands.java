@@ -75,6 +75,15 @@ public class AuthorizedCommands {
     }
 
     @Transactional
+    public <T> T selfAccountChange(long actor, Supplier<T> command) {
+        repository.lockGuard();
+        repository.lockEmployees();
+        repository.lockBranches();
+        if (!"ACTIVE".equals(repository.currentLocked(actor).status())) throw AuthorizationService.forbidden();
+        return command.get();
+    }
+
+    @Transactional
     public <T> T accountChange(long actor, long target, Supplier<T> command) {
         repository.lockGuard();
         repository.lockEmployees();

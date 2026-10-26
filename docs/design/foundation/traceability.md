@@ -105,3 +105,16 @@
 | FR-COM-13 · 250 | 실시간 변경 재조회 | workspace_event_outbox·현재 권한 | `subscribeWorkspaceEvents` | B11/F01 | 커밋 후 무효화·재연결resync·회수차단·logout정리 |
 | FR-COM-14 · 251 | 오래된 버전 충돌 안내 | aggregate version | `deleteProduct` | B01/F01 | 낡은version409·reloadUrl·입력 유지 후 최신값 확인 |
 | FR-COM-15 · 252 | 변경 요청 멱등성 | idempotency_records·상태 전이 | 모든 관련 API·화면에 공통 적용 | B02/B05/B07/B09/B10 | 동일키/같은입력 재사용·다른입력409·동시 중복 없음 |
+
+## M1 본인 닉네임 추가 범위 (2026-10-26)
+
+기존 61개 기반 요구사항 표를 유지하고, SRS v1.1 및 Backend [#27](https://github.com/OpenStudyService/OpenStudy-Backend/issues/27)의 M1 범위를 추가한다. [프로필 계약](profile-api.md)과 `updateMyProfile`을 따른다. 사진(FR-SET-02)은 M14이며 제외한다.
+
+| 요구사항 | 구현 및 검증 근거 |
+| --- | --- |
+| FR-SET-01 (M1 닉네임), FR-AUTH-05/11 | WORKSPACE 세션의 본인만 저장. 이메일 불변, 제한 세션·계정 차단. 3역할 HTTP 저장·재조회·재로그인 시험. |
+| FR-COM-03/06 | nickname/version만 수용. 빈 값·길이·타입·미허용 입력은 공통 422와 필드 오류. |
+| FR-COM-07, NFR-OPS-02 | 서버 updated_by·updated_at·version, 감사 전후 snapshot·actor·requestId 및 자격증명 미노출 시험. |
+| FR-COM-10/14 | 기존 guard 잠금·계정 version 공유. 관리자 편집 경합, 409 복구 메타데이터, 전체 트랜잭션 롤백 시험. |
+
+테스트 정본은 `ProfileIntegrationTests`다. 실제 설정 브라우저 저장·표시 갱신은 사용자가 Backend만 작업하도록 지정하여 Frontend [#13](https://github.com/OpenStudyService/OpenStudy-Frontend/issues/13)과 Backend [V01 #18](https://github.com/OpenStudyService/OpenStudy-Backend/issues/18)의 M1 후속 검증에 남긴다. 서버 시험 통과로 해당 화면 인수가 완료되었다고 판단하지 않는다.

@@ -1,5 +1,7 @@
 # 기반 기능 API 계약
 
+2026-10-26: 구현된 M1 본인 닉네임 저장과 현재 사용자 응답·타입 동기화는 [profile-api.md](profile-api.md)를 따른다. `PATCH /me/profile`은 계정 version을 사용하며 이메일·사진 변경을 허용하지 않는다.
+
 작성일: 2026-10-23. 갱신일: 2026-10-24. 목표 계약은 [openapi.json](openapi.json), 확정 정책 Q1~Q12는 [decisions.md](decisions.md)를 따른다. 서버에 이미 구현된 endpoint와 혼동하지 않는다. base URL은 동일 origin의 `/api`다.
 
 ## 공통 요청·응답
