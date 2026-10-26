@@ -1588,7 +1588,7 @@
           "FR-INV-01"
         ],
         "x-permission": "OWNER 또는 해당 지점 MANAGER + people:manage",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
@@ -1698,7 +1698,7 @@
           "FR-STAFF-01"
         ],
         "x-permission": "OWNER 또는 해당 지점 MANAGER + people:manage (STAFF 초대만)",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
@@ -1789,7 +1789,7 @@
           "FR-INV-01"
         ],
         "x-permission": "OWNER 또는 해당 지점 MANAGER + people:manage",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
@@ -1867,7 +1867,7 @@
           "FR-STAFF-01"
         ],
         "x-permission": "OWNER 또는 해당 지점 MANAGER + people:manage (STAFF 초대만)",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
@@ -1966,7 +1966,7 @@
           "FR-STAFF-01"
         ],
         "x-permission": "OWNER 또는 해당 지점 MANAGER + people:manage (STAFF 초대만)",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
@@ -2064,7 +2064,7 @@
           "FR-STAFF-01"
         ],
         "x-permission": "OWNER 또는 해당 지점 MANAGER + people:manage (STAFF 초대만)",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
