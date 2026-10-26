@@ -26,6 +26,13 @@ public class PermissionPresetService {
         return repository.definitions();
     }
     @Transactional(readOnly=true)
+    public List<PermissionPreset> lookup(long actor, String scope) {
+        var state=authorization.current(actor);
+        var visible=authorization.scope(state,scope,BranchAction.READ);
+        if (!state.owner() && visible.stream().noneMatch(id -> authorization.permits(state,id,BranchAction.MANAGE_PEOPLE))) return List.of();
+        return repository.list();
+    }
+    @Transactional(readOnly=true)
     public PageResponse<PermissionPreset> list(long actor, ListQuery query) {
         var state=authorization.current(actor);
         if (!state.owner() && authorization.scope(state,"all",BranchAction.MANAGE_PEOPLE).isEmpty()) throw AuthorizationService.forbidden();

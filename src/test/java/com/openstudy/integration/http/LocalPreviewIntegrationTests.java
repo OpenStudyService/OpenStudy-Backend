@@ -75,7 +75,7 @@ class LocalPreviewIntegrationTests {
     void homeAndLookupsContainConsistentSampleDataAfterRealLogin() throws Exception {
         var me = json.readTree(get("/api/me").body());
         assertThat(me.get("branches").size()).isEqualTo(2);
-        var lookups = get("/api/lookups?scope=all");
+        var lookups = get("/api/local-preview/lookups?scope=all");
         assertThat(lookups.statusCode()).isEqualTo(200);
         var lookupData = json.readTree(lookups.body());
         assertThat(lookupData.get("preview").asBoolean()).isTrue();

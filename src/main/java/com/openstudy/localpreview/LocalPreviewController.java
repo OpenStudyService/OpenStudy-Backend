@@ -34,7 +34,7 @@ public class LocalPreviewController {
         this.preview = preview;
     }
 
-    @GetMapping("/api/lookups")
+    @GetMapping("/api/local-preview/lookups")
     public Map<String, Object> lookups(Authentication auth, @RequestParam(defaultValue = "all") String scope) {
         var snapshot = preview.snapshot(Long.parseLong(auth.getName()), scope);
         Map<String, Object> result = new LinkedHashMap<>();

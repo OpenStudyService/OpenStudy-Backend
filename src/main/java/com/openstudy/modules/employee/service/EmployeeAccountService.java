@@ -2,6 +2,7 @@ package com.openstudy.modules.employee.service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
@@ -9,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.openstudy.modules.employee.dto.EmployeeAccount;
 import com.openstudy.modules.employee.dto.EmployeeMembership;
+import com.openstudy.modules.employee.dto.EmployeeLookup;
 import com.openstudy.modules.employee.repository.EmployeeAccountRepository;
 import com.openstudy.modules.employee.repository.EmployeeManagementRepository;
 import com.openstudy.modules.authorization.service.AuthorizedCommands;
@@ -39,6 +41,12 @@ public class EmployeeAccountService {
 
     public List<EmployeeMembership> memberships(long id) {
         return repository.memberships(id);
+    }
+
+    public List<EmployeeLookup> lookup(Set<Long> authorizedBranches) { return repository.lookup(authorizedBranches); }
+
+    public boolean relatedToBranches(long employee, Set<Long> authorizedBranches) {
+        return repository.relatedToBranches(employee, authorizedBranches);
     }
 
     @Transactional
