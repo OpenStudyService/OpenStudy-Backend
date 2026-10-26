@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "OpenStudy 1차 기반 기능 API 설계",
-    "version": "0.1.2-design",
-    "description": "검토 완료 8중분류/61요구사항의 구현 전 목표 계약. Q1~Q12은 2026-10-23 사용자 답변으로 확정. decisions.md 참고. 기존 서버 전체 구현 명세가 아니다. ID문자열·API version=DB+1. 상태 변경은 CSRF, 지점과 행위 인가를 함께 검증한다."
+    "version": "0.1.3-profile",
+    "description": "검토 완료 8중분류/61요구사항의 구현 전 목표 계약. Q1~Q12은 2026-10-23 사용자 답변으로 확정. decisions.md 참고. 기존 서버 전체 구현 명세가 아니다. ID문자열·API version=DB+1. 상태 변경은 CSRF, 지점과 행위 인가를 함께 검증한다. Issue #27의 /me/profile 및 CurrentUser는 구현된 M1 닉네임 계약이다. 나머지 operation의 구현 상태는 각각의 표기를 따른다."
   },
   "servers": [
     {
@@ -3713,6 +3713,87 @@
           "$ref": "#/components/schemas/WorkspaceEvent"
         }
       }
+    },
+    "/me/profile": {
+      "patch": {
+        "operationId": "updateMyProfile",
+        "summary": "본인 닉네임 저장",
+        "tags": [
+          "me"
+        ],
+        "description": "확정 M1 계약. ACTIVE WORKSPACE 세션의 본인 ID만 사용하며 쿼리 매개변수와 nickname/version 이외의 본문 필드는 422로 거부한다. 이메일·이름·owner·상태·소속·권한·사진·비밀번호·테마는 변경하지 않는다. 계정 version(DB+1)은 직원·소속 관리자 편집과 공유하며 성공 시 정확히 1 증가한다. 충돌은 VERSION_CONFLICT와 latestVersion, reloadUrl=/api/me를 반환한다. 입력을 보존하고 GET /me로 최신 계정을 확인한 뒤 명시적으로 다시 저장한다. 자동 덮어쓰기는 하지 않는다. 닉네임·updated_by·updated_at·감사 actor/requestId와 전후 snapshot·INVALIDATE outbox를 같은 트랜잭션에 기록한다. SSE 전달 완료를 보장하는 계약은 아니다.",
+        "x-requirement-ids": [
+          "FR-SET-01",
+          "FR-AUTH-05",
+          "FR-AUTH-11",
+          "FR-COM-03",
+          "FR-COM-06",
+          "FR-COM-07",
+          "FR-COM-10",
+          "FR-COM-14",
+          "NFR-OPS-02"
+        ],
+        "x-implementation-status": "implemented",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "x-permission": "ACTIVE 본인 (OWNER, MANAGER, STAFF)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUser"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4392,12 +4473,12 @@
         "type": "object",
         "properties": {
           "user": {
-            "$ref": "#/components/schemas/Employee"
+            "$ref": "#/components/schemas/SessionUser"
           },
           "branches": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Branch"
+              "$ref": "#/components/schemas/SessionBranch"
             }
           },
           "asOf": {
@@ -5938,6 +6019,175 @@
         ],
         "additionalProperties": false,
         "description": "변경 본문·타 지점 목록·개인정보는 보내지 않는다. 수신 후 현재 권한으로 재조회."
+      },
+      "SessionMembership": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "branchId",
+          "role",
+          "permissions"
+        ],
+        "properties": {
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "staff"
+            ]
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/Permissions"
+          }
+        },
+        "description": "현재 사용자에 반환하는 활성 소속. 직원 관리 Membership의 status/version 편집 계약과 구분한다."
+      },
+      "SessionUser": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "branchId": {
+            "type": "string",
+            "description": "기존 화면 호환값. 인가 근거가 아니며 허용된 첫 지점 ID 또는 all."
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "활성",
+              "승인 대기",
+              "이용 제한",
+              "비활성"
+            ]
+          },
+          "nickname": {
+            "type": "string"
+          },
+          "avatar": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "boolean"
+          },
+          "memberships": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionMembership"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "createdAt",
+          "updatedAt",
+          "branchId",
+          "name",
+          "email",
+          "status",
+          "nickname",
+          "avatar",
+          "owner",
+          "memberships"
+        ],
+        "additionalProperties": false,
+        "description": "실제 로그인·GET /me·PATCH /me/profile의 사용자 응답. version은 직원 관리와 같은 계정 version(DB+1)이다. 자격증명과 세션 비밀값을 포함하지 않는다."
+      },
+      "SessionBranch": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "name": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "hours": {
+            "type": "string",
+            "description": "weeklyHours로 만든 표시용 문자열"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "운영 중",
+              "운영 중지"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "createdAt",
+          "updatedAt",
+          "branchId",
+          "name",
+          "address",
+          "phone",
+          "hours",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "ProfileUpdate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "nickname",
+          "version"
+        ],
+        "properties": {
+          "nickname": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "공백만 있는 값은 422. 원문 길이를 검사한 후 앞뒤 공백을 제거해 저장한다. 기존 VARCHAR(100)에 맞춰 Java UTF-16 길이 100 이하로 검증한다."
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          }
+        }
       }
     }
   },

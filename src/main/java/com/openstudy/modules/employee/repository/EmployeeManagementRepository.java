@@ -49,9 +49,15 @@ public class EmployeeManagementRepository {
         jdbc.update("UPDATE employees SET updated_by=?,version=version+1 WHERE id=?", actor, employee);
     }
     public void changed(long actor, Long branch, long target, String action, Object before, Object after, String requestId) {
+        changed(actor, branch, target, action, before, after, requestId, "AUTHORIZATION_CHANGED");
+    }
+    public void profileChanged(long actor, Object before, Object after, String requestId) {
+        changed(actor, null, actor, "UPDATE_PROFILE", before, after, requestId, "INVALIDATE");
+    }
+    private void changed(long actor, Long branch, long target, String action, Object before, Object after, String requestId, String eventType) {
         jdbc.update("INSERT INTO audit_events(actor_employee_id,branch_id,entity_type,entity_id,action,before_json,after_json,request_id) VALUES (?,?,'employee',?,?,?,?,?)",
                 actor, branch, target, action, json.writeValueAsString(before), json.writeValueAsString(after), requestId);
-        jdbc.update("INSERT INTO workspace_event_outbox(branch_id,target_employee_id,entity_type,entity_id,event_type) VALUES (?,?,'employee',?,'AUTHORIZATION_CHANGED')", branch, target, target);
+        jdbc.update("INSERT INTO workspace_event_outbox(branch_id,target_employee_id,entity_type,entity_id,event_type) VALUES (?,?,'employee',?,?)", branch, target, target, eventType);
         jdbc.update("INSERT INTO workspace_event_outbox(branch_id,entity_type,entity_id,event_type) VALUES (?,'employees',?,'INVALIDATE')", branch, target);
     }
     public static String status(String db) { return switch(db) { case "ACTIVE" -> "활성"; case "PENDING" -> "승인 대기"; case "SUSPENDED" -> "이용 제한"; case "LEFT" -> "비활성"; default -> throw new IllegalStateException(); }; }

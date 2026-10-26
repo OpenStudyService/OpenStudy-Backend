@@ -1,5 +1,7 @@
 # 1차 기반 기능 DB·API 설계
 
+2026-10-26 추가: Issue #27의 M1 닉네임 저장은 [확정 프로필 계약](profile-api.md)과 OpenAPI `0.1.3-profile`을 따른다. `PATCH /me/profile` 및 실제 현재 사용자 응답 모델을 추가했고 API 엑셀을 같은 버전으로 동기화했다. 아래의 최초 기반 설계 범위·구현 전 설명과 구분한다.
+
 작성일: 2026-10-23. 갱신일: 2026-10-24. 상태: **DB V2/V3 구현·Docker 검증 완료, 업무 API는 구현 전 목표 계약**. 검토 완료된 8개 중분류의 61개 요구사항을 대상으로 한다. 최초3개와 후속9개 정책 선택을 [decisions.md](decisions.md)에 기록했다. [DB 구축 자료](../../db/README.md), [API 엑셀](OpenStudy-Foundation-API.xlsx), [ERD PDF](OpenStudy-Foundation-ERD.pdf)를 제공한다.
 
 ## 범위와 근거

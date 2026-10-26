@@ -31,6 +31,14 @@ public class EmployeeAccountRepository {
         return jdbc.query("SELECT * FROM employees WHERE id = ?", ACCOUNT, id).stream().findFirst();
     }
 
+    public EmployeeAccount lockById(long id) {
+        return jdbc.queryForObject("SELECT * FROM employees WHERE id = ? FOR UPDATE", ACCOUNT, id);
+    }
+
+    public void updateNickname(long id, String nickname) {
+        jdbc.update("UPDATE employees SET nickname=?,updated_by=?,version=version+1 WHERE id=?", nickname, id, id);
+    }
+
     public List<EmployeeMembership> memberships(long employeeId) {
         return jdbc.query("SELECT id, branch_id, role FROM branch_memberships WHERE employee_id = ? "
                 + "AND status = 'ACTIVE' ORDER BY branch_id", (rs, row) -> new EmployeeMembership(

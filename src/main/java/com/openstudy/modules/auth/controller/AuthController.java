@@ -18,6 +18,7 @@ import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -28,6 +29,7 @@ import com.openstudy.modules.auth.service.CurrentUserService;
 import com.openstudy.modules.auth.service.LoginAttemptLimiter;
 import com.openstudy.modules.employee.service.EmployeeAccountService;
 import com.openstudy.modules.auth.service.SessionBoundaryPolicy;
+import com.openstudy.common.web.ApiRequestFilter;
 
 @RestController
 public class AuthController {
@@ -82,5 +84,16 @@ public class AuthController {
     public ResponseEntity<CurrentUser> me(Authentication authentication, HttpServletRequest request) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(users.current(Long.parseLong(authentication.getName()), sessions.mode(request.getSession(false))));
+    }
+
+    @PatchMapping("/api/me/profile")
+    public ResponseEntity<CurrentUser> updateProfile(Authentication authentication, @RequestBody Map<String, Object> body,
+            HttpServletRequest request) {
+        if (!request.getParameterMap().isEmpty()) {
+            throw ApiException.validation(request.getParameterNames().nextElement(), "허용되지 않은 쿼리입니다.");
+        }
+        var current = users.updateProfile(Long.parseLong(authentication.getName()), sessions.mode(request.getSession(false)),
+                body, ApiRequestFilter.requestId(request));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(current);
     }
 }
