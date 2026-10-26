@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "OpenStudy 1차 기반 기능 API 설계",
-    "version": "0.1.3-profile",
-    "description": "검토 완료 8중분류/61요구사항의 구현 전 목표 계약. Q1~Q12은 2026-10-23 사용자 답변으로 확정. decisions.md 참고. 기존 서버 전체 구현 명세가 아니다. ID문자열·API version=DB+1. 상태 변경은 CSRF, 지점과 행위 인가를 함께 검증한다. Issue #27의 /me/profile 및 CurrentUser는 구현된 M1 닉네임 계약이다. 나머지 operation의 구현 상태는 각각의 표기를 따른다."
+    "version": "0.1.4-product-retention",
+    "description": "검토 완료 8중분류/61요구사항의 구현 전 목표 계약. Q1~Q12은 2026-10-23 사용자 답변으로 확정. decisions.md 참고. 기존 서버 전체 구현 명세가 아니다. ID문자열·API version=DB+1. 상태 변경은 CSRF, 지점과 행위 인가를 함께 검증한다. Issue #27의 /me/profile 및 CurrentUser는 구현된 M1 닉네임 계약이다. 나머지 operation의 구현 상태는 각각의 표기를 따른다. SRS v1.1 확정 상품 정책: 거래 유무와 무관하게 물리 삭제 미제공; 판매 중지·재개 및 기존 상품·거래·revision 보존. 이전 Q8 조건부 삭제안은 적용하지 않는다."
   },
   "servers": [
     {
@@ -3170,101 +3170,6 @@
           "Q7",
           "Q9"
         ]
-      },
-      "delete": {
-        "operationId": "deleteProduct",
-        "summary": "거래 이력 없는 상품 물리 삭제",
-        "tags": [
-          "products"
-        ],
-        "description": "구매·결제·발급 참조0건일 때만 삭제. 실패·환불 결제도 이력에 포함하며 참조 존재409 PRODUCT_IN_USE. version 필수·불일치409. 현재 판매 지점 연결 제거와 상품 삭제, DELETED revision·감사·이벤트를 한 트랜잭션으로 처리. 변경 이력의 원래 상품 ID와 snapshot은 보존. 삭제 후 일반 상세404, history는 기존 지점 인가로 조회 가능. 반복 삭제404이며 감사 중복 없음.",
-        "x-requirement-ids": [
-          "FR-PROD-08",
-          "FR-PROD-11",
-          "FR-COM-08",
-          "FR-COM-10",
-          "FR-COM-14"
-        ],
-        "x-permission": "OWNER 또는 현재 모든 적용 지점 MANAGER + operations:write",
-        "x-implementation-status": "design-target",
-        "x-session-modes": [
-          "WORKSPACE"
-        ],
-        "responses": {
-          "200": {
-            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
-            "headers": {
-              "X-Request-ID": {
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "Cache-Control": {
-                "schema": {
-                  "type": "string"
-                },
-                "description": "no-store"
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Success"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Error401"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error403"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error404"
-          },
-          "409": {
-            "$ref": "#/components/responses/Error409"
-          },
-          "422": {
-            "$ref": "#/components/responses/Error422"
-          },
-          "429": {
-            "$ref": "#/components/responses/Error429"
-          },
-          "500": {
-            "$ref": "#/components/responses/Error500"
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/Id"
-            }
-          },
-          {
-            "$ref": "#/components/parameters/Scope"
-          },
-          {
-            "$ref": "#/components/parameters/Csrf"
-          },
-          {
-            "name": "version",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/Version"
-            },
-            "description": "조회한 상품 version. DELETE는 JSON 본문 없이 이 query 값을 사용."
-          }
-        ],
-        "x-policy-decisions": [
-          "Q7",
-          "Q8"
-        ]
       }
     },
     "/products/{id}/status": {
@@ -3463,7 +3368,7 @@
         "tags": [
           "products"
         ],
-        "description": "before/after에 당시 분류·조건·지점 snapshot. 이력은 immutable. 일부 지점 사용자에게 타 지점 이력 노출 금지. 삭제된 상품도 원래 상품 ID의 보존 이력으로 조회. 삭제 직전/과거 snapshot의 모든 지점 인가를 검사. DELETED 행의 after=null.",
+        "description": "before/after에 당시 분류·조건·지점 snapshot. 상품 변경 이력은 immutable이고 판매 중지·재개 후에도 원래 상품 ID를 유지한다. 일부 지점 사용자에게 타 지점 이력을 노출하지 않으며 이전 snapshot의 권한도 검사한다. 이전 스키마의 DELETED 기록은 과거 데이터 호환 목적으로만 해석한다.",
         "x-requirement-ids": [
           "FR-PROD-07",
           "FR-PROD-11"
@@ -5767,7 +5672,7 @@
           "after"
         ],
         "additionalProperties": false,
-        "description": "productId는 원래 상품 ID로 삭제 후에도 유지. 최초 이력 before=null, DELETED 이력 after=null. 모든 관련 지점 관리 권한 확인."
+        "description": "productId는 불변 상품 ID다. 최초 이력 before=null. SRS v1.1에서는 신규 상품 물리 삭제를 제공하지 않는다. 이전 스키마에서 남은 DELETED 이력이 있는 경우에만 과거 이벤트로 해석하고 새로 생성하지 않는다. 관련 지점 관리 권한을 확인한다."
       },
       "BranchPage": {
         "type": "object",
