@@ -1,6 +1,6 @@
 # 기반 기능 DB 설계
 
-작성일: 2026-10-23. 갱신일: 2026-10-24. MySQL 8.4/InnoDB, 기존 V1 확장 설계. 실행 정본은 Flyway V2/V3이며 [전체 구축 SQL·ERD](../../db/README.md)와 [기존 DB 적용 절차](../../db/foundation-upgrade.md)를 제공한다. 사용자가 확정한 [Q1~Q12 정책](decisions.md)을 반영했다.
+작성일: 2026-10-23. 갱신일: 2026-10-26. MySQL 8.4/InnoDB, 기존 V1 확장 설계. 실행 정본은 Flyway V2/V3이며 [전체 구축 SQL·ERD](../../db/README.md)와 [기존 DB 적용 절차](../../db/foundation-upgrade.md)를 제공한다. 사용자가 확정한 [Q1~Q12 정책](decisions.md)을 반영했다.
 
 ## 저장 규칙
 
@@ -11,7 +11,7 @@
 - 문자열: 기본 utf8mb4. 로그인·초대 이메일은 trim·소문자 정규화 후 저장하고 불변으로 관리한다. 이 방식은 기존 DB의 대소문자 무시 유일성과 맞추기 위한 설계 선택이다. 이름은 유일하지 않다.
 - 이메일 ID에는 accent-insensitive 비교로 서로 다른 주소가 합쳐지지 않도록 정규화 후 `utf8mb4_0900_as_ci`를 적용한다. 변경 전 기존 중복·길이·정규화 충돌을 점검한다.
 - `password_hash`, token/hash, 세션 바이트는 DTO·상품 revision·감사 JSON·멱등 결과·이벤트에 포함하지 않는다.
-- 지점·직원 등 핵심 업무 데이터는 비활성화·소속 회수로 종료한다. 상품은 Q8에 따라 구매·결제·발급 이력이 없을 때만 물리 삭제 API를 제공하고, 거래 이력이 있으면 판매 중지한다. 기존 결제·발급·예약·사용 이력 FK의 `RESTRICT`를 유지한다.
+- 지점·직원 등 핵심 업무 데이터는 비활성화·소속 회수로 종료한다. **SRS v1.1 상품 정책에 따라 거래 유무와 무관하게 물리 삭제 API를 제공하지 않는다.** 판매 중지·재개로 운영하며 상품 ID·revision·기존 거래 이력을 보존한다. 기존 결제·발급·예약·사용 이력 FK의 `RESTRICT`를 유지한다.
 
 ## ERD
 
@@ -196,15 +196,15 @@ SQL CHECK의 UNKNOWN 통과를 막기 위해 필수 nullable 수치에는 IS NOT
 
 `product_id BIGINT! FK products RESTRICT`, `branch_id BIGINT! FK branches RESTRICT`, PK `(product_id,branch_id)`, 역방향 인덱스 `(branch_id,product_id)`. 최소 1개는 서비스 트랜잭션에서 검사한다. `all` 문자열이나 ‘미래 생성 지점 자동 포함’ 플래그를 저장하지 않고 구체적 지점 집합만 저장한다. 수정 시 현재와 변경 후 집합 전부에 대해 권한을 확인한다. 과거 적용 지점은 revision snapshot에 보존한다.
 
-### product_revisions — 상품 변경·삭제 및 구매 참조 조건(신규)
+### product_revisions — 상품 변경 이력 및 구매 참조 조건(신규)
 
 `id BIGINT! PK`, `product_id BIGINT? FK products SET NULL`(생존 상품 연결), `original_product_id BIGINT!`(원래 상품 ID, 불변·FK 없음), `product_version BIGINT UNSIGNED!`(DB version), `event_type ENUM CREATED,UPDATED,DELETED,BASELINE!`, `changed_by BIGINT? FK employees RESTRICT`, `changed_at DATETIME(6)!`, `request_id VARCHAR(128)!`, `reason VARCHAR(500)?`, `snapshot_json JSON!`.
 
-`UNIQUE(original_product_id,product_version)`, `(original_product_id,changed_at,id)`. snapshot schema version을 `snapshot_json.schemaVersion=1`로 저장하고 code/name/kind/priceKrw/유형별 제공량/validDays/분류 code·name/판매 상태/구체적 branchIds를 함께 저장한다. 이전 revision과 비교해 변경 전후를 구성한다. 초기 생성도 revision 0을 기록하고 migration의 현재 조건 기록은 BASELINE으로 구분한다. 이력 내용은 UPDATE하지 않는다. 상품 삭제 시 FK가 product_id를 NULL로 바꾸더라도 original_product_id·조건·작업자·시각은 그대로 남는다.
+`UNIQUE(original_product_id,product_version)`, `(original_product_id,changed_at,id)`. snapshot schema version을 `snapshot_json.schemaVersion=1`로 저장하고 code/name/kind/priceKrw/유형별 제공량/validDays/분류 code·name/판매 상태/구체적 branchIds를 함께 저장한다. 이전 revision과 비교해 변경 전후를 구성한다. 초기 생성도 revision 0을 기록하고 migration의 현재 조건 기록은 BASELINE으로 구분한다. 이력 내용은 UPDATE하지 않는다. `original_product_id`와 `product_id`의 nullable 구조는 기존 V2/V3 마이그레이션과의 호환성 때문에 유지한다. 현재 정책에서는 상품 삭제를 실행하지 않으므로 새 revision에서 `product_id` 연결을 의도적으로 해제하지 않는다.
 
-Q8 삭제 트랜잭션은 상품과 관련 지점을 잠근 뒤 현재 인가·version 및 payments/passes 등 모든 거래 참조 부재를 검사한다. 실패·환불 결제도 참조 이력으로 취급한다. 마지막 조건의 다음 version에 DELETED revision·감사·지점별 무효화 알림을 기록하고 product_branches를 제거한 뒤 products를 삭제한다. 구매·발급 쓰기도 같은 상품 잠금과 FK를 사용해 검사/삭제 사이 거래 생성 경합을 막는다. 참조가 발견되거나 FK가 충돌하면409로 전체 롤백한다. DB 제약을 꺼서 삭제하지 않는다.
+SRS v1.1에서는 상품 물리 삭제를 수행하지 않는다. 상태 변경은 기존 상품과 판매 지점 연결을 유지하면서 `sale_status`를 변경하고, revision·감사·지점별 무효화 이벤트를 같은 트랜잭션에 기록한다. 판매 중지는 신규 판매를 차단하되 기존 거래·발급 참조를 변경하지 않는다. 상태 변경 시 기존 version·전체 적용 지점 권한·경합을 검사한다.
 
-DELETED revision의 snapshot_json은 삭제 직전 조건이다. API에서는 before=해당 조건, after=null, changeType=DELETED로 표현한다. 삭제 후 일반 상품 상세는404이며 history는 original_product_id로 조회한다. history 인가는 보존된 현재/과거 snapshot의 모든 지점 범위로 판단해 삭제로 권한 검사를 우회하지 않는다. 거래 이력이 있는 상품은 이 삭제 경로에 들어갈 수 없다.
+기존 마이그레이션의 `DELETED` enum 및 `product_id SET NULL`은 이전 조건부 삭제 설계의 호환성 흔적이며 이번 변경에서 물리 스키마를 직접 바꾸지 않는다. 새 상품 삭제/DELETED 이벤트를 생성하지 않고 실제 제거 필요성이 있다면 별도 마이그레이션으로 안전성을 검토한다. 이력 조회는 기존 revision과 해당 snapshot의 접근 범위를 검사해 타 지점 정보를 노출하지 않는다.
 
 분류 이름·활성 상태 등 외부 분류 원본 변경도 해당 상품의 통계 분류 의미를 바꾸지 않아야 한다. 분류 code는 불변이고, 상품 revision에는 이름까지 저장한다. 후속 구매·발급은 거래 당시 revision ID와 조건 스냅샷을 함께 기록하는 계약이다. 기존 passes/payments를 이번 단계에서 바꾸거나 기존 거래에 새 revision을 임의 연결하지 않는다.
 
@@ -253,7 +253,7 @@ DELETED revision의 snapshot_json은 삭제 직전 조건이다. API에서는 be
 | 최종 승인 | 가드 → 직원 → branch → invitation → membership 잠금. ACCEPTED·계정 상태·소속 중복·관리 권한 재검증 → PENDING 계정만 ACTIVE, membership ACTIVE+예정 grants → APPROVED·승인자 → 감사+권한 이벤트. 반복 요청은 이미 승인된 결과 반환, 반려/취소와의 충돌은 409. |
 | 재발급·취소·반려 | 현재 상태·version 조건부 수정과 토큰 폐기·작업 무효화·감사. 반려는 PENDING 소속만 REVOKED로, 다른 소속·ACTIVE 계정은 그대로 유지(Q1). |
 | 상품 변경 | 현재·새 지점 ID 오름차순 잠금 → product 잠금 → 버전·모든 지점 권한 검증 → 조건·적용 지점 → 새 revision → 감사+지점별 이벤트. 기존 결제·passes는 수정하지 않는다. |
-| 미거래 상품 삭제 | 관련 지점 → product 잠금 → 현재 인가·version·모든 거래 참조0건 확인 → DELETED revision+감사+이벤트 → 판매 지점 연결 제거 → 상품 물리 삭제. 이력은 원래 ID로 보존, 모든 변경 함께 커밋. |
+| 상품 판매 중지·재개 | 관련 지점 → product 잠금 → 현재 인가·version·전체 적용 지점 검증 → 판매 상태 변경 → UPDATED revision+감사+이벤트. 상품 및 기존 거래 이력은 유지하고 모든 변경을 함께 커밋. |
 
 공통 잠금 순서는 **관리자 가드(필요할 때) → actor 및 대상 employees ID 오름차순 → branches ID 오름차순 → invitation/product 등 업무 부모 → 소속·grants 등 자식**이다. 표의 각 업무 잠금 앞에 쓰기 actor의 현재 계정·권한 확인용 employee 잠금을 적용한다. branch/product 잠금 뒤에 employee 잠금을 추가해 역순을 만들지 않는다. 초대 worker는 invitation만 잠그고 직원/branch를 나중에 잠그지 않는다. 데드락 시 트랜잭션 전체를 제한 횟수 재시도하되 권한·상태·version을 다시 검사한다. 외부 SMTP·SSE 네트워크 호출은 DB 트랜잭션 밖이다. 권한 회수와 쓰기의 경합은 같은 권한 aggregate 잠금으로 직렬화하고, 회수 커밋 이후 인가를 받는 요청에는 새 권한을 적용한다.
 

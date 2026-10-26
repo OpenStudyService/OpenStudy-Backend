@@ -1,20 +1,22 @@
 # 개발 단위·마일스톤·이슈
 
-작성일: 2026-10-23. 갱신일: 2026-10-24. GitHub 마일스톤과 이슈 등록을 완료했다. 아래 B/F/V ID는 개발 단위이며 실제 GitHub 번호는 다음 표를 따른다. 전체 WBS를 만들지 않고 이번 범위의 관찰 가능한 완료 단위만 나눈다. 기존 로그인 구현은 재사용하되 이 설계와 다른 부분은 확인한다.
+작성일: 2026-10-23. 갱신일: 2026-10-26. 이 문서는 **초기 기반 개발 작업 16개와 그 선행 관계**의 기록이다. 제목·참조는 GitHub 고유 이슈 번호로 통일한다. SRS v1.1 확정 이후 추가된 M1 작업은 실제 GitHub 마일스톤과 해당 이슈 본문을 우선하며, 이 초기 계획만으로 최신 전체 개발 범위를 판단하지 않는다.
 
 ## GitHub 작업 연결
 
 | 작업 | 저장소·이슈 |
 | --- | --- |
-| B01~B11 | [Backend #7~#17](https://github.com/OpenStudyService/OpenStudy-Backend/issues?q=is%3Aissue) (순서대로 대응, B02 #8은 완료) |
-| V01 | [Backend #18](https://github.com/OpenStudyService/OpenStudy-Backend/issues/18) |
-| F01~F04 | [Frontend #4~#7](https://github.com/OpenStudyService/OpenStudy-Frontend/issues?q=is%3Aissue) (순서대로 대응) |
+| Backend #7~#17 | [Backend 이슈 목록](https://github.com/OpenStudyService/OpenStudy-Backend/issues) (#8은 완료) |
+| Backend #18 | [통합 검증 #18](https://github.com/OpenStudyService/OpenStudy-Backend/issues/18) |
+| Frontend #4~#7 | [Frontend 이슈 목록](https://github.com/OpenStudyService/OpenStudy-Frontend/issues) |
+| M1 추가 Backend #27~#29 | [#27](https://github.com/OpenStudyService/OpenStudy-Backend/issues/27), [#28](https://github.com/OpenStudyService/OpenStudy-Backend/issues/28), [#29](https://github.com/OpenStudyService/OpenStudy-Backend/issues/29) |
+| M1 추가 Frontend #13 | [#13](https://github.com/OpenStudyService/OpenStudy-Frontend/issues/13) |
 
-B01의 공통 처리 구현 이후에도 실제 지점·직원·상품 API의 권한 필터 total과 DB 경합은 B03/B05/B06/B10 및 V01에서 검증한다. 공통 DTO·로컬 샘플 검증만으로 업무 API 완료를 표시하지 않는다.
+Backend #7의 공통 처리 구현 이후에도 실제 지점·직원·상품 API의 권한 필터 total과 DB 경합은 Backend #9/Backend #11/Backend #12/Backend #16 및 Backend #18에서 검증한다. 공통 DTO·로컬 샘플 검증만으로 업무 API 완료를 표시하지 않는다.
 
 ## 착수 기준
 
-- 2026-10-24 **B02 DB 스키마 작업을 구현·검증했다**. B02는 GitHub #8에 PR #5의 완료 증거를 연결해 종료했다. 중복 개발하지 않는다. B01의 공통 런타임 변경은 #7에서 추적하고 B03 이후 업무 서비스는 남아 있다. 아래 16개 작업의 범위·선행 관계·완료 조건을 이슈와 후속 검증 기준으로 사용한다.
+- 2026-10-24 **Backend #8 DB 스키마 작업을 구현·검증했다**. Backend #8는 GitHub #8에 PR #5의 완료 증거를 연결해 종료했다. 중복 개발하지 않는다. Backend #7의 공통 런타임 변경은 #7에서 추적하고 Backend #9 이후 업무 서비스는 남아 있다. 아래 16개 작업의 범위·선행 관계·완료 조건을 이슈와 후속 검증 기준으로 사용한다.
 
 - SRS의 61개 요구사항은 검토 완료. Q1~Q12는 사용자 답변으로 확정했으므로 정책 답변 대기 조건을 해제한다. 확정한 권한 위임·기본 프리셋·상품 공유/삭제/유형·승인 후 재로그인·소속 재초대 복구·재발급 기한을 구현·검증 기준으로 사용한다.
 - 순서: 공통 계약·migration → 인가·조직 기반 → 초대 흐름 → 상품. 독립적인 프론트 계약 작업은 명세를 기준으로 병행할 수 있다.
@@ -26,59 +28,59 @@ B01의 공통 처리 구현 이후에도 실제 지점·직원·상품 API의 �
 
 | ID·이름 | 완료 사용자 흐름 | 포함 이슈 |
 | --- | --- | --- |
-| M1 기반 인증·조직 관리 | 사장님 초기화 → 로그인 → 지점 생성·선택 → 기존 직원/소속 권한 관리 → 회수 즉시 차단 | B01~B06, F01~F02 |
-| M2 직원 초대·승인 | 관리자 초대 → 메일 수신 → 신규/기존 본인 수락 → 승인 대기 → 승인/반려 → 허용 지점 진입 | B07~B09, F03 |
-| M3 상품·실시간 갱신 | 유형별 상품 생성 → 판매 지점 설정 → 변경 이력 → 중지/재개 → 다른 화면 갱신 | B10~B11, F04, V01 |
+| M1 기반 인증·조직 관리 | 사장님 초기화 → 로그인 → 지점 생성·선택 → 기존 직원/소속 권한 관리 → 회수 즉시 차단 | Backend #7~#12, #27~#29; Frontend #4~#5, #13. Backend #17 중 권한 회수 관련 검증은 M1에 앞당겨 수행 |
+| M2 직원 초대·승인 | 관리자 초대 → 메일 수신 → 신규/기존 본인 수락 → 승인 대기 → 승인/반려 → 허용 지점 진입 | Backend #13~Backend #15, Frontend #6 |
+| M3 상품·실시간 갱신 | 유형별 상품 생성 → 판매 지점 설정 → 변경 이력 → 중지/재개 → 다른 화면 갱신 | Backend #16~Backend #17, Frontend #7, Backend #18 |
 
-B11의 권한 회수·캐시 정리 부분은 M1부터 필요하다. M3까지 서버 인가나 세션 회수를 미루는 뜻이 아니다. SSE 기반 조직/초대 갱신은 각 마일스톤에서 검증하고 M3에서 전체 범위를 통합한다. 일정·담당자·기간은 아직 산정하지 않았다.
+Backend #17의 권한 회수·캐시 정리 부분은 M1부터 필요하다. M3까지 서버 인가나 세션 회수를 미루는 뜻이 아니다. SSE 기반 조직/초대 갱신은 각 마일스톤에서 검증하고 M3에서 전체 범위를 통합한다. 일정·담당자·기간은 아직 산정하지 않았다.
 
 ## 백엔드 이슈
 
-### B01. 기반 API 계약·공통 오류·목록 규칙 정리
+### Backend #7. 기반 API 계약·공통 오류·목록 규칙 정리
 
 - 저장소: backend. 선행: 없음. 범위: common/exception, request ID, pagination DTO 및 이번 범위 OpenAPI.
 - 요구사항: FR-COM-03~07/11/14, FR-AUTH-03. 기존 DTO와 신규 DTO의 ID·API version=DB+1 규칙 통일.
 - 완료: 422 fieldErrors·409 latestVersion/reloadUrl·401/403/404 구분, no-store/X-Request-ID, 허용 검색·정렬 및 빈 페이지. 잘못된 필드·정렬을 거부하고 SQL·민감 예외 미노출.
 - 검증: HTTP 예외 경로·version 역변환·동률 정렬·빈 DB·타 지점 total. OpenAPI 검증 및 생성 타입 차이 확인.
 
-### B02. 기반 테이블 확장·기존 데이터 업그레이드
+### Backend #8. 기반 테이블 확장·기존 데이터 업그레이드
 
-- 상태: 이번 전달 브랜치에서 구현·검증 완료. V2/V3, 전체 SQL 복원, 기본 프리셋, V1 식별자·조건 보존, 매핑 차단 검증은 [보고서](../../verification/foundation-schema-v3.md)를 참조한다. 업무 서비스 경합·물리 삭제 API는 B03/B07~B10에서 검증한다.
+- 상태: 이번 전달 브랜치에서 구현·검증 완료. V2/V3, 전체 SQL 복원, 기본 프리셋, V1 식별자·조건 보존, 매핑 차단 검증은 [보고서](../../verification/foundation-schema-v3.md)를 참조한다. 업무 서비스 경합·물리 삭제 API는 Backend #9/Backend #13~Backend #16에서 검증한다.
 
-- 저장소: backend. 선행: B01 계약 확정. 기간권은 상품 일수만 저장하는 확정 정책 Q2를 적용한다.
+- 저장소: backend. 선행: Backend #7 계약 확정. 기간권은 상품 일수만 저장하는 확정 정책 Q2를 적용한다.
 - 범위: database.md의 신규 테이블·추적/초대 필드·CHECK·인덱스, 명시 매핑 backfill. V1 수정 금지.
 - Q5 기본 프리셋 seed와 Q8의 상품 nullable 생존 FK·original_product_id·삭제 이벤트 이력 보존 제약도 포함한다.
 - 요구사항: FR-BR-10, FR-STAFF-08, FR-INV-01/02/04, FR-PROD-05~09/11, FR-COM-07/08/10/15.
 - 완료: 빈 DB와 V1 데이터 DB 모두 업그레이드, 식별자·금액·version·기존 구매 snapshot 보존. 알 수 없는 판매 지점/초대 이름을 자동 생성하지 않고 안전하게 실패.
 - 검증: Testcontainers MySQL 8.4, 직접 SQL의 잘못된 유형·0원·중복 OWNER/초대/이메일 거부, FK·제약·롤백·행 수 비교.
 
-### B03. 현재 권한 판정·지점 범위·관리자 보호
+### Backend #9. 현재 권한 판정·지점 범위·관리자 보호
 
-- 저장소: backend. 선행: B01, B02.
+- 저장소: backend. 선행: Backend #7, Backend #8.
 - 범위: authorization의 공개 정책 서비스·DTO, 계정/지점 조회 공개 계약, 매 요청 검사, 관리자 가드와 잠금 순서.
 - 요구사항: FR-COM-01/02/10, FR-STAFF-04~07/10, FR-BR-06/08.
 - 완료: OWNER·MANAGER·STAFF 역할과 grants 결합, all=허용 지점만. URL/body/query 조작·STAFF 관리자 권한 사용·마지막 관리자 동시 회수를 차단. 중지 지점의 이력 조회와 신규 거래 제한 구분.
 - 검증: 2지점·3역할 거절표, 권한 회수 전후 새 요청, 두 연결 동시 회수, 공유 상품 범위 조작. 모듈 간 공개 서비스·DTO만 사용하고 다른 모듈 Repository/Entity 접근·순환이 생기면 경계 검사 실패. 구현 전 auth/employee/branch/authorization의 실제 호출 방향을 명시해 상호 호출을 만들지 않는다.
 
-### B04. 인증 보완·승인 제한 세션·운영 사장님 초기화
+### Backend #10. 인증 보완·승인 제한 세션·운영 사장님 초기화
 
-- 저장소: backend. 선행: B03. 확정 정책 Q1의 제한 세션·기존 지점 업무 유지 적용.
+- 저장소: backend. 선행: Backend #9. 확정 정책 Q1의 제한 세션·기존 지점 업무 유지 적용.
 - 범위: 기존 auth/config 재사용, sessionMode·유효 활동 시각, 별도 제한 초기화 명령. 일반 공개 signup·owner API 추가 금지.
 - 요구사항: FR-AUTH-01~11/15, FR-INV-08.
 - 완료: 로그인 ID·CSRF 교체, HttpOnly/SameSite/Secure 및 쿠키 삭제, 60분/12시간, 대기 세션 업무 차단, 현재 계정 상태 재검사. 운영 초기화는 일반 서버 부팅과 분리하고 동시 재실행도 기존 자격증명을 바꾸지 않음.
 - 검증: 실제 HTTP+JDBC 세션 재기동·로그아웃·경계 Clock·SSE만 연결된 만료, 잘못된 ID/비밀번호의 동일 오류, 제한 계정 접근 거부, bootstrap 동시 실행. 기존 로그인 회귀 검증.
 
-### B05. 지점 목록·상세·등록·운영 설정
+### Backend #11. 지점 목록·상세·등록·운영 설정
 
-- 저장소: backend. 선행: B01~B04.
+- 저장소: backend. 선행: Backend #7~Backend #10.
 - 범위: branch module, 7요일 시간, version·등록 멱등성·감사·outbox 연결.
 - 요구사항: FR-BR-01~06/08/10, FR-COM-07/10/14/15.
 - 완료: 허용 지점 목록·상세, OWNER 등록, 관리 권한 수정·상태 전환. 시간과 branch를 한 번에 저장. 이름 변경 후 참조 유지, 중지 지점 조회 가능. 이력 삭제 없음.
 - 검증: 빈 지점·타 지점 직접 요청·같은 등록 키·낡은 version·익일/24시간 영업·중지 후 조회. 후속 운영 모듈을 위한 제한 정책 공개 계약 검사.
 
-### B06. 직원 조회·지점 소속 권한·프리셋
+### Backend #12. 직원 조회·지점 소속 권한·프리셋
 
-- 저장소: backend. 선행: B03~B05. 전역 수정은 확정 정책 Q3에 따라 OWNER만 허용.
+- 저장소: backend. 선행: Backend #9~Backend #11. 전역 수정은 확정 정책 Q3에 따라 OWNER만 허용.
 - 범위: employee/authorization, per-branch PUT, owner-defined presets, 감사 권한 전후 snapshot.
 - 요구사항: FR-STAFF-02~08/10, FR-AUTH-05/11.
 - 완료: 관리 범위 밖 직원·소속 미노출, 이름/계정 상태와 지점 상태 분리. email/owner 수정 거부. 직원+소속 version 충돌, 프리셋 복사 후 개별 조정, 프리셋 수정의 기존 grants 미반영. 미승인 소속의 활성화 우회 금지.
@@ -86,43 +88,43 @@ B11의 권한 회수·캐시 정리 부분은 M1부터 필요하다. M3까지 �
 - 검증: 다지점 한 지점 저장 시 다른 소속 보존, 프리셋 변경/재적용 경합, 동시 관리자 제거, 상태 제한 후 기존 세션 차단. 감사에 before/after·actor·requestId 저장하고 자격증명 미저장.
 - 추가 검증: 자기 권한 변경403·MANAGER→STAFF 강등 후 편집 우회403·STAFF 승격403·기본 프리셋의 정확한 권한 집합·OWNER만 관리자 역할 변경 가능.
 
-### B07. 초대 관리 명령·예정 권한·발송 작업
+### Backend #13. 초대 관리 명령·예정 권한·발송 작업
 
-- 저장소: backend. 선행: B02~B06.
+- 저장소: backend. 선행: Backend #8~Backend #12.
 - 범위: invitation list/detail/create/reissue/cancel/reject, 예정 grants와 상태 전이.
 - 요구사항: FR-INV-01~04, FR-STAFF-01, FR-COM-10/15.
 - 완료: 이름·고정 이메일·지점·역할 입력, 기존 소속/진행 초대 중복 거부, 반려 사유, token 없는 관리자 DTO, 발송 상태 분리. 수락 전 재발급/취소 및 수락 후 반려만 허용.
 - 확정 정책 Q4/Q12: MANAGER 초대 명령은 OWNER만. 지점 관리자는 STAFF만 처리. 미수락 PENDING/EXPIRED 재발급은 다른 진행 초대가 없을 때 새24시간을 부여하고 자동 retry는 기존 TTL 유지. 수락 후 승인 기한 없음.
 - 검증: 같은 이메일·지점 동시 생성, 만료 스케줄러 지연 때 새 초대, 낡은 version, 역할/지점 우회, 취소/수락 경합, 롤백 시 outbox 미잔존.
 
-### B08. 초대 이메일 worker·revision·재시도
+### Backend #14. 초대 이메일 worker·revision·재시도
 
-- 저장소: backend. 선행: B07.
+- 저장소: backend. 선행: Backend #13.
 - 범위: worker lease·SMTP adapter, 새 토큰/해시·revision, 비밀값 제거 로그. SMTP 제공자는 별도 운영 설정.
 - 요구사항: FR-INV-02/03/05, 기존 NEXT-01.
 - 완료: DB에 원문·복호화 payload 없음, 매 시도 이전 링크 폐기, 자동 retry는 최초24h 유지. 이전 worker가 현재 revision 상태를 덮어쓰지 않음. 수락·취소 후 발송 중지.
 - 검증: 메일 더블/로컬 수신기로 링크 수신·재시도·성공 기록 유실·프로세스 재시작·lease 만료·뒤늦은 전송·원문 로그 누출 검사. 실제 운영 SMTP 수신 검증은 별도 결과 기록.
 
-### B09. 신규·기존 초대 수락·승인·대기 조회
+### Backend #15. 신규·기존 초대 수락·승인·대기 조회
 
-- 저장소: backend. 선행: B04, B06~B08. 확정 정책 Q1 적용.
+- 저장소: backend. 선행: Backend #10, Backend #12~Backend #14. 확정 정책 Q1 적용.
 - 범위: preview/accept/approval-status/approve, 계정·소속·예정 권한 원자적 활성화.
 - 요구사항: FR-INV-05~08, FR-STAFF-01, FR-AUTH-04/10/11.
 - 완료: 새 계정만 비밀번호 생성, 기존 계정은 같은 email 세션으로 수락. 초대 미리보기 token body. 승인은 이미 승인된 경우 현재 결과 반환, 반려/제한 계정 활성화 우회 없음. 본인 대기 조회는 업무 데이터 없음.
 - 검증: 이중 수락·승인/반려·기존 활성 직원 추가 지점 수락·신규 pending 접근·승인 후 재로그인·잘못된 계정의 토큰 사용·CSRF·반복 승인·중복 소속.
 - Q10/Q11 검증: 승인 후 제한 세션 자동 승격 없음·재로그인 후 업무 진입·회수 소속은 기존 비밀번호로 재초대/수락/승인 복구·MANAGER 복구 OWNER 전용·초대로 제한/퇴사 계정 전체를 자동 재활성화하지 않음.
 
-### B10. 상품 조건·판매 지점·분류·revision
+### Backend #16. 상품 조건·판매 지점·분류·revision
 
-- 저장소: backend. 선행: B02~B06. 확정 정책 Q2 적용.
+- 저장소: backend. 선행: Backend #8~Backend #12. 확정 정책 Q2 적용.
 - 범위: ticket module의 상품 부분만. 구매·발급·결제 구현 제외.
 - 요구사항: FR-PROD-01~09/11.
-- 완료: 3유형의 양수 단위·무기한 nullable 검증, 분류/지점 관리, 공유 상품의 전체 범위 수정 권한. Q6대로 operations:write STAFF의 등록·가격·구성 수정 허용. 변경 이력·최초 revision, 기존 구매 조건 보존. Q8대로 구매·결제·발급0건일 때만 관리자 물리 삭제, 삭제 감사·원래 ID의 변경 이력 보존. 유형 변경은 Q9대로 금지.
-- 검증: 유형별 허용/금지 조합·0원·무기한·잘못된 분류 kind·일부 지점 사용자 수정·범위 회수·동시 가격/지점 변경409·과거 가격/분류 snapshot 보존·구매 참조 FK. 미거래 삭제 성공·실패/환불 포함 거래 참조 삭제409·삭제/구매 경합·판매 지점 연결 제거·삭제 후 일반 상세404/이력 조회 보존·롤백 시 전체 복원.
+- 완료: 3유형의 양수 단위·무기한 nullable 검증, 분류/지점 관리, 공유 상품의 전체 범위 수정 권한. Q6대로 operations:write STAFF의 등록·가격·구성 수정 허용. 변경 이력·최초 revision 및 기존 구매 조건 보존. **SRS v1.1 정책에 따라 상품 물리 삭제 API는 제공하지 않고 판매 중지·재개로 관리한다.** 유형 변경은 Q9대로 금지.
+- 검증: 유형별 허용/금지 조합·0원·무기한·잘못된 분류 kind·일부 지점 사용자 수정·범위 회수·동시 가격/지점 변경409·과거 가격/분류 snapshot 보존·구매 참조 FK. 거래 유무와 관계없는 상품 삭제 API 미제공·판매 중지 후 신규 판매 차단·재개·기존 상품/거래/이력 보존·롤백 시 상태 복원.
 
-### B11. 기반 lookups·커밋 후 SSE·권한 회수
+### Backend #17. 기반 lookups·커밋 후 SSE·권한 회수
 
-- 저장소: backend. 선행: B03 및 각 업무 API. 권한 회수 처리부터 M1에 포함.
+- 저장소: backend. 선행: Backend #9 및 각 업무 API. 권한 회수 처리부터 M1에 포함.
 - 범위: 이번 범위 선택 데이터, workspace_event_outbox, 단일 인스턴스 dispatch. 다중 인스턴스 fan-out은 배포 전 별도 확정·검증.
 - 요구사항: FR-COM-13, FR-BR-06, FR-STAFF-04~06.
 - 완료: 빈 배열 정상 DTO, 최소 직원 정보, 커밋 후 invalidate, 재연결 resync, 전달 직전 권한 확인. 종료된 세션·지점 회수 후 이벤트 본문 누출 없음.
@@ -130,45 +132,45 @@ B11의 권한 회수·캐시 정리 부분은 M1부터 필요하다. M3까지 �
 
 ## 프론트엔드 이슈
 
-### F01. 계약 타입·공통 오류·scope·캐시 갱신
+### Frontend #4. 계약 타입·공통 오류·scope·캐시 갱신
 
-- 저장소: frontend. 선행: B01 계약. backend 운영 완료 전 MSW 계약 fixture로 병행 가능.
+- 저장소: frontend. 선행: Backend #7 계약. backend 운영 완료 전 MSW 계약 fixture로 병행 가능.
 - 요구사항: FR-BR-06, FR-COM-03~06/11~14, FR-AUTH-07/10.
 - 완료: 이번 계약으로 generated 타입/호출 수정, page/URL 조건 보존, version409 입력 보존, requestId 오류 표시. scope/user 변경 Abort·캐시 제거. 빈 데이터에도 shell 렌더링하고401/403을 데이터 없음으로 숨기지 않음.
 - 검증: 빈200/배열·422·409·401/403·네트워크 오류·늦게 도착한 이전 지점 응답·재연결·로그아웃 cache/SSE 종료.
 
-### F02. 지점·직원·소속 권한 관리 화면
+### Frontend #5. 지점·직원·소속 권한 관리 화면
 
 Q4/Q5에 따라 지점 관리자의 자기 권한·MANAGER 편집/승인 버튼을 막고 기본 STAFF 빈 권한·MANAGER9종을 표시한다. 서버 직접 요청 거부도 함께 검증한다.
 
-- 저장소: frontend. 선행: F01, B05/B06 계약. 계정 공통 편집은 확정 정책 Q3에 따라 OWNER만 허용.
+- 저장소: frontend. 선행: Frontend #4, Backend #11/Backend #12 계약. 계정 공통 편집은 확정 정책 Q3에 따라 OWNER만 허용.
 - 요구사항: FR-BR-01~06/10, FR-STAFF-02~08/10, FR-AUTH-05/11.
 - 완료: 구조화 운영시간·지점 상태, owner 전용 지점 생성/전역 직원 수정, 지점별 권한 폼·프리셋 복사·두 version 전달. 이메일 읽기 전용. 타 지점 누락 삭제 금지.
 - 검증: 3역할 UI·직접 API 거부 확인, 다지점 왕복·동시409 복구·회수 후 메뉴/데이터 정리. 실제 live 백엔드 연결로 M1 흐름 완료.
 
-### F03. 초대 관리·수락·승인 대기 화면
+### Frontend #6. 초대 관리·수락·승인 대기 화면
 
 Q4에 따라 지점 관리자는 STAFF 초대만, OWNER는 MANAGER 초대도 가능하다. Q10/Q11/Q12의 승인 후 재로그인·기존 계정 재초대 복구·만료 초대 재발급과 새24시간 안내를 반영한다.
 
-- 저장소: frontend. 선행: F01, B07~B09. 확정 정책 Q1 적용.
+- 저장소: frontend. 선행: Frontend #4, Backend #13~Backend #15. 확정 정책 Q1 적용.
 - 요구사항: FR-INV-01~08, FR-STAFF-01, FR-AUTH-04/10.
 - 완료: 발송/초대 상태 별도 표시, token 없는 관리자 목록, fragment token의 POST 미리보기, 신규 비밀번호/기존 로그인 구분, 승인 대기·재로그인 경로, 반려 사유 표시. token/password를 저장·분석 로그에 보내지 않음.
 - 검증: 신규 초대부터 업무 진입, 기존 직원 추가 지점, 만료/이전 링크/반려/CSRF·두 사용자 승인 갱신. 실제 메일 더블 수신 링크를 브라우저에서 사용.
 
-### F04. 상품 유형·무기한·다지점·변경 이력 화면
+### Frontend #7. 상품 유형·무기한·다지점·변경 이력 화면
 
-Q8에 따라 관리자에게 조건부 삭제 동작을 제공하고 거래 참조409를 표시한다. 삭제 성공 시 목록·lookup을 갱신하고 삭제된 상품의 변경 이력은 원래 ID로 계속 조회할 수 있도록 한다.
+SRS v1.1에 따라 상품 삭제 UI를 제공하지 않는다. 판매 중지·재개 후 목록·lookup을 갱신하고 기존 상품 ID와 변경 이력을 계속 조회할 수 있도록 한다.
 
-- 저장소: frontend. 선행: F01, B10. 확정 정책 Q2 적용.
+- 저장소: frontend. 선행: Frontend #4, Backend #16. 확정 정책 Q2 적용.
 - 요구사항: FR-PROD-01~09/11.
 - 완료: 기존 amount/days를 명시 단위 terms로 변경, nullable 무기한, 분류·판매 지점·canEdit 안내, 관리자 판매 상태/범위·전후 이력. 공유 상품 일부 지점 사용자 편집 제한.
 - 검증: 3유형·유효기간 미설정·양수 입력·잘못된 유형 필드 미전송·동시409·지점 변경 복귀·이력/기존 구매 표시 보존.
 
 ## 통합 검증 이슈
 
-### V01. 1차 기반 흐름의 DB·HTTP·브라우저 검증
+### Backend #18. 1차 기반 흐름의 DB·HTTP·브라우저 검증
 
-- 저장소: backend에 통합 검증 이슈, frontend 대응 PR/결과를 연결. 선행: B01~B11, F01~F04.
+- 저장소: backend에 통합 검증 이슈, frontend 대응 PR/결과를 연결. 선행: Backend #7~Backend #17, Frontend #4~Frontend #7.
 - 완료 시나리오: 빈 DB migration → 별도 OWNER 초기화 → 로그인 → 2지점 등록 → 신규 직원 이메일 초대 → 수락·승인 → 허용 지점 진입 → 추가 지점 초대 → 권한 회수 → 상품 등록/수정/중지·이력 → logout·재기동·만료.
 - 적대 시나리오: scope/body 조작, 타 지점 total/이력/SSE 누출, STAFF의 관리자 전용 호출, 이중 수락/승인, 마지막 관리자 동시 제거, 같은 멱등 키 다른 입력, 낡은 version, 기존 구매 snapshot 변경 시도.
 - 증거: Testcontainers 이미지·버전, migration 전후 비교, HTTP 계약 결과, 실제 두 브라우저/메일 더블, 운영 프록시 쿠키·CSRF·SSE 결과. 실패·미검증·후속 배포 검증을 분리해 기록.
