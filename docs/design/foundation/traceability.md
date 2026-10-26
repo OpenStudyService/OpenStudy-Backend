@@ -98,12 +98,12 @@
 | FR-COM-05 · 243 | 검색·정렬 필드 제한 | 허용 검색/정렬 매핑 | 모든 관련 API·화면에 공통 적용 | Backend #7/#9 | 미허용 필드422·SQL매개변수화·권한 유지 |
 | FR-COM-06 · 244 | API 오류 형식 통일 | request_id / 공통 예외 | 모든 관련 API·화면에 공통 적용 | Backend #7/Frontend #4 | 안전한 code/message/requestId/fieldErrors·HTTP구분 |
 | FR-COM-07 · 245 | 생성·수정 추적 정보 | 각 aggregate 추적 필드, audit_events | `createBranch` | Backend #7/#8 | 서버 설정 시각·actor·클라이언트 감사 필드 거부 |
-| FR-COM-08 · 246 | 참조 데이터 삭제 제한 | 기존 FK RESTRICT, revisions | `deleteProduct`; DB 거래 참조 삭제 제한 | Backend #8/#16 | 조건부 상품 삭제·기존 거래 참조/집계·삭제 감사/이력 보존 |
-| FR-COM-10 · 247 | 트랜잭션·동시성 처리 | version·UNIQUE·guard·transaction | `deleteProduct` | Backend #8/#9/Backend #18 | 여러 레코드 부분 성공 없음·두 연결 경합 검증 |
+| FR-COM-08 · 246 | 참조 데이터 삭제 제한 | 기존 FK RESTRICT, revisions | DB 거래 참조 삭제 제한·상품 판매 상태 변경 | Backend #8/#16 | 물리 삭제 API 미제공·기존 거래 참조/집계/변경 이력 보존 |
+| FR-COM-10 · 247 | 트랜잭션·동시성 처리 | version·UNIQUE·guard·transaction | `updateProduct`, `changeProductStatus` | Backend #8/#9/#18 | 여러 레코드 부분 성공 없음·두 연결 경합 검증 |
 | FR-COM-11 · 248 | 변경 결과·재시도 안내 | DTO·공통 오류 / 프론트 입력 | 모든 관련 API·화면에 공통 적용 | Backend #7/Frontend #4 | 검증 오류 필드 표시·실패 입력 보존·다시 제출 |
 | FR-COM-12 · 249 | 조회 조건·화면 상태 보존 | 프론트 URL·query cache | 비HTTP: URL 조건 보존·현재 권한 캐시 복원 | Frontend #4 | 검색/필터/정렬/page 복원·권한 회수 후 범위 재설정 |
 | FR-COM-13 · 250 | 실시간 변경 재조회 | workspace_event_outbox·현재 권한 | `subscribeWorkspaceEvents` | Backend #17/Frontend #4 | 커밋 후 무효화·재연결resync·회수차단·logout정리 |
-| FR-COM-14 · 251 | 오래된 버전 충돌 안내 | aggregate version | `deleteProduct` | Backend #7/Frontend #4 | 낡은version409·reloadUrl·입력 유지 후 최신값 확인 |
+| FR-COM-14 · 251 | 오래된 버전 충돌 안내 | aggregate version | `updateProduct`, `changeProductStatus` | Backend #7/Frontend #4 | 낡은version409·reloadUrl·입력 유지 후 최신값 확인 |
 | FR-COM-15 · 252 | 변경 요청 멱등성 | idempotency_records·상태 전이 | 모든 관련 API·화면에 공통 적용 | Backend #8/#11/Backend #13/#15/Backend #16 | 동일키/같은입력 재사용·다른입력409·동시 중복 없음 |
 
 ## M1 본인 닉네임 추가 범위 (2026-10-26)
