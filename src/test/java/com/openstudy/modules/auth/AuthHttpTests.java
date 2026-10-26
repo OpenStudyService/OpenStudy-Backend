@@ -25,6 +25,7 @@ import com.openstudy.config.SecurityConfiguration;
 import com.openstudy.modules.auth.controller.AuthController;
 import com.openstudy.modules.auth.service.CurrentUserService;
 import com.openstudy.modules.auth.service.LoginAttemptLimiter;
+import com.openstudy.modules.auth.service.LoginAuditService;
 import com.openstudy.modules.authorization.service.AuthorizationService;
 import com.openstudy.modules.branch.dto.SessionBranch;
 import com.openstudy.modules.branch.service.SessionBranchService;
@@ -50,6 +51,7 @@ class AuthHttpTests {
     @MockitoBean EmployeeAccountService employees;
     @MockitoBean SessionBranchService branches;
     @MockitoBean AuthorizationService authorization;
+    @MockitoBean LoginAuditService audit;
 
     // The limiter lives in the shared context, so every test logs in from its own source address.
     private static final AtomicInteger SOURCES = new AtomicInteger();
