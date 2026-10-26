@@ -12,6 +12,7 @@ import org.springframework.stereotype.Repository;
 import com.openstudy.modules.employee.dto.EmployeeAccount;
 import com.openstudy.modules.employee.dto.EmployeeMembership;
 import com.openstudy.modules.employee.dto.EmployeeLookup;
+import com.openstudy.modules.employee.dto.InvitationTarget;
 
 @Repository
 public class EmployeeAccountRepository {
@@ -55,6 +56,26 @@ public class EmployeeAccountRepository {
 
     public EmployeeAccount lockById(long id) {
         return jdbc.queryForObject("SELECT * FROM employees WHERE id = ? FOR UPDATE", ACCOUNT, id);
+    }
+
+    public Optional<InvitationTarget> invitationTarget(String email, long branch) {
+        var accounts = jdbc.query("SELECT id,global_role,status FROM employees WHERE email=? FOR UPDATE",
+                (rs, row) -> new InvitationTarget(rs.getLong("id"), "OWNER".equals(rs.getString("global_role")),
+                        rs.getString("status"), null, null, null), email);
+        if (accounts.isEmpty()) return Optional.empty();
+        var account = accounts.getFirst();
+        return Optional.of(jdbc.query("SELECT id,role,status FROM branch_memberships WHERE employee_id=? AND branch_id=? FOR UPDATE",
+                (rs, row) -> new InvitationTarget(account.employeeId(), account.owner(), account.accountStatus(),
+                        rs.getLong("id"), rs.getString("role"), rs.getString("status")), account.employeeId(), branch)
+                .stream().findFirst().orElse(account));
+    }
+
+    public boolean revokePendingInvitationMembership(long employee, long branch, long actor) {
+        int changed = jdbc.update("UPDATE branch_memberships SET status='REVOKED',updated_by=?,version=version+1 "
+                + "WHERE employee_id=? AND branch_id=? AND status='PENDING'", actor, employee, branch);
+        if (changed == 0) return false;
+        jdbc.update("UPDATE employees SET updated_by=?,version=version+1 WHERE id=?", actor, employee);
+        return true;
     }
 
     public void updateNickname(long id, String nickname) {
