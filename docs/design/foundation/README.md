@@ -2,9 +2,9 @@
 
 2026-10-26 추가: SRS v1.1의 상품 정책은 **물리 삭제 미제공·판매 중지/재개·기존 이력 보존**이다. 초기 기반 설계의 Q8 조건부 삭제안은 더 이상 적용하지 않으며, [정책 결정](decisions.md)·[API 계약](api.md)·[DB 설명](database.md)을 확인한다. 기존 V2/V3 마이그레이션과 이를 설명하는 과거 검증 기록은 변경하지 않는다. 정본 요구사항은 작업공간 SRS v1.1이며 아래 v0.6 정보는 최초 설계의 근거를 설명한다.
 
-2026-10-26 추가: Issue #27의 M1 닉네임 저장은 [확정 프로필 계약](profile-api.md)과 OpenAPI `0.1.3-profile`을 따른다. `PATCH /me/profile` 및 실제 현재 사용자 응답 모델을 추가했고 API 엑셀을 같은 버전으로 동기화했다. 아래의 최초 기반 설계 범위·구현 전 설명과 구분한다.
+2026-10-26 추가: Issue #27의 M1 닉네임 저장은 [확정 프로필 계약](profile-api.md)에 따라 먼저 OpenAPI `0.1.3-profile`과 API 엑셀에 반영되었다. 이후 조건부 상품 삭제 API를 제거한 **현재 OpenAPI 버전은 `0.1.4-product-retention`**이다. API 엑셀은 이전 버전이므로 새 정책과 버전 동기화 전까지 상품 삭제 관련 항목은 사용하지 않고 JSON 정본을 우선한다. `PATCH /me/profile`의 프로필 계약은 유지한다. 아래의 최초 기반 설계 범위·구현 전 설명과 구분한다.
 
-작성일: 2026-10-23. 갱신일: 2026-10-24. 상태: **DB V2/V3 구현·Docker 검증 완료, 업무 API는 구현 전 목표 계약**. 검토 완료된 8개 중분류의 61개 요구사항을 대상으로 한다. 최초3개와 후속9개 정책 선택을 [decisions.md](decisions.md)에 기록했다. [DB 구축 자료](../../db/README.md), [API 엑셀](OpenStudy-Foundation-API.xlsx), [ERD PDF](OpenStudy-Foundation-ERD.pdf)를 제공한다.
+작성일: 2026-10-23. 갱신일: 2026-10-26. 상태: **DB V2/V3 구현·Docker 검증 완료, 업무 API는 구현 전 목표 계약**. 검토 완료된 8개 중분류의 61개 요구사항을 대상으로 한다. 최초3개와 후속9개 정책 선택을 [decisions.md](decisions.md)에 기록했다. [DB 구축 자료](../../db/README.md), [API 엑셀](OpenStudy-Foundation-API.xlsx), [ERD PDF](OpenStudy-Foundation-ERD.pdf)를 제공한다.
 
 ## 범위와 근거
 
