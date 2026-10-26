@@ -30,6 +30,7 @@ import com.openstudy.modules.auth.service.LoginAttemptLimiter;
 import com.openstudy.modules.employee.service.EmployeeAccountService;
 import com.openstudy.modules.auth.service.SessionBoundaryPolicy;
 import com.openstudy.common.web.ApiRequestFilter;
+import com.openstudy.common.web.ClientAddressResolver;
 
 @RestController
 public class AuthController {
@@ -40,10 +41,12 @@ public class AuthController {
     private final EmployeeAccountService employees;
     private final LoginAttemptLimiter limiter;
     private final SessionBoundaryPolicy sessions;
+    private final ClientAddressResolver clients;
 
     public AuthController(AuthenticationManager authenticationManager, SecurityContextRepository contexts,
             SessionAuthenticationStrategy sessionStrategy, CurrentUserService users,
-            EmployeeAccountService employees, LoginAttemptLimiter limiter, SessionBoundaryPolicy sessions) {
+            EmployeeAccountService employees, LoginAttemptLimiter limiter, SessionBoundaryPolicy sessions,
+            ClientAddressResolver clients) {
         this.authenticationManager = authenticationManager;
         this.contexts = contexts;
         this.sessionStrategy = sessionStrategy;
@@ -51,6 +54,7 @@ public class AuthController {
         this.employees = employees;
         this.limiter = limiter;
         this.sessions = sessions;
+        this.clients = clients;
     }
 
     @GetMapping("/api/auth/csrf")
@@ -61,7 +65,7 @@ public class AuthController {
     @PostMapping("/api/auth/login")
     public ResponseEntity<CurrentUser> login(@Valid @RequestBody LoginRequest body,
             HttpServletRequest request, HttpServletResponse response) {
-        limiter.check(body.email());
+        limiter.check(body.email(), clients.resolve(request));
         if (body.password().getBytes(StandardCharsets.UTF_8).length > 72) {
             throw ApiException.validation("password", "비밀번호는 UTF-8 72바이트 이하여야 합니다.");
         }

@@ -32,3 +32,19 @@ server:
       cookie:
         http-only: true
         same-site: lax
+  # Keep NONE: ClientAddressResolver applies X-Forwarded-For itself, only behind TRUSTED_PROXIES.
+  forward-headers-strategy: none
+openstudy:
+  web:
+    # Comma-separated IPs/CIDRs of the reverse proxy directly in front of this app. Empty ignores X-Forwarded-For.
+    trusted-proxies: ${TRUSTED_PROXIES:}
+  auth:
+    login-limit:
+      # Provisional values pending confirmation in issue #28. Per-instance memory; reset on restart.
+      account:
+        max-attempts: 10
+        window-minutes: 15
+      source:
+        max-attempts: 30
+        window-minutes: 15
+      capacity: 10000
