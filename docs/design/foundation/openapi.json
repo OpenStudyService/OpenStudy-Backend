@@ -3,7 +3,7 @@
   "info": {
     "title": "OpenStudy 1차 기반 기능 API 설계",
     "version": "0.1.4-product-retention",
-    "description": "검토 완료 8중분류/61요구사항의 구현 전 목표 계약. Q1~Q12은 2026-10-23 사용자 답변으로 확정. decisions.md 참고. 기존 서버 전체 구현 명세가 아니다. ID문자열·API version=DB+1. 상태 변경은 CSRF, 지점과 행위 인가를 함께 검증한다. Issue #27의 /me/profile 및 CurrentUser는 구현된 M1 닉네임 계약이다. 나머지 operation의 구현 상태는 각각의 표기를 따른다. SRS v1.1 확정 상품 정책: 거래 유무와 무관하게 물리 삭제 미제공; 판매 중지·재개 및 기존 상품·거래·revision 보존. 이전 Q8 조건부 삭제안은 적용하지 않는다."
+    "description": "검토 완료 8중분류/61요구사항의 구현 전 목표 계약. Q1~Q12의 2026-10-23 당시 사용자 답변을 기록하되 Q8은 SRS v1.1 정책으로 대체됨. decisions.md 참고. 기존 서버 전체 구현 명세가 아니다. ID문자열·API version=DB+1. 상태 변경은 CSRF, 지점과 행위 인가를 함께 검증한다. Issue #27의 /me/profile 및 CurrentUser는 구현된 M1 닉네임 계약이다. 나머지 operation의 구현 상태는 각각의 표기를 따른다. SRS v1.1 확정 상품 정책: 거래 유무와 무관하게 물리 삭제 미제공; 판매 중지·재개 및 기존 상품·거래·revision 보존. 이전 Q8 조건부 삭제안은 적용하지 않는다."
   },
   "servers": [
     {
@@ -3179,7 +3179,7 @@
         "tags": [
           "products"
         ],
-        "description": "판매 중지는 기존 구매·발급 이력을 삭제하지 않는다. 거래 이력 없는 상품만 별도 DELETE 허용(Q8). DB FK로 구매 참조 삭제도 제한.",
+        "description": "판매 중지는 기존 구매·발급 이력을 삭제하지 않는다. SRS v1.1 정책상 거래 유무와 무관하게 상품 물리 삭제 API는 없다. 판매 상태 변경은 상품과 기존 구매·발급 이력을 보존한다.",
         "x-requirement-ids": [
           "FR-PROD-04",
           "FR-PROD-08"
@@ -6140,10 +6140,12 @@
       "decision": "상품 가격·구성을 지점 간 공유. 지점별 가격이 다르면 별도 상품. 공유 수정은 모든 적용 지점 권한 필요."
     },
     "Q8": {
-      "status": "confirmed",
+      "status": "superseded",
       "confirmedBy": "user",
       "confirmedAt": "2026-10-23",
-      "decision": "구매·결제·발급 이력이 없는 상품만 물리 삭제 허용. 삭제 감사와 변경 이력은 보존."
+      "decision": "구매·결제·발급 이력이 없는 상품만 물리 삭제 허용. 삭제 감사와 변경 이력은 보존.",
+      "supersededBy": "SRS v1.1 product retention: no physical product deletion",
+      "currentDecision": "상품 물리 삭제 API 미제공, 판매 중지·재개로 관리, 상품 ID·revision·기존 거래 이력 보존."
     },
     "Q9": {
       "status": "confirmed",
