@@ -2,6 +2,8 @@ package com.openstudy.modules.employee.repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.Collections;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -9,6 +11,7 @@ import org.springframework.stereotype.Repository;
 
 import com.openstudy.modules.employee.dto.EmployeeAccount;
 import com.openstudy.modules.employee.dto.EmployeeMembership;
+import com.openstudy.modules.employee.dto.EmployeeLookup;
 
 @Repository
 public class EmployeeAccountRepository {
@@ -29,6 +32,25 @@ public class EmployeeAccountRepository {
 
     public Optional<EmployeeAccount> findById(long id) {
         return jdbc.query("SELECT * FROM employees WHERE id = ?", ACCOUNT, id).stream().findFirst();
+    }
+
+    public List<EmployeeLookup> lookup(Set<Long> branches) {
+        if (branches.isEmpty()) return List.of();
+        String placeholders = String.join(",", Collections.nCopies(branches.size(), "?"));
+        return jdbc.query("SELECT e.id,e.name FROM employees e WHERE e.status='ACTIVE' AND "
+                + "(e.global_role='OWNER' OR EXISTS (SELECT 1 FROM branch_memberships m WHERE m.employee_id=e.id "
+                + "AND m.status='ACTIVE' AND m.branch_id IN (" + placeholders + "))) ORDER BY e.id",
+                (rs, row) -> new EmployeeLookup(rs.getString("id"), rs.getString("name")), branches.toArray());
+    }
+
+    public boolean relatedToBranches(long employee, Set<Long> branches) {
+        if (branches.isEmpty()) return false;
+        var args = new java.util.ArrayList<Object>(); args.add(employee); args.addAll(branches);
+        String placeholders = String.join(",", Collections.nCopies(branches.size(), "?"));
+        // Retain revoked memberships here: peers need a scope-free invalidation to remove stale choices.
+        return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM employees e WHERE e.id=? "
+                + "AND (e.global_role='OWNER' OR EXISTS(SELECT 1 FROM branch_memberships m WHERE m.employee_id=e.id "
+                + "AND m.branch_id IN (" + placeholders + "))))", Boolean.class, args.toArray()));
     }
 
     public EmployeeAccount lockById(long id) {

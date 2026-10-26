@@ -34,10 +34,18 @@ public final class SessionBoundaryPolicy {
     }
 
     public boolean expired(HttpSession session) {
-        Object authenticatedAt = session.getAttribute(AUTHENTICATED_AT);
-        Object lastActivityAt = session.getAttribute(LAST_ACTIVITY_AT);
+        return expired(session.getAttribute(AUTHENTICATED_AT), session.getAttribute(LAST_ACTIVITY_AT), mode(session));
+    }
+
+    public boolean expired(org.springframework.session.Session session) {
+        Object mode = session.getAttribute(SESSION_MODE);
+        return expired(session.getAttribute(AUTHENTICATED_AT), session.getAttribute(LAST_ACTIVITY_AT),
+                WORKSPACE.equals(mode) || APPROVAL_ONLY.equals(mode) ? (String) mode : null);
+    }
+
+    private boolean expired(Object authenticatedAt, Object lastActivityAt, String mode) {
         if (!(authenticatedAt instanceof Long started) || !(lastActivityAt instanceof Long active)
-                || mode(session) == null) return true;
+                || mode == null) return true;
         long now = clock.instant().getEpochSecond();
         return now < started || now < active || now - started >= MAX_SECONDS || now - active >= IDLE_SECONDS;
     }

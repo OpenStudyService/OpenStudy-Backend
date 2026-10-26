@@ -19,6 +19,8 @@ public class AuthorizationWebConfiguration implements WebMvcConfigurer {
         registry.addInterceptor(new HandlerInterceptor() {
             @Override
             public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+                // SSE completion redispatch has already committed its stream; continued access is checked before each send.
+                if (request.getDispatcherType()==jakarta.servlet.DispatcherType.ASYNC) return true;
                 var authentication = SecurityContextHolder.getContext().getAuthentication();
                 if (authentication == null || !authentication.isAuthenticated()
                         || "anonymousUser".equals(authentication.getPrincipal())) return true;

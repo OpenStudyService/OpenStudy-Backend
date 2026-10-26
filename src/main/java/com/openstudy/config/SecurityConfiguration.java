@@ -99,7 +99,7 @@ public class SecurityConfiguration {
                                 && request.getRequestURI().equals(request.getContextPath() + "/api/auth/logout")
                                 && request.getSession(false) == null))
                 .authorizeHttpRequests(auth -> auth
-                        .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
+                        .dispatcherTypeMatchers(DispatcherType.ERROR, DispatcherType.ASYNC).permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/auth/csrf", "/actuator/health").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/auth/login", "/api/auth/logout").permitAll()
                         .anyRequest().authenticated())

@@ -35,6 +35,11 @@ public class BranchService {
         return PageResponse.fromAuthorized(rows,query,field,Comparator.comparingLong(b->Long.parseLong(b.id())));
     }
     @Transactional(readOnly=true)
+    public List<Branch> lookup(long actor, String scope) {
+        Set<Long> allowed=policy.scope(actor,scope,BranchAction.READ);
+        return repository.ids().stream().filter(allowed::contains).map(repository::get).toList();
+    }
+    @Transactional(readOnly=true)
     public Branch get(long actor,long id) {
         // Require access before reading the branch or its schedule; no existence oracle outside scope.
         policy.require(policy.current(actor),Set.of(id),BranchAction.READ);

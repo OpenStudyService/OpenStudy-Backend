@@ -151,6 +151,8 @@ Q9에 따라 상품 유형은 등록 후 변경하지 않고 다른 유형은 �
 
 ## SSE·lookups·빈 화면
 
+2026-10-26 구현 범위·실제 최소 DTO·연결 종료·설정·후속 검증은 [workspace-api.md](workspace-api.md)를 따른다. 아래의 기반 정책은 유지한다.
+
 `GET /workspace/events?scope=...`의 이벤트는 개인정보 없는 갱신 신호다. 변경된 자원의 resource/entityId/허용 branchId만 보내고, 권한 변경 이벤트에는 타 지점 목록을 담지 않는다. EventSource는 same-origin 쿠키로 연결한다. Nginx buffering을 끄고 heartbeat는 연결 유지에만 쓴다. 연결 복구 시 `resync`를 보내고 클라이언트는 현재 화면·me·lookups를 다시 조회한다. Last-Event-ID 재생은 이번 계약에서 보장하지 않는다.
 
 전달 직전 현재 권한을 검사하고 회수·세션 만료를 감지하면 연결을 닫는다. 다중 ECS 인스턴스의 fan-out은 추가 구현·검증 대상이며 DB outbox 하나만으로 모든 인스턴스 SSE 전달을 보장했다고 주장하지 않는다.
