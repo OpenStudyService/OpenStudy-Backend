@@ -13,7 +13,7 @@ Backend [#13](https://github.com/OpenStudyService/OpenStudy-Backend/issues/13)�
 | `POST /invitations/{id}/cancel` | 수락 전 취소 |
 | `POST /invitations/{id}/reject` | 수락 후 사유와 함께 반려 |
 
-메일 worker·SMTP·자동 재시도는 #14, 공개 미리보기·수락·최종 승인은 #15에서 구현한다. 초대 생성의 201과 `발송 대기` 응답은 메일 수신이나 직원 승인을 뜻하지 않는다. 실제 서버·메일·브라우저 전체 흐름은 #18에서 별도로 검증한다.
+메일 worker·SMTP·자동 재시도의 후속 구현은 [#14 발송 계약](invitation-delivery.md)을 따른다. 공개 미리보기·수락·최종 승인은 #15에서 구현한다. 초대 생성의 201과 `발송 대기` 응답은 메일 수신이나 직원 승인을 뜻하지 않는다. 실제 서버·메일·브라우저 전체 흐름은 #18에서 별도로 검증한다.
 
 ## 권한과 입력
 
