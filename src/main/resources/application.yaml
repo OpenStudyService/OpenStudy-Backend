@@ -40,7 +40,7 @@ openstudy:
     trusted-proxies: ${TRUSTED_PROXIES:}
   auth:
     login-limit:
-      # Provisional values pending confirmation in issue #28. Per-instance memory; reset on restart.
+      # Confirmed in issue #28. Per-instance memory; reset on restart.
       account:
         max-attempts: 10
         window-minutes: 15

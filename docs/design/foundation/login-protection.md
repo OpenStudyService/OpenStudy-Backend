@@ -9,16 +9,16 @@ Issue [#28](https://github.com/OpenStudyService/OpenStudy-Backend/issues/28)의 
 | 기준 | 키 | 한도 | 시간창 | 성공 시 |
 | --- | --- | --- | --- | --- |
 | 계정 | 앞뒤 공백 제거·소문자화한 입력 이메일 | 10회 | 15분 | 해당 계정만 초기화 |
-| 접속 출처 | 아래 규칙으로 정한 클라이언트 주소 | **30회(임시)** | **15분(임시)** | 초기화하지 않음 |
+| 접속 출처 | 아래 규칙으로 정한 클라이언트 주소 | 30회 | 15분 | 초기화하지 않음 |
 
 - 시간창은 해당 키의 첫 시도부터 고정된다. 만료 시각에 도달하면 키가 제거되고 다시 로그인할 수 있다. 영구 잠금은 없으므로 마지막 관리자도 시간창이 지나면 로그인할 수 있다.
 - 두 기준이 모두 남아 있을 때만 시도를 양쪽에 집계한다. 429로 거부된 시도는 어느 쪽에도 더하지 않는다.
 - 존재하지 않는 계정도 같은 방식으로 집계하고 같은 429 본문을 받는다. 응답으로 계정 존재 여부를 알 수 없다.
 - 출처 집계를 성공 시 초기화하지 않는 이유는, 공격자가 자기 유효 계정으로 한 번 로그인해 다른 계정 대입 집계를 지울 수 없게 하기 위해서다.
 
-### 임시값과 선택 근거
+### 한도 결정 근거
 
-계정 10회/15분은 기존 구현 값이다. 출처 30회/15분은 확정 정책이 아니라 이번 구현의 임시 제안이며 Issue #28에서 확정을 요청한다.
+계정 10회/15분은 기존 구현 값이다. 출처 30회/15분은 이번 구현에서 제안한 값을 2026-10-27 사용자가 확정했다.
 
 - 한 출처가 계정 3개분의 실패 한도를 쓰면 막힌다. 같은 지점 PC나 NAT를 공유하는 직원 몇 명이 비밀번호를 몇 번씩 틀리는 정도는 허용한다.
 - 출처 한도가 계정 한도보다 낮으면 같은 출처의 정상 직원이 다른 직원의 실패 때문에 먼저 막힌다. 그래서 계정 한도보다 크게 잡았다.
@@ -53,7 +53,7 @@ Issue [#28](https://github.com/OpenStudyService/OpenStudy-Backend/issues/28)의 
 | `TRUSTED_PROXIES` (`openstudy.web.trusted-proxies`) | 빈 값 | 앱 바로 앞 리버스 프록시의 IP 또는 CIDR, 쉼표 구분. 비어 있으면 전달 헤더를 무시한다. 호스트명은 기동 시 거부한다. |
 | `server.forward-headers-strategy` | `none` | 반드시 `none`으로 둔다. `native`/`framework`로 바꾸면 컨테이너가 먼저 원격 주소를 바꿔 신뢰 경계 검사가 무의미해진다. |
 | `openstudy.auth.login-limit.account.max-attempts` / `window-minutes` | 10 / 15 | 계정 기준 |
-| `openstudy.auth.login-limit.source.max-attempts` / `window-minutes` | 30 / 15 (임시) | 출처 기준 |
+| `openstudy.auth.login-limit.source.max-attempts` / `window-minutes` | 30 / 15 | 출처 기준 |
 | `openstudy.auth.login-limit.capacity` | 10000 | 기준별 최대 키 수 |
 
 ### 운영 프록시 계약 (미확정)
