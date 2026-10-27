@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Propagation;
 import com.openstudy.modules.employee.repository.EmployeeAccountRepository;
 import com.openstudy.modules.employee.repository.EmployeeManagementRepository;
 import com.openstudy.modules.authorization.service.AuthorizedCommands;
+import com.openstudy.modules.authorization.service.MembershipService;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.StrictInput;
 
@@ -26,12 +27,14 @@ public class EmployeeAccountService {
     private final EmployeeAccountRepository repository;
     private final EmployeeManagementRepository changes;
     private final AuthorizedCommands commands;
+    private final MembershipService memberships;
 
     public EmployeeAccountService(EmployeeAccountRepository repository, EmployeeManagementRepository changes,
-            AuthorizedCommands commands) {
+            AuthorizedCommands commands, MembershipService memberships) {
         this.repository = repository;
         this.changes = changes;
         this.commands = commands;
+        this.memberships = memberships;
     }
 
     public EmployeeAccount byEmail(String email) {
@@ -47,19 +50,24 @@ public class EmployeeAccountService {
     }
 
     public List<EmployeeMembership> memberships(long id) {
-        return repository.memberships(id);
+        return memberships.active(id).stream().map(m -> new EmployeeMembership(Long.toString(m.branchId()),
+                "MANAGER".equals(m.role()) ? "admin" : "staff", m.permissions())).toList();
     }
 
     /** Caller holds AuthorizedCommands' guard, employee/branch and invitation parent locks. */
     @Transactional(propagation = Propagation.MANDATORY)
     public Optional<InvitationTarget> invitationTarget(String email, long branch) {
-        return repository.invitationTarget(email, branch);
+        // Same order as before: the account row FOR UPDATE, then the (employee, branch) membership row FOR UPDATE.
+        return repository.lockInvitationAccount(email).map(account -> memberships.lock(account.employeeId(), branch)
+                .map(m -> new InvitationTarget(account.employeeId(), account.owner(), account.accountStatus(), m.id(), m.role(), m.status()))
+                .orElse(account));
     }
 
     /** The invitation service verifies its ACCEPTED employee/branch before invoking this operation. */
     @Transactional(propagation = Propagation.MANDATORY)
     public void revokePendingInvitationMembership(long employee, long branch, long actor, String requestId) {
-        if (repository.revokePendingInvitationMembership(employee, branch, actor)) {
+        if (memberships.revokePending(employee, branch, actor)) {
+            repository.touch(employee, actor);
             changes.changed(actor, branch, employee, "REJECT_INVITATION", Map.of("status", "PENDING"),
                     Map.of("status", "REVOKED"), requestId);
         }
@@ -74,7 +82,8 @@ public class EmployeeAccountService {
     /** Acceptance creates or reuses (Q11) only a pending membership; business access waits for approval. */
     @Transactional(propagation = Propagation.MANDATORY)
     public void pendInvitationMembership(long employee, long branch, String role, String requestId) {
-        repository.pendInvitationMembership(employee, branch, role, employee);
+        memberships.pend(employee, branch, role, employee);
+        repository.touch(employee, employee);
         changes.changed(employee, branch, employee, "ACCEPT_INVITATION", Map.of("status", "NONE_OR_REVOKED"),
                 Map.of("status", "PENDING", "role", role), requestId);
     }
@@ -82,7 +91,8 @@ public class EmployeeAccountService {
     /** The invitation service verified ACCEPTED state, account status and current authorization first. */
     @Transactional(propagation = Propagation.MANDATORY)
     public void activateInvitationMembership(long employee, long branch, long actor, List<String> grants, String requestId) {
-        repository.activateInvitationMembership(employee, branch, actor, grants);
+        memberships.activatePending(employee, branch, actor, grants);
+        repository.activateInvitedAccount(employee, actor);
         changes.changed(actor, branch, employee, "APPROVE_INVITATION", Map.of("status", "PENDING"),
                 Map.of("status", "ACTIVE", "permissions", grants), requestId);
     }

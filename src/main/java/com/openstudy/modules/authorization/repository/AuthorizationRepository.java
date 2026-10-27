@@ -2,69 +2,113 @@ package com.openstudy.modules.authorization.repository;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.stereotype.Repository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.Repository;
+import org.springframework.data.repository.query.Param;
 import org.springframework.security.access.AccessDeniedException;
 import com.openstudy.modules.authorization.dto.AuthorizationState;
+import com.openstudy.modules.authorization.entity.BranchMembership;
 
-/** Own read model over the authorization aggregate, independent of employee/branch repositories. */
-@Repository
-public class AuthorizationRepository {
-    private final JdbcTemplate jdbc;
-    public AuthorizationRepository(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+/**
+ * Own read model over the authorization aggregate, independent of employee/branch repositories.
+ * <p>JPA-01 native exception: every statement here is part of the command lock order (guard, sorted employees,
+ * sorted branches, memberships) or of the locked permission read, so the SQL is kept exactly as written.
+ * Row values arrive as JDBC objects; BIGINT UNSIGNED ids are read through {@link Number}.</p>
+ */
+public interface AuthorizationRepository extends Repository<BranchMembership, Long> {
 
-    public AuthorizationState current(long employeeId) {
-        return current(employeeId, false);
+    default AuthorizationState current(long employeeId) {
+        return state(employeeId, account(employeeId), branches(), memberships(employeeId), false);
     }
 
-    public AuthorizationState currentLocked(long employeeId) {
-        return current(employeeId, true);
+    default AuthorizationState currentLocked(long employeeId) {
+        return state(employeeId, accountLocked(employeeId), branchesLocked(), membershipsLocked(employeeId), true);
     }
 
-    private AuthorizationState current(long employeeId, boolean locking) {
-        String suffix = locking ? " FOR SHARE" : "";
-        var account = jdbc.query("SELECT global_role,status FROM employees WHERE id=?" + suffix, (rs, n) ->
-                new String[] {rs.getString(1), rs.getString(2)}, employeeId).stream().findFirst()
-                .orElseThrow(() -> new AccessDeniedException("접근 권한이 없습니다."));
+    private AuthorizationState state(long employeeId, List<Object[]> account, List<Object[]> branchRows,
+            List<Object[]> membershipRows, boolean locking) {
+        if (account.isEmpty()) throw new AccessDeniedException("접근 권한이 없습니다.");
         Map<Long, String> branches = new HashMap<>();
-        jdbc.query("SELECT id,status FROM branches ORDER BY id" + suffix, rs -> {
-            branches.put(rs.getLong(1), rs.getString(2));
-        });
+        for (Object[] row : branchRows) branches.put(id(row[0]), (String) row[1]);
         Map<Long, AuthorizationState.Membership> memberships = new HashMap<>();
-        jdbc.query("SELECT id,branch_id,role,status FROM branch_memberships WHERE employee_id=? ORDER BY branch_id" + suffix,
-                rs -> {
-                    Set<String> grants = new HashSet<>(jdbc.queryForList("SELECT p.code FROM membership_permission_grants g "
-                            + "JOIN permission_definitions p ON p.id=g.permission_id WHERE g.membership_id=?" + suffix,
-                            String.class, rs.getLong(1)));
-                    memberships.put(rs.getLong(2), new AuthorizationState.Membership(rs.getString(3), rs.getString(4), grants));
-                }, employeeId);
-        return new AuthorizationState(employeeId, "OWNER".equals(account[0]), account[1], memberships, branches);
+        for (Object[] row : membershipRows) {
+            long membership = id(row[0]);
+            Set<String> grants = new HashSet<>(locking ? grantsLocked(membership) : grants(membership));
+            memberships.put(id(row[1]), new AuthorizationState.Membership((String) row[2], (String) row[3], grants));
+        }
+        return new AuthorizationState(employeeId, "OWNER".equals(account.getFirst()[0]), (String) account.getFirst()[1],
+                memberships, branches);
     }
 
-    public void lockGuard() { jdbc.queryForObject("SELECT id FROM administration_guard WHERE id=1 FOR UPDATE", Long.class); }
-    public void lockEmployees() {
-        // The singleton guard already serializes foundation writes. Lock administrator candidates too,
-        // before branches, so last-administrator checks never acquire employee locks in reverse order.
-        jdbc.queryForList("SELECT id FROM employees ORDER BY id FOR UPDATE", Long.class);
+    private static long id(Object value) { return ((Number) value).longValue(); }
+
+    @Query(value = "SELECT global_role,status FROM employees WHERE id=:id", nativeQuery = true)
+    List<Object[]> account(@Param("id") long employeeId);
+
+    @Query(value = "SELECT global_role,status FROM employees WHERE id=:id FOR SHARE", nativeQuery = true)
+    List<Object[]> accountLocked(@Param("id") long employeeId);
+
+    @Query(value = "SELECT id,status FROM branches ORDER BY id", nativeQuery = true)
+    List<Object[]> branches();
+
+    @Query(value = "SELECT id,status FROM branches ORDER BY id FOR SHARE", nativeQuery = true)
+    List<Object[]> branchesLocked();
+
+    @Query(value = "SELECT id,branch_id,role,status FROM branch_memberships WHERE employee_id=:id ORDER BY branch_id", nativeQuery = true)
+    List<Object[]> memberships(@Param("id") long employeeId);
+
+    @Query(value = "SELECT id,branch_id,role,status FROM branch_memberships WHERE employee_id=:id ORDER BY branch_id FOR SHARE",
+            nativeQuery = true)
+    List<Object[]> membershipsLocked(@Param("id") long employeeId);
+
+    @Query(value = "SELECT p.code FROM membership_permission_grants g JOIN permission_definitions p ON p.id=g.permission_id "
+            + "WHERE g.membership_id=:id", nativeQuery = true)
+    List<String> grants(@Param("id") long membershipId);
+
+    @Query(value = "SELECT p.code FROM membership_permission_grants g JOIN permission_definitions p ON p.id=g.permission_id "
+            + "WHERE g.membership_id=:id FOR SHARE", nativeQuery = true)
+    List<String> grantsLocked(@Param("id") long membershipId);
+
+    default void lockGuard() {
+        if (guard().isEmpty()) throw new IllegalStateException("administration_guard row is missing");
     }
-    public void lockBranches() {
-        // Foundation has few branches. Lock the branch set in canonical order, including read-model rows,
-        // so a pre-existing REPEATABLE_READ snapshot cannot be used for an operating-status decision.
-        jdbc.queryForList("SELECT id FROM branches ORDER BY id FOR UPDATE", Long.class);
+
+    @Query(value = "SELECT id FROM administration_guard WHERE id=1 FOR UPDATE", nativeQuery = true)
+    List<Object> guard();
+
+    /**
+     * The singleton guard already serializes foundation writes. Lock administrator candidates too,
+     * before branches, so last-administrator checks never acquire employee locks in reverse order.
+     */
+    @Query(value = "SELECT id FROM employees ORDER BY id FOR UPDATE", nativeQuery = true)
+    List<Object> lockEmployees();
+
+    /**
+     * Foundation has few branches. Lock the branch set in canonical order, including read-model rows,
+     * so a pre-existing REPEATABLE_READ snapshot cannot be used for an operating-status decision.
+     */
+    @Query(value = "SELECT id FROM branches ORDER BY id FOR UPDATE", nativeQuery = true)
+    List<Object> lockBranches();
+
+    default void lockMemberships(Set<Long> employeeIds, Set<Long> branchIds) {
+        employeeIds.stream().sorted().forEach(employee -> branchIds.stream().sorted().forEach(branch -> lockMembership(employee, branch)));
     }
-    public void lockMemberships(Set<Long> employeeIds, Set<Long> branchIds) {
-        employeeIds.stream().sorted().forEach(employee -> branchIds.stream().sorted().forEach(branch ->
-                jdbc.queryForList("SELECT id FROM branch_memberships WHERE employee_id=? AND branch_id=? FOR UPDATE",
-                        Long.class, employee, branch)));
-    }
-    public long activeOwners() {
-        return jdbc.queryForList("SELECT id FROM employees WHERE global_role='OWNER' AND status='ACTIVE' FOR SHARE", Long.class).size();
-    }
-    public long activeAdministrators(long branch) {
-        return jdbc.queryForList("SELECT DISTINCT e.id FROM employees e LEFT JOIN branch_memberships m "
-                + "ON m.employee_id=e.id AND m.branch_id=? AND m.status='ACTIVE' AND m.role='MANAGER' "
-                + "WHERE e.status='ACTIVE' AND (e.global_role='OWNER' OR m.id IS NOT NULL) FOR SHARE", Long.class, branch).size();
-    }
+
+    @Query(value = "SELECT id FROM branch_memberships WHERE employee_id=:employee AND branch_id=:branch FOR UPDATE", nativeQuery = true)
+    List<Object> lockMembership(@Param("employee") long employeeId, @Param("branch") long branchId);
+
+    default long activeOwners() { return activeOwnerIds().size(); }
+
+    @Query(value = "SELECT id FROM employees WHERE global_role='OWNER' AND status='ACTIVE' FOR SHARE", nativeQuery = true)
+    List<Object> activeOwnerIds();
+
+    default long activeAdministrators(long branch) { return activeAdministratorIds(branch).size(); }
+
+    @Query(value = "SELECT DISTINCT e.id FROM employees e LEFT JOIN branch_memberships m "
+            + "ON m.employee_id=e.id AND m.branch_id=:branch AND m.status='ACTIVE' AND m.role='MANAGER' "
+            + "WHERE e.status='ACTIVE' AND (e.global_role='OWNER' OR m.id IS NOT NULL) FOR SHARE", nativeQuery = true)
+    List<Object> activeAdministratorIds(@Param("branch") long branchId);
 }

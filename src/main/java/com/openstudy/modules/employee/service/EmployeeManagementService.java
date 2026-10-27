@@ -10,6 +10,7 @@ import com.openstudy.common.web.*;
 import com.openstudy.modules.authorization.dto.BranchAction;
 import com.openstudy.modules.authorization.service.*;
 import com.openstudy.modules.employee.dto.ManagedEmployee;
+import com.openstudy.modules.employee.dto.ManagedEmployee.Membership;
 import com.openstudy.modules.employee.dto.ManagedEmployee.MembershipResult;
 import com.openstudy.modules.employee.repository.EmployeeManagementRepository;
 
@@ -19,9 +20,22 @@ public class EmployeeManagementService {
     private final AuthorizationService authorization;
     private final AuthorizedCommands commands;
     private final PermissionPresetService presets;
+    private final MembershipService memberships;
     public EmployeeManagementService(EmployeeManagementRepository repository, AuthorizationService authorization,
-            AuthorizedCommands commands, PermissionPresetService presets) {
-        this.repository=repository; this.authorization=authorization; this.commands=commands; this.presets=presets;
+            AuthorizedCommands commands, PermissionPresetService presets, MembershipService memberships) {
+        this.repository=repository; this.authorization=authorization; this.commands=commands; this.presets=presets; this.memberships=memberships;
+    }
+    /** The former single read: the account row (FOR UPDATE when locking), then its memberships and grants. */
+    private Optional<ManagedEmployee> find(long id, Set<Long> visible, boolean all, boolean lock) {
+        return repository.account(id, lock).map(account -> {
+            var rows=memberships.all(id,lock).stream().filter(m -> all || visible.contains(m.branchId()))
+                    .map(m -> new Membership(Long.toString(m.branchId()), "MANAGER".equals(m.role()) ? "admin" : "staff",
+                            EmployeeManagementRepository.membershipStatus(m.status()), m.permissions(), ApiVersion.fromDatabase(m.dbVersion())))
+                    .toList();
+            return new ManagedEmployee(account.id(), ApiVersion.fromDatabase(account.dbVersion()), account.createdAt(), account.updatedAt(),
+                    rows.isEmpty() ? "all" : rows.getFirst().branchId(), account.name(), account.email(),
+                    EmployeeManagementRepository.status(account.status()), account.nickname(), account.avatarUrl(), account.owner(), rows);
+        });
     }
     private record Visibility(Set<Long> branches, boolean all) {}
     private Visibility visible(long actor, String scope) {
@@ -34,7 +48,7 @@ public class EmployeeManagementService {
     public PageResponse<ManagedEmployee> list(long actor, String scope, ListQuery query, String status) {
         if(status!=null && !Set.of("활성","승인 대기","이용 제한","비활성").contains(status)) throw ApiException.validation("status","올바른 상태를 선택해 주세요.");
         var visibility=visible(actor,scope);
-        var rows=repository.ids().stream().map(id->repository.find(id,visibility.branches(),visibility.all(),false).orElseThrow())
+        var rows=repository.ids().stream().map(id->find(id,visibility.branches(),visibility.all(),false).orElseThrow())
                 .filter(e->visibility.all() || !e.memberships().isEmpty())
                 .filter(e->status==null || status.equals(e.status()))
                 .filter(e->(e.name()+" "+e.email()).toLowerCase(Locale.ROOT).contains(query.q().toLowerCase(Locale.ROOT))).toList();
@@ -43,13 +57,13 @@ public class EmployeeManagementService {
     @Transactional(readOnly=true)
     public ManagedEmployee get(long actor, long target, String scope) {
         var visibility=visible(actor,scope);
-        var employee=repository.find(target,visibility.branches(),visibility.all(),false).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND));
+        var employee=find(target,visibility.branches(),visibility.all(),false).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND));
         if(!visibility.all() && employee.memberships().isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         return employee;
     }
     public ManagedEmployee update(long actor, long target, Map<String,Object> body, String requestId) {
         return commands.accountChange(actor,target,()-> {
-            var before=repository.find(target,Set.of(),true,true).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND));
+            var before=find(target,Set.of(),true,true).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND));
             var input=new StrictInput(body).only("version","name","status");
             ApiVersion.requireCurrent(input.version("version"),before.version()-1,"/api/employees/"+target);
             if(!input.has("name") && !input.has("status")) throw ApiException.validation("body","변경할 값을 입력해 주세요.");
@@ -58,7 +72,7 @@ public class EmployeeManagementService {
             if("승인 대기".equals(before.status()) && "활성".equals(status)) throw ApiException.conflict("INVALID_STATE","초대 승인으로만 활성화할 수 있습니다.");
             String db=switch(status) { case "활성"->"ACTIVE"; case "이용 제한"->"SUSPENDED"; case "비활성"->"LEFT"; case "승인 대기"->"PENDING"; default->throw new IllegalStateException(); };
             repository.updateAccount(target,actor,name,db);
-            var result=repository.find(target,Set.of(),true,true).orElseThrow();
+            var result=find(target,Set.of(),true,true).orElseThrow();
             repository.changed(actor,null,target,"UPDATE_ACCOUNT",before,result,requestId); return result;
         });
     }
@@ -70,14 +84,15 @@ public class EmployeeManagementService {
             // Path scope is authoritative; an unrelated query scope must not broaden it.
             var visibility=visible(actor,scope);
             if(!visibility.branches().contains(branch)) throw AuthorizationService.forbidden();
-            var before=repository.find(target,Set.of(branch),false,true).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND));
+            var before=find(target,Set.of(branch),false,true).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND));
             var old=before.memberships().stream().filter(m->m.branchId().equals(Long.toString(branch))).findFirst().orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND));
             ApiVersion.requireCurrent(input.version("employeeVersion"),before.version()-1,"/api/employees/"+target+"?scope="+branch);
             ApiVersion.requireCurrent(input.version("version"),old.version()-1,"/api/employees/"+target+"?scope="+branch);
             var grants=input.permissions();
             presets.validateCopy(role,grants,input.has("presetId") ? input.id("presetId") : null);
-            repository.updateMembership(target,branch,actor,dbRole,dbStatus,grants);
-            var after=repository.find(target,Set.of(branch),false,true).orElseThrow();
+            memberships.update(target,branch,actor,dbRole,dbStatus,grants);
+            repository.touch(target,actor);
+            var after=find(target,Set.of(branch),false,true).orElseThrow();
             var result=new MembershipResult(after.version(),after.memberships().getFirst());
             repository.changed(actor,branch,target,"UPDATE_MEMBERSHIP",new MembershipResult(before.version(),old),result,requestId); return result;
         });
