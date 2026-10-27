@@ -107,3 +107,6 @@ Desktop.ini
 /docs/OpenStudy_에이전트_개발_실행계획_v1.1.md
 /docs/design-decisions/01-m1-decisions.md
 /docs/design-decisions/02-domain-decisions.md
+
+# Local HTTPS verification stack: generated certificates, trust stores and downloaded drivers
+/deploy/local-https/.local/

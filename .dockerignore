@@ -1,0 +1,9 @@
+# Allowlist: nothing enters the build context unless listed here, so .env files, keys,
+# local DB dumps, build output and docs can never be copied into the image.
+*
+!gradlew
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+!build.gradle
+!settings.gradle
+!src/main/**

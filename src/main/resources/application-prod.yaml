@@ -1,0 +1,22 @@
+# Deployed server behind the TLS-terminating proxy (the runtime image sets SPRING_PROFILES_ACTIVE=prod).
+# Contract and reasons: docs/deployment/README.md
+spring:
+  flyway:
+    # Single migration runner is outside the server (Infra SSM Flyway with the migration account, Infra #1).
+    # Matches Infra's default SPRING_FLYWAY_ENABLED=false; the app account has no DDL rights.
+    enabled: false
+  lifecycle:
+    # Open SSE streams hold graceful shutdown until this timeout; it must end before the ECS stop timeout (30s, then SIGKILL).
+    timeout-per-shutdown-phase: 20s
+server:
+  shutdown: graceful
+  servlet:
+    session:
+      cookie:
+        # The proxy terminates TLS and the app sees plain HTTP (forward-headers-strategy stays NONE),
+        # so Secure cannot be derived from the request. The deployed origin is HTTPS-only.
+        secure: true
+openstudy:
+  web:
+    # Required in prod: without it every client shares the proxy address as the login source-limit key.
+    trusted-proxies: ${TRUSTED_PROXIES}
