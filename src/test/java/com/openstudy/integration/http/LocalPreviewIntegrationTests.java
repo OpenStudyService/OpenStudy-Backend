@@ -59,6 +59,7 @@ class LocalPreviewIntegrationTests {
     @AfterEach
     void cleanOnlyFixture() {
         if (client != null) client.close();
+        jdbc.update("DELETE FROM branch_memberships WHERE employee_id=?", employeeId);
         jdbc.update("DELETE FROM employees WHERE id=?", employeeId);
     }
 
@@ -110,6 +111,26 @@ class LocalPreviewIntegrationTests {
         String otherBranch = json.readTree(get("/api/me").body()).at("/branches/1/id").asString();
         assertThat(get("/api/tasks/" + id + "?scope=" + otherBranch).statusCode()).isEqualTo(404);
         assertThat(get("/api/tasks?page=0").statusCode()).isEqualTo(422);
+    }
+
+    @Test
+    void ordinaryStaffCanOpenTheirBranchWithoutPeopleManagementPermission() throws Exception {
+        var branches = json.readTree(get("/api/me").body()).get("branches");
+        String branch = branches.get(0).get("id").asString();
+        String other = branches.get(1).get("id").asString();
+        jdbc.update("UPDATE employees SET global_role='EMPLOYEE' WHERE id=?", employeeId);
+        jdbc.update("INSERT INTO branch_memberships (employee_id,branch_id,role,status) VALUES (?,?,'STAFF','ACTIVE')",
+                employeeId, Long.parseLong(branch));
+        var home = get("/api/home?scope=" + branch);
+        assertThat(home.statusCode()).isEqualTo(200);
+        var homeData = json.readTree(home.body());
+        assertThat(homeData.get("seats").size()).isEqualTo(12);
+        for (var seat : homeData.get("seats")) assertThat(seat.get("branchId").asString()).isEqualTo(branch);
+        var lookups = get("/api/local-preview/lookups?scope=" + branch);
+        assertThat(lookups.statusCode()).isEqualTo(200);
+        assertThat(json.readTree(lookups.body()).get("employees").size()).isZero();
+        assertThat(get("/api/home?scope=" + other).statusCode()).isEqualTo(403);
+        assertThat(get("/api/local-preview/lookups?scope=" + other).statusCode()).isEqualTo(403);
     }
 
     @Test
