@@ -66,5 +66,11 @@ public class InvitationManagementController {
         return service.reject(actor(actor), id, scope, body, ApiRequestFilter.requestId(request));
     }
 
+    @PostMapping("/{id}/approve")
+    public Invitation approve(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope,
+            @RequestBody Map<String, Object> body, HttpServletRequest request) {
+        return service.approve(actor(actor), id, scope, body, ApiRequestFilter.requestId(request));
+    }
+
     private static long actor(Authentication authentication) { return Long.parseLong(authentication.getName()); }
 }

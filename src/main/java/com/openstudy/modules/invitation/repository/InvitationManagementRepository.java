@@ -31,26 +31,34 @@ public class InvitationManagementRepository {
     public record Stored(long id, long branch, String email, String role, String state, long revision,
             long version, Instant expiresAt, Long acceptedEmployeeId, Invitation view) {}
 
+    private record Row(long branch, String name, String email, String role, String state, long revision, long version,
+            Instant createdAt, Instant updatedAt, Instant expiresAt, Long employee, String rejection) {}
+
     public Optional<Stored> find(long id, boolean lock, Instant now) {
-        return jdbc.query("SELECT * FROM employee_invitations WHERE id=?" + (lock ? " FOR UPDATE" : ""), (rs, row) -> {
-            var grants = jdbc.queryForList("SELECT d.code FROM invitation_permission_grants g "
-                    + "JOIN permission_definitions d ON d.id=g.permission_id WHERE g.invitation_id=? ORDER BY d.code"
-                    + (lock ? " FOR SHARE" : ""), String.class, id);
-            var delivery = jdbc.queryForList("SELECT status FROM invitation_send_jobs WHERE invitation_id=? AND revision=?"
-                    + (lock ? " FOR SHARE" : ""), String.class, id, rs.getLong("revision"));
-            String state = rs.getString("status");
-            Instant expires = rs.getTimestamp("expires_at").toInstant();
-            Long employee = rs.getObject("accepted_employee_id") == null ? null : rs.getLong("accepted_employee_id");
-            var result = new Invitation(Long.toString(id), ApiVersion.fromDatabase(rs.getLong("version")),
-                    rs.getTimestamp("created_at").toInstant(), rs.getTimestamp("updated_at").toInstant(),
-                    rs.getString("branch_id"), rs.getString("invitee_name"), rs.getString("invitee_email"),
-                    "MANAGER".equals(rs.getString("initial_role")) ? "admin" : "staff", grants,
-                    status("PENDING".equals(state) && !now.isBefore(expires) ? "EXPIRED" : state),
-                    delivery(delivery.isEmpty() ? "SKIPPED" : delivery.getFirst()), expires,
-                    employee == null ? null : employee.toString(), rs.getString("rejection_reason"));
-            return new Stored(id, rs.getLong("branch_id"), result.email(), rs.getString("initial_role"), state,
-                    rs.getLong("revision"), rs.getLong("version"), expires, employee, result);
-        }, id).stream().findFirst();
+        // Read the parent before its children. A child query inside the RowMapper borrows a second pooled
+        // connection when no transaction is bound, and concurrent requests can then starve the pool.
+        var found = jdbc.query("SELECT * FROM employee_invitations WHERE id=?" + (lock ? " FOR UPDATE" : ""), (rs, row) ->
+                new Row(rs.getLong("branch_id"), rs.getString("invitee_name"), rs.getString("invitee_email"),
+                        rs.getString("initial_role"), rs.getString("status"), rs.getLong("revision"), rs.getLong("version"),
+                        rs.getTimestamp("created_at").toInstant(), rs.getTimestamp("updated_at").toInstant(),
+                        rs.getTimestamp("expires_at").toInstant(),
+                        rs.getObject("accepted_employee_id") == null ? null : rs.getLong("accepted_employee_id"),
+                        rs.getString("rejection_reason")), id).stream().findFirst();
+        if (found.isEmpty()) return Optional.empty();
+        var row = found.get();
+        var grants = jdbc.queryForList("SELECT d.code FROM invitation_permission_grants g "
+                + "JOIN permission_definitions d ON d.id=g.permission_id WHERE g.invitation_id=? ORDER BY d.code"
+                + (lock ? " FOR SHARE" : ""), String.class, id);
+        var delivery = jdbc.queryForList("SELECT status FROM invitation_send_jobs WHERE invitation_id=? AND revision=?"
+                + (lock ? " FOR SHARE" : ""), String.class, id, row.revision());
+        var result = new Invitation(Long.toString(id), ApiVersion.fromDatabase(row.version()), row.createdAt(),
+                row.updatedAt(), Long.toString(row.branch()), row.name(), row.email(),
+                "MANAGER".equals(row.role()) ? "admin" : "staff", grants,
+                status("PENDING".equals(row.state()) && !now.isBefore(row.expiresAt()) ? "EXPIRED" : row.state()),
+                delivery(delivery.isEmpty() ? "SKIPPED" : delivery.getFirst()), row.expiresAt(),
+                row.employee() == null ? null : row.employee().toString(), row.rejection());
+        return Optional.of(new Stored(id, row.branch(), row.email(), row.role(), row.state(), row.revision(),
+                row.version(), row.expiresAt(), row.employee(), result));
     }
 
     public List<Long> ids(Set<Long> branches) {
@@ -124,6 +132,35 @@ public class InvitationManagementRepository {
         jdbc.update("UPDATE employee_invitations SET status='REJECTED',token_hash=NULL,rejected_by=?,"
                 + "rejected_at=UTC_TIMESTAMP(6),rejection_reason=?,updated_by=?,version=version+1 WHERE id=?", actor, reason, actor, id);
         skipJobs(id);
+    }
+
+    /** Server-side view of a link holder's invitation. The token hash never leaves this layer. */
+    public record Link(long id, long branch, String branchName, String name, String email, String role,
+            String state, Instant expiresAt, byte[] tokenHash) {}
+
+    public Optional<Link> link(byte[] tokenHash) {
+        return jdbc.queryForList("SELECT id FROM employee_invitations WHERE token_hash=?", Long.class, tokenHash)
+                .stream().findFirst().flatMap(id -> link(id, false));
+    }
+
+    public Optional<Link> link(long id, boolean lock) {
+        return jdbc.query("SELECT i.id,i.branch_id,b.name branch_name,i.invitee_name,i.invitee_email,i.initial_role,"
+                + "i.status,i.expires_at,i.token_hash FROM employee_invitations i JOIN branches b ON b.id=i.branch_id "
+                + "WHERE i.id=?" + (lock ? " FOR UPDATE" : ""), (rs, row) -> new Link(rs.getLong("id"),
+                        rs.getLong("branch_id"), rs.getString("branch_name"), rs.getString("invitee_name"),
+                        rs.getString("invitee_email"), rs.getString("initial_role"), rs.getString("status"),
+                        rs.getTimestamp("expires_at").toInstant(), rs.getBytes("token_hash")), id).stream().findFirst();
+    }
+
+    public void accept(long employee, long id) {
+        jdbc.update("UPDATE employee_invitations SET status='ACCEPTED',token_hash=NULL,accepted_employee_id=?,"
+                + "accepted_at=UTC_TIMESTAMP(6),updated_by=?,version=version+1 WHERE id=? AND status='PENDING'", employee, employee, id);
+        skipJobs(id);
+    }
+
+    public void approve(long actor, long id) {
+        jdbc.update("UPDATE employee_invitations SET status='APPROVED',approved_by=?,approved_at=UTC_TIMESTAMP(6),"
+                + "updated_by=?,version=version+1 WHERE id=? AND status='ACCEPTED'", actor, actor, id);
     }
 
     private void enqueue(long invitation, long revision) {

@@ -102,6 +102,9 @@ public class SecurityConfiguration {
                         .dispatcherTypeMatchers(DispatcherType.ERROR, DispatcherType.ASYNC).permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/auth/csrf", "/actuator/health").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/auth/login", "/api/auth/logout").permitAll()
+                        // Link holders: the service verifies the token (and, for existing accounts, the session).
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/invitations/preview",
+                                "/api/invitations/accept").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(errors -> errors
                         .authenticationEntryPoint((request, response, exception) ->

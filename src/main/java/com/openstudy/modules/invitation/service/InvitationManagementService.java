@@ -169,6 +169,29 @@ public class InvitationManagementService {
         });
     }
 
+    public Invitation approve(long actor, long id, String scope, Map<String, Object> body, String requestId) {
+        var input = new StrictInput(body).only("version");
+        long version = input.version("version");
+        return change(actor, id, scope, (state, before, target, now) -> {
+            if ("APPROVED".equals(before.state())) return before.view();
+            ApiVersion.requireCurrent(version, before.version(), reload(id));
+            if (!"ACCEPTED".equals(before.state())) throw invalidState();
+            if (target.isEmpty() || !Long.valueOf(target.get().employeeId()).equals(before.acceptedEmployeeId())) throw invalidState();
+            var account = target.get();
+            // Approval activates a PENDING account only. SUSPENDED/LEFT accounts are restored by the OWNER
+            // account command (Q3), never as a side effect of an invitation (Q11).
+            if (!Set.of("PENDING", "ACTIVE").contains(account.accountStatus())) throw invalidState();
+            if (!"PENDING".equals(account.membershipStatus()) || !before.role().equals(account.membershipRole())) throw invalidState();
+            // The snapshot was valid at creation; re-check it against the current code dictionary and role policy.
+            presets.validateCopy(before.view().role(), before.view().permissions(), null);
+            employees.activateInvitationMembership(account.employeeId(), before.branch(), actor, before.view().permissions(), requestId);
+            repository.approve(actor, id);
+            var result = required(id, true, now).view();
+            repository.changed(actor, before.branch(), id, "APPROVED", before.view(), result, requestId);
+            return result;
+        });
+    }
+
     private Invitation change(long actor, long id, String scope, Change command) {
         // Branch identity is immutable. Never trust a body/query branch for an existing invitation.
         // Apply the same visibility rule as detail before resolving an immutable parent branch.

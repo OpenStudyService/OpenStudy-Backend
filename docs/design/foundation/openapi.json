@@ -2162,7 +2162,7 @@
           "FR-STAFF-01"
         ],
         "x-permission": "OWNER 또는 해당 지점 MANAGER + people:manage (STAFF 초대만)",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
@@ -2260,7 +2260,7 @@
           "FR-INV-05"
         ],
         "x-permission": "익명 허용; 제출한 초대 토큰의 상태·TTL 검증",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "ANONYMOUS",
           "APPROVAL_ONLY",
@@ -2344,7 +2344,7 @@
           "FR-AUTH-10"
         ],
         "x-permission": "신규 계정은 유효 토큰·신규 자격증명; 기존 계정은 초대 이메일과 같은 본인 업무 세션",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "ANONYMOUS:NEW_ACCOUNT",
           "WORKSPACE:EXISTING_ACCOUNT"
@@ -2431,7 +2431,7 @@
           "FR-AUTH-04"
         ],
         "x-permission": "인증된 본인; APPROVAL_ONLY/WORKSPACE의 본인 승인 상태만",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "APPROVAL_ONLY",
           "WORKSPACE"
