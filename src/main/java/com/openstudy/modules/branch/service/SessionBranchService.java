@@ -10,13 +10,13 @@ import com.openstudy.common.web.ApiVersion;
 import com.openstudy.modules.branch.dto.SessionBranch;
 import com.openstudy.modules.branch.entity.Branch;
 import com.openstudy.modules.branch.entity.BranchStatus;
-import com.openstudy.modules.branch.repository.SessionBranchRepository;
+import com.openstudy.modules.branch.repository.BranchRepository;
 
 @Service
 public class SessionBranchService {
-    private final SessionBranchRepository repository;
+    private final BranchRepository repository;
 
-    public SessionBranchService(SessionBranchRepository repository) {
+    public SessionBranchService(BranchRepository repository) {
         this.repository = repository;
     }
 
