@@ -60,7 +60,28 @@ public class Employee {
         this.globalRole = globalRole; this.status = status; this.theme = Theme.FOREST;
     }
 
+    /** The local owner created by the bootstrap command (M1-10); created_by/updated_by stay NULL as before. */
+    public static Employee localOwner(String email, String passwordHash) {
+        var owner = new Employee(email, passwordHash, "로컬 관리자", GlobalRole.OWNER, EmployeeStatus.ACTIVE);
+        owner.nickname = "관리자";
+        return owner;
+    }
+
     public void changeNickname(String nickname) { this.nickname = nickname; this.updatedBy = id; }
+
+    public void changeAccount(String name, EmployeeStatus status, long actor) {
+        this.name = name; this.status = status; this.updatedBy = actor;
+    }
+
+    /** One of this employee's memberships changed; the caller advances the version. */
+    public void touch(long actor) { this.updatedBy = actor; }
+
+    /** Invitation approval: a PENDING account becomes ACTIVE. Only PENDING/ACTIVE accounts may be approved. */
+    public boolean approveInvited(long actor) {
+        if (status != EmployeeStatus.PENDING && status != EmployeeStatus.ACTIVE) return false;
+        this.status = EmployeeStatus.ACTIVE; this.updatedBy = actor;
+        return true;
+    }
 
     public Long getId() { return id; }
     public String getEmail() { return email; }

@@ -14,8 +14,11 @@ import com.openstudy.modules.employee.dto.EmployeeLookup;
 import com.openstudy.modules.employee.dto.InvitationTarget;
 import java.util.Optional;
 import org.springframework.transaction.annotation.Propagation;
-import com.openstudy.modules.employee.repository.EmployeeAccountRepository;
-import com.openstudy.modules.employee.repository.EmployeeManagementRepository;
+import org.springframework.dao.EmptyResultDataAccessException;
+import com.openstudy.modules.employee.entity.Employee;
+import com.openstudy.modules.employee.entity.EmployeeStatus;
+import com.openstudy.modules.employee.entity.GlobalRole;
+import com.openstudy.modules.employee.repository.EmployeeRepository;
 import com.openstudy.modules.authorization.service.AuthorizedCommands;
 import com.openstudy.modules.authorization.service.MembershipService;
 import com.openstudy.common.web.ApiVersion;
@@ -24,12 +27,12 @@ import com.openstudy.common.web.StrictInput;
 @Service
 @Transactional(readOnly = true)
 public class EmployeeAccountService {
-    private final EmployeeAccountRepository repository;
-    private final EmployeeManagementRepository changes;
+    private final EmployeeRepository repository;
+    private final EmployeeChanges changes;
     private final AuthorizedCommands commands;
     private final MembershipService memberships;
 
-    public EmployeeAccountService(EmployeeAccountRepository repository, EmployeeManagementRepository changes,
+    public EmployeeAccountService(EmployeeRepository repository, EmployeeChanges changes,
             AuthorizedCommands commands, MembershipService memberships) {
         this.repository = repository;
         this.changes = changes;
@@ -38,7 +41,8 @@ public class EmployeeAccountService {
     }
 
     public EmployeeAccount byEmail(String email) {
-        return repository.findByEmail(email.trim()).orElseThrow(() -> new UsernameNotFoundException("Invalid credentials"));
+        return repository.findByEmail(email.trim()).map(EmployeeChanges::account)
+                .orElseThrow(() -> new UsernameNotFoundException("Invalid credentials"));
     }
 
     public boolean exists(String email) {
@@ -46,7 +50,7 @@ public class EmployeeAccountService {
     }
 
     public EmployeeAccount byId(long id) {
-        return repository.findById(id).orElseThrow(() -> new UsernameNotFoundException("Invalid account"));
+        return repository.findById(id).map(EmployeeChanges::account).orElseThrow(() -> new UsernameNotFoundException("Invalid account"));
     }
 
     public List<EmployeeMembership> memberships(long id) {
@@ -58,7 +62,8 @@ public class EmployeeAccountService {
     @Transactional(propagation = Propagation.MANDATORY)
     public Optional<InvitationTarget> invitationTarget(String email, long branch) {
         // Same order as before: the account row FOR UPDATE, then the (employee, branch) membership row FOR UPDATE.
-        return repository.lockInvitationAccount(email).map(account -> memberships.lock(account.employeeId(), branch)
+        return repository.findForUpdateByEmail(email).map(e -> new InvitationTarget(e.getId(), e.getGlobalRole() == GlobalRole.OWNER,
+                e.getStatus().name(), null, null, null)).map(account -> memberships.lock(account.employeeId(), branch)
                 .map(m -> new InvitationTarget(account.employeeId(), account.owner(), account.accountStatus(), m.id(), m.role(), m.status()))
                 .orElse(account));
     }
@@ -67,7 +72,7 @@ public class EmployeeAccountService {
     @Transactional(propagation = Propagation.MANDATORY)
     public void revokePendingInvitationMembership(long employee, long branch, long actor, String requestId) {
         if (memberships.revokePending(employee, branch, actor)) {
-            repository.touch(employee, actor);
+            touch(employee, actor);
             changes.changed(actor, branch, employee, "REJECT_INVITATION", Map.of("status", "PENDING"),
                     Map.of("status", "REVOKED"), requestId);
         }
@@ -76,14 +81,14 @@ public class EmployeeAccountService {
     /** New-account acceptance. The caller verified the invitation token and holds the invitation lock. */
     @Transactional(propagation = Propagation.MANDATORY)
     public long createInvitedAccount(String email, String passwordHash, String name) {
-        return repository.createInvitedAccount(email, passwordHash, name);
+        return repository.saveAndFlush(new Employee(email, passwordHash, name, GlobalRole.EMPLOYEE, EmployeeStatus.PENDING)).getId();
     }
 
     /** Acceptance creates or reuses (Q11) only a pending membership; business access waits for approval. */
     @Transactional(propagation = Propagation.MANDATORY)
     public void pendInvitationMembership(long employee, long branch, String role, String requestId) {
         memberships.pend(employee, branch, role, employee);
-        repository.touch(employee, employee);
+        touch(employee, employee);
         changes.changed(employee, branch, employee, "ACCEPT_INVITATION", Map.of("status", "NONE_OR_REVOKED"),
                 Map.of("status", "PENDING", "role", role), requestId);
     }
@@ -92,15 +97,23 @@ public class EmployeeAccountService {
     @Transactional(propagation = Propagation.MANDATORY)
     public void activateInvitationMembership(long employee, long branch, long actor, List<String> grants, String requestId) {
         memberships.activatePending(employee, branch, actor, grants);
-        repository.activateInvitedAccount(employee, actor);
+        // Like the former UPDATE ... WHERE status IN ('PENDING','ACTIVE'): SUSPENDED/LEFT stay unchanged and unversioned.
+        var account = repository.findById(employee).orElseThrow();
+        long version = account.getVersion();
+        if (account.approveInvited(actor)) changes.saved(account, version);
         changes.changed(actor, branch, employee, "APPROVE_INVITATION", Map.of("status", "PENDING"),
                 Map.of("status", "ACTIVE", "permissions", grants), requestId);
     }
 
-    public List<EmployeeLookup> lookup(Set<Long> authorizedBranches) { return repository.lookup(authorizedBranches); }
+    public List<EmployeeLookup> lookup(Set<Long> authorizedBranches) {
+        if (authorizedBranches.isEmpty()) return List.of();
+        return repository.lookup(authorizedBranches).stream()
+                .map(row -> new EmployeeLookup(row[0].toString(), (String) row[1])).toList();
+    }
 
     public boolean relatedToBranches(long employee, Set<Long> authorizedBranches) {
-        return repository.relatedToBranches(employee, authorizedBranches);
+        if (authorizedBranches.isEmpty()) return false;
+        return repository.relatedToBranches(employee, authorizedBranches).intValue() == 1;
     }
 
     @Transactional
@@ -108,10 +121,12 @@ public class EmployeeAccountService {
         commands.selfAccountChange(id, () -> {
             var input = new StrictInput(body).only("nickname", "version");
             String nickname = input.text("nickname", 100);
-            var before = repository.lockById(id);
+            var account = repository.findForUpdateById(id).orElseThrow(() -> new EmptyResultDataAccessException(1));
+            var before = EmployeeChanges.account(account);
             ApiVersion.requireCurrent(input.version("version"), before.version(), "/api/me");
-            repository.updateNickname(id, nickname);
-            changes.profileChanged(id, profileSnapshot(before), profileSnapshot(repository.lockById(id)), requestId);
+            account.changeNickname(nickname);
+            changes.saved(account, before.version());
+            changes.profileChanged(id, profileSnapshot(before), profileSnapshot(EmployeeChanges.account(account)), requestId);
             return null;
         });
     }
@@ -128,6 +143,14 @@ public class EmployeeAccountService {
 
     @Transactional
     public void createLocalOwnerIfAbsent(String email, String encodedPassword) {
-        if (!repository.ownerExists()) repository.createOwner(email, encodedPassword);
+        if (!repository.existsByGlobalRole(GlobalRole.OWNER)) repository.saveAndFlush(Employee.localOwner(email, encodedPassword));
+    }
+
+    /** A membership of this employee changed: the account version advances with it, as before. */
+    private void touch(long employee, long actor) {
+        var account = repository.findById(employee).orElseThrow();
+        long version = account.getVersion();
+        account.touch(actor);
+        changes.saved(account, version);
     }
 }
