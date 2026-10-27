@@ -2,16 +2,11 @@ package com.openstudy.modules.invitation.repository;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.sql.Statement;
-import java.sql.Timestamp;
 import java.time.Instant;
-import java.util.Collections;
+import java.util.EnumSet;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.ObjectMapper;
 import com.openstudy.common.audit.AuditEvent;
@@ -19,22 +14,41 @@ import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyStore;
 import com.openstudy.common.outbox.WorkspaceOutbox;
+import com.openstudy.common.persistence.DuplicateKeys;
 import com.openstudy.common.web.ApiVersion;
+import com.openstudy.modules.authorization.service.PermissionCatalog;
+import com.openstudy.modules.branch.service.SessionBranchService;
 import com.openstudy.modules.invitation.dto.Invitation;
+import com.openstudy.modules.invitation.entity.EmployeeInvitation;
+import com.openstudy.modules.invitation.entity.InitialRole;
+import com.openstudy.modules.invitation.entity.InvitationStatus;
 
+/**
+ * Invitation management and acceptance persistence.
+ * <p>Reads take entity row locks and return value snapshots, as the former JDBC reads did; every transition is a JPQL
+ * statement that mirrors the former one, so versions, revisions and DB-side timestamps change exactly as before.
+ * Grants are stored as permission ids and branch names come from the branch module (JPA-03).</p>
+ */
 @Repository
 public class InvitationManagementRepository {
-    private final JdbcTemplate jdbc;
-    private final ObjectMapper json;
-
     private static final String CREATE = "createInvitation";
+    private static final Set<InvitationStatus> ACTIVE = EnumSet.of(InvitationStatus.PENDING, InvitationStatus.ACCEPTED);
+    private final InvitationRepository invitations;
+    private final InvitationSendJobRepository jobs;
+    private final PermissionCatalog permissions;
+    private final SessionBranchService branches;
+    private final ObjectMapper json;
     private final AuditTrail audit;
     private final WorkspaceOutbox outbox;
     private final IdempotencyStore requests;
 
-    public InvitationManagementRepository(JdbcTemplate jdbc, ObjectMapper json, AuditTrail audit, WorkspaceOutbox outbox,
-            IdempotencyStore requests) {
-        this.jdbc = jdbc;
+    public InvitationManagementRepository(InvitationRepository invitations, InvitationSendJobRepository jobs,
+            PermissionCatalog permissions, SessionBranchService branches, ObjectMapper json, AuditTrail audit,
+            WorkspaceOutbox outbox, IdempotencyStore requests) {
+        this.invitations = invitations;
+        this.jobs = jobs;
+        this.permissions = permissions;
+        this.branches = branches;
         this.json = json;
         this.audit = audit;
         this.outbox = outbox;
@@ -44,107 +58,75 @@ public class InvitationManagementRepository {
     public record Stored(long id, long branch, String email, String role, String state, long revision,
             long version, Instant expiresAt, Long acceptedEmployeeId, Invitation view) {}
 
-    private record Row(long branch, String name, String email, String role, String state, long revision, long version,
-            Instant createdAt, Instant updatedAt, Instant expiresAt, Long employee, String rejection) {}
-
+    /** Locked: the invitation FOR UPDATE, then its grant rows and current-revision job FOR SHARE, as before. */
     public Optional<Stored> find(long id, boolean lock, Instant now) {
-        // Read the parent before its children. A child query inside the RowMapper borrows a second pooled
-        // connection when no transaction is bound, and concurrent requests can then starve the pool.
-        var found = jdbc.query("SELECT * FROM employee_invitations WHERE id=?" + (lock ? " FOR UPDATE" : ""), (rs, row) ->
-                new Row(rs.getLong("branch_id"), rs.getString("invitee_name"), rs.getString("invitee_email"),
-                        rs.getString("initial_role"), rs.getString("status"), rs.getLong("revision"), rs.getLong("version"),
-                        rs.getTimestamp("created_at").toInstant(), rs.getTimestamp("updated_at").toInstant(),
-                        rs.getTimestamp("expires_at").toInstant(),
-                        rs.getObject("accepted_employee_id") == null ? null : rs.getLong("accepted_employee_id"),
-                        rs.getString("rejection_reason")), id).stream().findFirst();
+        var found = lock ? invitations.findForUpdateById(id) : invitations.findById(id);
         if (found.isEmpty()) return Optional.empty();
         var row = found.get();
-        var grants = jdbc.queryForList("SELECT d.code FROM invitation_permission_grants g "
-                + "JOIN permission_definitions d ON d.id=g.permission_id WHERE g.invitation_id=? ORDER BY d.code"
-                + (lock ? " FOR SHARE" : ""), String.class, id);
-        var delivery = jdbc.queryForList("SELECT status FROM invitation_send_jobs WHERE invitation_id=? AND revision=?"
-                + (lock ? " FOR SHARE" : ""), String.class, id, row.revision());
-        var result = new Invitation(Long.toString(id), ApiVersion.fromDatabase(row.version()), row.createdAt(),
-                row.updatedAt(), Long.toString(row.branch()), row.name(), row.email(),
-                "MANAGER".equals(row.role()) ? "admin" : "staff", grants,
-                status("PENDING".equals(row.state()) && !now.isBefore(row.expiresAt()) ? "EXPIRED" : row.state()),
-                delivery(delivery.isEmpty() ? "SKIPPED" : delivery.getFirst()), row.expiresAt(),
-                row.employee() == null ? null : row.employee().toString(), row.rejection());
-        return Optional.of(new Stored(id, row.branch(), row.email(), row.role(), row.state(), row.revision(),
-                row.version(), row.expiresAt(), row.employee(), result));
+        var grantIds = lock ? invitations.lockedPermissionIds(id).stream().map(Number::longValue).toList()
+                : invitations.permissionIds(id);
+        var grants = permissions.codes(grantIds);
+        var delivery = lock ? jobs.findSharedByInvitationIdAndRevision(id, row.getRevision())
+                : jobs.findByInvitationIdAndRevision(id, row.getRevision());
+        String state = row.getStatus().name();
+        var result = new Invitation(Long.toString(id), ApiVersion.fromDatabase(row.getVersion()), row.getCreatedAt(),
+                row.getUpdatedAt(), Long.toString(row.getBranchId()), row.getInviteeName(), row.getInviteeEmail(),
+                row.getInitialRole() == InitialRole.MANAGER ? "admin" : "staff", grants,
+                status("PENDING".equals(state) && !now.isBefore(row.getExpiresAt()) ? "EXPIRED" : state),
+                delivery(delivery.map(job -> job.getStatus().name()).orElse("SKIPPED")), row.getExpiresAt(),
+                row.getAcceptedEmployeeId() == null ? null : row.getAcceptedEmployeeId().toString(), row.getRejectionReason());
+        return Optional.of(new Stored(id, row.getBranchId(), row.getInviteeEmail(), row.getInitialRole().name(), state,
+                row.getRevision(), row.getVersion(), row.getExpiresAt(), row.getAcceptedEmployeeId(), result));
     }
 
     public List<Long> ids(Set<Long> branches) {
         if (branches.isEmpty()) return List.of();
-        String placeholders = String.join(",", Collections.nCopies(branches.size(), "?"));
-        return jdbc.queryForList("SELECT id FROM employee_invitations WHERE branch_id IN (" + placeholders + ") ORDER BY id",
-                Long.class, branches.toArray());
+        return invitations.findIdsByBranchIdIn(branches);
     }
 
     public void lock(long id) {
-        jdbc.queryForList("SELECT id FROM employee_invitations WHERE id=? FOR UPDATE", Long.class, id);
+        invitations.findForUpdateById(id);
     }
 
     public void lockCandidates(long branch, String email) {
-        jdbc.queryForList("SELECT id FROM employee_invitations WHERE branch_id=? AND invitee_email=? "
-                + "AND status IN ('PENDING','ACCEPTED') ORDER BY id FOR UPDATE", Long.class, branch, email);
+        invitations.findForUpdateByBranchIdAndInviteeEmailAndStatusInOrderByIdAsc(branch, email, ACTIVE);
     }
 
     public List<Stored> active(long branch, String email, Instant now) {
-        return jdbc.queryForList("SELECT id FROM employee_invitations WHERE branch_id=? AND invitee_email=? "
-                + "AND status IN ('PENDING','ACCEPTED') ORDER BY id FOR UPDATE", Long.class, branch, email)
-                .stream().map(id -> find(id, true, now).orElseThrow()).toList();
+        return invitations.findForUpdateByBranchIdAndInviteeEmailAndStatusInOrderByIdAsc(branch, email, ACTIVE).stream()
+                .map(invitation -> find(invitation.getId(), true, now).orElseThrow()).toList();
     }
 
+    /** Unknown permission codes are skipped, as the former INSERT ... SELECT by code skipped them. */
     public long create(long actor, long branch, String name, String email, String role, Long preset,
-            List<String> permissions, Instant expires) {
-        var key = new GeneratedKeyHolder();
-        jdbc.update(connection -> {
-            var statement = connection.prepareStatement("INSERT INTO employee_invitations "
-                    + "(branch_id,invitee_name,invitee_email,initial_role,preset_id,created_by,updated_by,status,revision,expires_at) "
-                    + "VALUES (?,?,?,?,?,?,?,'PENDING',1,?)", Statement.RETURN_GENERATED_KEYS);
-            statement.setLong(1, branch);
-            statement.setString(2, name);
-            statement.setString(3, email);
-            statement.setString(4, role);
-            if (preset == null) statement.setNull(5, java.sql.Types.BIGINT); else statement.setLong(5, preset);
-            statement.setLong(6, actor);
-            statement.setLong(7, actor);
-            statement.setTimestamp(8, Timestamp.from(expires));
-            return statement;
-        }, key);
-        long id = Objects.requireNonNull(key.getKey()).longValue();
-        for (String code : permissions) {
-            jdbc.update("INSERT INTO invitation_permission_grants(invitation_id,permission_id) "
-                    + "SELECT ?,id FROM permission_definitions WHERE code=?", id, code);
-        }
-        enqueue(id, 1);
+            List<String> permissionCodes, Instant expires) {
+        // The service maps a duplicate active invitation (uk_employee_invitations_1) to DUPLICATE_INVITATION.
+        var invitation = DuplicateKeys.translate(() -> invitations.saveAndFlush(EmployeeInvitation.create(branch, name, email,
+                InitialRole.valueOf(role), preset, permissions.ids(permissionCodes), expires, actor)));
+        long id = invitation.getId();
+        jobs.enqueue(id, 1);
         return id;
     }
 
     public void expire(long actor, Stored invitation) {
-        jdbc.update("UPDATE employee_invitations SET status='EXPIRED',token_hash=NULL,updated_by=?,version=version+1 WHERE id=?",
-                actor, invitation.id());
-        skipJobs(invitation.id());
+        invitations.expireBy(invitation.id(), actor);
+        jobs.skipOpenJobs(invitation.id());
     }
 
     public void reissue(long actor, Stored invitation, Instant expires) {
-        skipJobs(invitation.id());
-        jdbc.update("UPDATE employee_invitations SET status='PENDING',token_hash=NULL,revision=revision+1,expires_at=?,"
-                + "updated_by=?,version=version+1 WHERE id=?", Timestamp.from(expires), actor, invitation.id());
-        enqueue(invitation.id(), invitation.revision() + 1);
+        jobs.skipOpenJobs(invitation.id());
+        invitations.reissue(invitation.id(), actor, expires);
+        jobs.enqueue(invitation.id(), Math.toIntExact(invitation.revision() + 1));
     }
 
     public void cancel(long actor, long id) {
-        jdbc.update("UPDATE employee_invitations SET status='CANCELLED',token_hash=NULL,cancelled_by=?,"
-                + "cancelled_at=UTC_TIMESTAMP(6),updated_by=?,version=version+1 WHERE id=?", actor, actor, id);
-        skipJobs(id);
+        invitations.cancel(id, actor);
+        jobs.skipOpenJobs(id);
     }
 
     public void reject(long actor, long id, String reason) {
-        jdbc.update("UPDATE employee_invitations SET status='REJECTED',token_hash=NULL,rejected_by=?,"
-                + "rejected_at=UTC_TIMESTAMP(6),rejection_reason=?,updated_by=?,version=version+1 WHERE id=?", actor, reason, actor, id);
-        skipJobs(id);
+        invitations.reject(id, actor, reason);
+        jobs.skipOpenJobs(id);
     }
 
     /** Server-side view of a link holder's invitation. The token hash never leaves this layer. */
@@ -152,38 +134,26 @@ public class InvitationManagementRepository {
             String state, Instant expiresAt, byte[] tokenHash) {}
 
     public Optional<Link> link(byte[] tokenHash) {
-        return jdbc.queryForList("SELECT id FROM employee_invitations WHERE token_hash=?", Long.class, tokenHash)
-                .stream().findFirst().flatMap(id -> link(id, false));
+        return invitations.findIdsByTokenHash(tokenHash).stream().findFirst().flatMap(id -> link(id, false));
     }
 
+    /**
+     * The former statement joined branches for the name. Callers that lock already hold every branch row through
+     * AuthorizedCommands, so the name now comes from the branch module's session contract without a join.
+     */
     public Optional<Link> link(long id, boolean lock) {
-        return jdbc.query("SELECT i.id,i.branch_id,b.name branch_name,i.invitee_name,i.invitee_email,i.initial_role,"
-                + "i.status,i.expires_at,i.token_hash FROM employee_invitations i JOIN branches b ON b.id=i.branch_id "
-                + "WHERE i.id=?" + (lock ? " FOR UPDATE" : ""), (rs, row) -> new Link(rs.getLong("id"),
-                        rs.getLong("branch_id"), rs.getString("branch_name"), rs.getString("invitee_name"),
-                        rs.getString("invitee_email"), rs.getString("initial_role"), rs.getString("status"),
-                        rs.getTimestamp("expires_at").toInstant(), rs.getBytes("token_hash")), id).stream().findFirst();
+        return (lock ? invitations.findForUpdateById(id) : invitations.findById(id)).map(i -> new Link(i.getId(), i.getBranchId(),
+                branches.names(List.of(i.getBranchId())).get(i.getBranchId()), i.getInviteeName(), i.getInviteeEmail(),
+                i.getInitialRole().name(), i.getStatus().name(), i.getExpiresAt(), i.getTokenHash()));
     }
 
     public void accept(long employee, long id) {
-        jdbc.update("UPDATE employee_invitations SET status='ACCEPTED',token_hash=NULL,accepted_employee_id=?,"
-                + "accepted_at=UTC_TIMESTAMP(6),updated_by=?,version=version+1 WHERE id=? AND status='PENDING'", employee, employee, id);
-        skipJobs(id);
+        invitations.accept(id, employee);
+        jobs.skipOpenJobs(id);
     }
 
     public void approve(long actor, long id) {
-        jdbc.update("UPDATE employee_invitations SET status='APPROVED',approved_by=?,approved_at=UTC_TIMESTAMP(6),"
-                + "updated_by=?,version=version+1 WHERE id=? AND status='ACCEPTED'", actor, actor, id);
-    }
-
-    private void enqueue(long invitation, long revision) {
-        jdbc.update("INSERT INTO invitation_send_jobs(invitation_id,revision,status,next_attempt_at) VALUES (?,?,'PENDING',UTC_TIMESTAMP(6))",
-                invitation, revision);
-    }
-
-    private void skipJobs(long invitation) {
-        jdbc.update("UPDATE invitation_send_jobs SET status='SKIPPED',next_attempt_at=NULL,locked_until=NULL,worker_id=NULL "
-                + "WHERE invitation_id=? AND status IN ('PENDING','PROCESSING','FAILED')", invitation);
+        invitations.approve(id, actor);
     }
 
     public void changed(long actor, long branch, long id, String action, Invitation before, Invitation after, String requestId) {
