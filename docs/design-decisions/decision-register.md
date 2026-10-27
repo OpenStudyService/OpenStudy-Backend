@@ -59,6 +59,8 @@ M1-04(JPA 업무 엔티티)와 달리 현재 업무 저장소 13개는 `JdbcTemp
 | JPA-03 | 소속·권한 테이블 소유 모듈   | A    | A       | A: `branch_memberships`·`membership_permission_grants`는 authorization 모듈이 엔티티를 소유하고 employee는 공개 service로 요청. B: 현재처럼 employee 모듈이 소유                                                                   | 2026-10-27 사용자 |
 | JPA-04 | 전환 시점                    | A    | A       | A: 진행 중인 백엔드 작업 브랜치를 병합한 뒤 모듈 단위로 전환 시작. B: 병행 진행(같은 저장소 파일 충돌 감수)                                                                                                                      | 2026-10-27 사용자 |
 
+2026-10-28: 0~7단계 전환을 마쳤다. 업무 모듈에는 `JdbcTemplate`이 없고, 직접 JDBC는 Spring 컨텍스트 없이 실행하는 `OwnerBootstrap`(M1-10)에만 남긴다. JPA-01에 따라 native SQL로 남긴 곳은 지점·직원의 소속 EXISTS 판정, 권한 상태·명령 잠금(`AuthorizationRepository`), 프리셋·소속·초대 권한 행의 `FOR SHARE`, 상품 `FOR UPDATE`/`FOR SHARE`, 가드 잠금, 전체 지점 무효화 `INSERT ... SELECT`, 비활성화 시 세션 삭제다. 규칙과 근거는 [디렉토리 구조의 데이터 접근 규칙](../architecture/directory-structure.md#데이터-접근-규칙-2026-10-28-jpa-전환-완료)과 [7단계 기록](../development-log/2026-10-28-jpa-migration-phase7-cleanup.md)을 따른다.
+
 ## 별도 조건과 충돌 조정
 
 설계 대화는 2026-10-18 사용자 요청에 따라 다음 질문부터 3개 항목씩 묶어서 진행한다. 각 항목의 의미·선택지·trade-off·권장 이유를 설명하고, 묶음 제시가 일괄 승인으로 해석되지 않도록 실제 답변만

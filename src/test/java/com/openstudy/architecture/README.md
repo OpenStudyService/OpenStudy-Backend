@@ -1,6 +1,11 @@
 # 아키텍처 검사 위치
 
-기준일: 2026-10-22 KST. 현재 구조는 [디렉터리 설계](../../../../../../docs/architecture/directory-structure.md)를 따른다. 아직 ArchUnit 의존성과 실행 가능한 경계 테스트는 없으며 이 폴더는 후속 검사 위치다.
+기준일: 2026-10-28 KST. 현재 구조는 [디렉터리 설계](../../../../../../docs/architecture/directory-structure.md)를 따른다. ArchUnit 의존성 없이 소스 파일을 읽는 검사 테스트를 둔다.
+
+현재 실행되는 검사는 다음과 같다.
+
+- `ModuleBoundaryTests`: 다른 모듈은 service·dto만 참조하고 모듈 순환이 없는지.
+- `PersistenceAccessTests`: 직접 JDBC(`JdbcTemplate`·`JdbcClient`·`Connection`)는 `bootstrap/OwnerBootstrap`에만 있고, native SQL은 `*Repository`에만 있는지. 위반·허용 예제로 규칙 자체도 검증한다.
 
 후속 검사는 다음 규칙을 대상으로 한다.
 
@@ -10,4 +15,4 @@
 - 다른 모듈의 Controller·Repository·Entity 접근과 모듈 간 JPA 직접 연관관계를 금지한다.
 - 모듈 순환 의존을 금지하고 common은 업무 모듈에 의존하지 않는다. 업무 코드는 config를 직접 호출하지 않는다.
 
-허용하는 예제와 거부해야 하는 예제로 규칙의 효력을 검증한다. 현재 문서 변경으로 경계 검사가 구현되거나 통과한 것은 아니다.
+허용하는 예제와 거부해야 하는 예제로 규칙의 효력을 검증한다. 위 후속 규칙은 아직 검사로 구현하지 않았다.
