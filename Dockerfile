@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 # Runtime image for the single OpenStudy Backend (ECS "service" container). Contract: docs/deployment/README.md
-# Build: docker build --platform linux/amd64 --build-arg SOURCE_COMMIT=$(git rev-parse HEAD) -t openstudy-backend:<commit> .
+# Build from a clean checkout of the commit (the context is the working tree):
+#   docker build --platform linux/amd64 --build-arg SOURCE_COMMIT=$(git rev-parse HEAD) -t openstudy-backend:<commit> .
 # Base images are pinned by multi-arch index digest (eclipse-temurin 21.0.12.1+1, Ubuntu noble, checked 2026-10-28).
 
 FROM eclipse-temurin:21-jdk-noble@sha256:57424b1d8eca9c4cf8a4fe226207027911f08d6758628891bf59fcfb53777029 AS build
@@ -28,9 +29,11 @@ RUN curl -fsSL "$RDS_CA_BUNDLE_URL" -o /tmp/rds-ca.pem \
 
 FROM eclipse-temurin:21-jre-noble@sha256:cd35bb33859641c5374415826a5951845104093eaa401cbe9d3d9023444f1c13
 ARG SOURCE_COMMIT=unknown
+# version replaces the Ubuntu release number inherited from the base image.
 LABEL org.opencontainers.image.title="openstudy-backend" \
       org.opencontainers.image.source="https://github.com/OpenStudyService/OpenStudy-Backend" \
-      org.opencontainers.image.revision="${SOURCE_COMMIT}"
+      org.opencontainers.image.revision="${SOURCE_COMMIT}" \
+      org.opencontainers.image.version="${SOURCE_COMMIT}"
 RUN groupadd --system --gid 10001 openstudy && useradd --system --uid 10001 --gid openstudy --no-create-home openstudy
 WORKDIR /app
 COPY --from=build /workspace/app.jar /app/app.jar
