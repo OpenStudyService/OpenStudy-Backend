@@ -29,6 +29,16 @@ class RequiredDeploymentEnvironmentTests {
     }
 
     @Test
+    void prodRejectsTheLocalProfile() {
+        var environment = new MockEnvironment();
+        RequiredDeploymentEnvironment.REQUIRED.forEach(name -> environment.setProperty(name, "value"));
+        environment.setActiveProfiles("prod", "local");
+
+        assertThatIllegalStateException().isThrownBy(() -> check.postProcessEnvironment(environment, new SpringApplication()))
+                .withMessageContaining("local profile");
+    }
+
+    @Test
     void otherProfilesAreNotChecked() {
         var environment = new MockEnvironment();
         environment.setActiveProfiles("test");
