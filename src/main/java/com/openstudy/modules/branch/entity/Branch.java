@@ -57,9 +57,20 @@ public class Branch {
         this.createdBy = actor; this.updatedBy = actor;
     }
 
-    public void rename(String name, Long actor) { this.name = name; this.updatedBy = actor; }
+    public void update(String name, String address, String phone) {
+        this.name = name; this.address = address; this.phone = phone;
+    }
 
-    public void addWeeklyHour(int weekday, boolean closed, Integer opensMinute, Integer closesMinute) {
+    public void changeStatus(BranchStatus status) { this.status = status; }
+
+    /**
+     * Sets one weekday in place. Rows are updated rather than deleted and re-inserted: Hibernate flushes inserts
+     * before orphan deletes, which would collide with the (branch_id, weekday) unique key.
+     */
+    public void setWeeklyHour(int weekday, boolean closed, Integer opensMinute, Integer closesMinute) {
+        for (var hour : weeklyHours) {
+            if (hour.getWeekday() == weekday) { hour.change(closed, opensMinute, closesMinute); return; }
+        }
         weeklyHours.add(new BranchWeeklyHour(this, weekday, closed, opensMinute, closesMinute));
     }
 

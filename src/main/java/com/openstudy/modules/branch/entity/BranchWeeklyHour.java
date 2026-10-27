@@ -36,6 +36,10 @@ public class BranchWeeklyHour {
         this.opensMinute = opensMinute; this.closesMinute = closesMinute;
     }
 
+    void change(boolean closed, Integer opensMinute, Integer closesMinute) {
+        this.closed = closed; this.opensMinute = opensMinute; this.closesMinute = closesMinute;
+    }
+
     public Long getId() { return id; }
     public int getWeekday() { return weekday; }
     public boolean isClosed() { return closed; }

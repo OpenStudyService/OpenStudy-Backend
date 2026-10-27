@@ -70,8 +70,8 @@ class JpaMappingTests {
     void branchPersistsWeeklyHoursAsOneAggregate() {
         var branch = new Branch("JPA-" + UUID.randomUUID().toString().substring(0, 8), "매핑 지점", "주소", null,
                 BranchStatus.ACTIVE, null);
-        branch.addWeeklyHour(1, false, 9 * 60, 26 * 60);
-        branch.addWeeklyHour(7, true, null, null);
+        branch.setWeeklyHour(1, false, 9 * 60, 26 * 60);
+        branch.setWeeklyHour(7, true, null, null);
         em.persist(branch);
         em.flush();
         em.clear();
@@ -83,7 +83,7 @@ class JpaMappingTests {
         assertThat(loaded.getWeeklyHours().getFirst().getClosesMinute()).isEqualTo(26 * 60);
         assertThat(loaded.getWeeklyHours().get(1).isClosed()).isTrue();
 
-        loaded.rename("바뀐 지점", null);
+        loaded.update("바뀐 지점", loaded.getAddress(), loaded.getPhone());
         em.flush();
         assertThat(jdbc.queryForObject("SELECT version FROM branches WHERE id=?", Long.class, loaded.getId())).isEqualTo(1);
     }
