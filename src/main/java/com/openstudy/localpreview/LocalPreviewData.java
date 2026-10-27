@@ -86,9 +86,12 @@ public class LocalPreviewData {
                     "price", 20000, "amount", 600, "hourlyRate", 2000, "days", 30, "status", "판매 중"));
         }
         // Preview fixtures follow the same current role/grant boundary as operational selection data.
-        var allowedPeople = authorization.scope(employeeId, scope, BranchAction.MANAGE_PEOPLE);
+        // This is an optional employee projection, not an authorization gate for the whole home.
+        // An explicit scope would throw for ordinary staff even though they can read that branch.
+        var allowedPeople = authorization.scope(employeeId, "all", BranchAction.MANAGE_PEOPLE);
         data.get("employees").removeIf(row -> !(user.owner() && user.id().equals(row.get("id")))
-                && !allowedPeople.contains(parseBranch(row.get("branchId"))));
+                && (!allowedPeople.contains(parseBranch(row.get("branchId")))
+                    || (!scope.equals("all") && !scope.equals(row.get("branchId")))));
         return data;
     }
 
