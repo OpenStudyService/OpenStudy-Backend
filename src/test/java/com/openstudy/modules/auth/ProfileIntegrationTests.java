@@ -24,6 +24,8 @@ import static org.assertj.core.api.Assertions.*;
 
 @MySqlIntegrationTest
 class ProfileIntegrationTests {
+    // Every login now writes its own audit row; profile assertions look only at profile changes.
+    private static final String NOT_LOGIN = "action NOT IN ('LOGIN_SUCCEEDED','LOGIN_FAILED','LOGIN_RATE_LIMITED')";
     @Autowired JdbcTemplate jdbc;
     @Autowired PasswordEncoder encoder;
     @Autowired ObjectMapper json;
@@ -56,7 +58,7 @@ class ProfileIntegrationTests {
     @AfterEach void cleanup() {
         for (long id : people) {
             jdbc.update("DELETE FROM SPRING_SESSION WHERE PRINCIPAL_NAME=?", Long.toString(id));
-            jdbc.update("DELETE FROM audit_events WHERE actor_employee_id=?", id);
+            jdbc.update("DELETE FROM audit_events WHERE actor_employee_id=? OR (entity_type='employee' AND entity_id=?)", id, id);
             jdbc.update("DELETE FROM workspace_event_outbox WHERE target_employee_id=? OR (entity_type IN ('employee','employees') AND entity_id=?)", id, id);
             jdbc.update("DELETE FROM branch_memberships WHERE employee_id=?", id);
         }
@@ -108,7 +110,7 @@ class ProfileIntegrationTests {
     private void untouched(long id) {
         assertThat(accounts.byId(id).nickname()).isEqualTo("이전 별명");
         assertThat(accounts.byId(id).version()).isZero();
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_events WHERE actor_employee_id=?", Long.class, id)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_events WHERE actor_employee_id=? AND " + NOT_LOGIN, Long.class, id)).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_id=? AND entity_type IN ('employee','employees')", Long.class, id)).isZero();
     }
     private void validation(HttpResponse<String> response, String field) {
@@ -144,7 +146,7 @@ class ProfileIntegrationTests {
                 assertThat(immutableAccount(id)).isEqualTo(fixed);
                 assertThat(memberships(id)).isEqualTo(grants);
                 assertThat(jdbc.queryForObject("SELECT updated_by FROM employees WHERE id=?", Long.class, id)).isEqualTo(id);
-                var audit = jdbc.queryForMap("SELECT * FROM audit_events WHERE actor_employee_id=?", id);
+                var audit = jdbc.queryForMap("SELECT * FROM audit_events WHERE actor_employee_id=? AND " + NOT_LOGIN, id);
                 assertThat(audit.get("action")).isEqualTo("UPDATE_PROFILE");
                 assertThat(audit.get("request_id")).isEqualTo(response.headers().firstValue("X-Request-ID").orElseThrow());
                 assertThat(audit.get("before_json").toString()).contains("이전 별명", "version").doesNotContain(hash, "password", "token");
@@ -254,7 +256,8 @@ class ProfileIntegrationTests {
             assertThat(accounts.byId(staff).version()).isEqualTo(1);
             assertThat(accounts.byId(staff).nickname()).isEqualTo(profile.statusCode() == 200 ? "경합 별명" : "이전 별명");
             assertThat(accounts.byId(staff).name()).isEqualTo(management.statusCode() == 200 ? "경합 이름" : "직원");
-            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_events WHERE entity_type='employee' AND entity_id=?", Long.class, staff)).isEqualTo(1);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_events WHERE entity_type='employee' AND entity_id=? AND " + NOT_LOGIN,
+                    Long.class, staff)).isEqualTo(1);
         }
     }
 
