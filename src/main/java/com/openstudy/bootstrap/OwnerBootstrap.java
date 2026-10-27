@@ -10,7 +10,6 @@ import java.util.Locale;
 import java.util.Map;
 
 import org.flywaydb.core.Flyway;
-import org.flywaydb.core.api.MigrationVersion;
 import org.flywaydb.core.api.logging.Log;
 import org.flywaydb.core.api.logging.LogCreator;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -45,9 +44,11 @@ public final class OwnerBootstrap {
             var flyway = Flyway.configure().dataSource(url, username, dbPassword)
                     .locations("classpath:db/migration").loggers(SilentMigrationLogger.class.getName()).load();
             flyway.validate();
-            if (flyway.info().current() == null
-                    || flyway.info().current().getVersion().compareTo(MigrationVersion.fromVersion("3")) < 0) {
-                throw new IllegalArgumentException("Apply the reviewed foundation migrations first.");
+            var migrations = flyway.info();
+            // A consolidated V1 is ready too. Require an applied, fully migrated schema,
+            // rather than tying readiness to the old V1-V3 numbering.
+            if (migrations.current() == null || migrations.pending().length != 0) {
+                throw new IllegalArgumentException("Apply all configured migrations before OWNER initialization.");
             }
             // Hash before acquiring the shared administrative lock; no sensitive values are logged.
             String hash = new BCryptPasswordEncoder(12).encode(password);

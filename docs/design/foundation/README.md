@@ -1,5 +1,7 @@
 # 1차 기반 기능 DB·API 설계
 
+2026-10-27 변경: 개발 DB의 실행 기준은 [통합 V1](../../db/README.md)이다. 모든 기존 데이터가 재생성 가능한 테스트 데이터라는 사용자 확인에 따라 [새 DB 전환 방침](../../db/foundation-upgrade.md)을 채택했다. 아래 V2/V3 설명과 과거 검증·ERD PDF는 당시 설계 기록이며 현재 실행 SQL은 `src/main/resources/db/migration/`를 따른다.
+
 2026-10-27 추가: Issue #15의 초대 미리보기·신규/기존 계정 수락·최종 승인은 [초대 수락·승인 구현 계약](invitation-acceptance-api.md)을 따른다. 기존 요청·응답 모델과 계약 버전은 유지하고 해당 operation의 구현 상태만 OpenAPI에 표시한다.
 
 2026-10-27 추가: Issue #14의 초대 발송 worker·SMTP·lease·재시도는 [메일 발송·장애 복구 계약](invitation-delivery.md)을 따른다. 기본 비활성이며 실제 운영 SMTP 수신 및 공개 수락·승인(#15)의 검증 범위를 구분한다.

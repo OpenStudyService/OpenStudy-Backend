@@ -5,7 +5,7 @@ OpenStudy 스터디카페 백오피스 백엔드 API
 
 Java 21, Spring Boot 4.1.1, Gradle Wrapper 9.8.1 기반의 단일 Gradle 프로젝트입니다. 빌드는 Groovy DSL, 애플리케이션 설정은 YAML을 사용합니다. 실행 클래스는 `com.openstudy.OpenstudyBackendApplication`입니다. 20개 업무 모듈의 골격, DB 연결 설정과 Flyway 초기 마이그레이션을 준비했고 Docker 전용 MySQL에서 앱 기동·마이그레이션·세션 저장·관련 제약을 검증했습니다. 기본 로그인·로그아웃·현재 사용자 조회와 JDBC 세션 인증을 구현했으며 나머지 업무 API와 운영 환경 검수는 후속 범위입니다.
 
-검토 완료된 SRS 8개 중분류·61개 요구사항의 [1차 DB·API 설계](docs/design/foundation/README.md)를 관리합니다. 기반 DB는 Flyway V2/V3로 구현·검증했습니다. [전체 구축 SQL·ERD](docs/db/README.md), [API 엑셀](docs/design/foundation/OpenStudy-Foundation-API.xlsx), [개발 계획](docs/design/foundation/implementation-plan.md)을 제공합니다. 업무 API는 구현 전 목표 계약이며 GitHub 마일스톤·이슈는 아직 등록하지 않았습니다.
+검토 완료된 SRS 8개 중분류·61개 요구사항의 [1차 DB·API 설계](docs/design/foundation/README.md)를 관리합니다. 현재 개발 DB 기준은 빈 DB용 통합 V1입니다. 기존 V1~V3 적용 개발 DB는 [재생성 방침](docs/db/foundation-upgrade.md)에 따라 전환합니다. [전체 구축 SQL·ERD](docs/db/README.md), [API 엑셀](docs/design/foundation/OpenStudy-Foundation-API.xlsx), [개발 계획](docs/design/foundation/implementation-plan.md)을 제공합니다. 업무 API는 구현 전 목표 계약이며 GitHub 마일스톤·이슈는 아직 등록하지 않았습니다.
 
 ## 디렉토리 구조
 
@@ -116,7 +116,7 @@ Spring Boot가 실행 작업 디렉터리의 `.env`를 Java properties 형식으
 
 ### 운영 사장님 최초 초기화
 
-일반 서버 부팅과 분리된 `./gradlew ownerBootstrap --no-daemon`(Windows: `.\gradlew.bat ownerBootstrap --no-daemon`) 명령을 제공합니다. 서버, 웹 포트, preview 시드, 메일을 실행하지 않습니다. 검토한 Flyway V3 이상 스키마에만 연결하며 마이그레이션을 자동 적용하지 않습니다. 먼저 [DB 업그레이드 절차](docs/db/foundation-upgrade.md)를 완료합니다.
+일반 서버 부팅과 분리된 `./gradlew ownerBootstrap --no-daemon`(Windows: `.\gradlew.bat ownerBootstrap --no-daemon`) 명령을 제공합니다. 서버, 웹 포트, preview 시드, 메일을 실행하지 않습니다. 통합 V1을 포함해 현재 코드의 migration이 모두 적용되고 Flyway 검증을 통과한 스키마에만 연결합니다. 마이그레이션을 자동 적용하지 않습니다. 먼저 [DB 전환 절차](docs/db/foundation-upgrade.md)를 완료합니다.
 
 명령 실행 프로세스에 다음 환경 변수를 주입합니다. 운영에서는 비밀값 관리 서비스 또는 제한된 작업 실행 환경이 주입하도록 합니다. 비밀번호를 CLI 인자나 Gradle `-P` 인자로 전달하지 않습니다.
 

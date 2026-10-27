@@ -3,6 +3,8 @@ package com.openstudy.integration.database;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -14,6 +16,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -65,6 +68,8 @@ class OwnerBootstrapTests {
     long count(String table) { return jdbc.queryForObject("SELECT COUNT(*) FROM " + table, Long.class); }
 
     @Test void createsOneActiveOwnerAndAuditWithoutMembershipOrSecretAuditData() {
+        assertThat(jdbc.queryForObject("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank DESC LIMIT 1", String.class))
+                .isEqualTo("1");
         assertThat(run(environment).code()).isZero();
         var account = jdbc.queryForMap("SELECT * FROM employees");
         assertThat(account).containsEntry("email", "owner@example.com").containsEntry("global_role", "OWNER")
@@ -138,18 +143,42 @@ class OwnerBootstrapTests {
         assertThat(count("employees")).isZero();
     }
 
-    @Test void actualCommandStartsNoServerAndPrintsNoSecrets() throws Exception {
+    @Test void unmigratedDatabaseIsRejectedWithoutCreatingSchema() {
+        Flyway.configure().dataSource(dataSource).cleanDisabled(false).load().clean();
+        assertThat(run(environment).code()).isNotZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name <> 'flyway_schema_history'", Long.class))
+                .isZero();
+    }
+
+    @Test void pendingMigrationIsRejectedWithoutApplyingItOrCreatingOwner(@TempDir Path directory) throws Exception {
+        Path migrations = Files.createDirectories(directory.resolve("db/migration"));
+        Files.writeString(migrations.resolve("V2__bootstrap_pending_test.sql"),
+                "CREATE TABLE bootstrap_pending_probe (id INT PRIMARY KEY);");
+        String classpath = directory + java.io.File.pathSeparator + System.getProperty("ownerBootstrap.runtimeClasspath");
+        assertThat(command(classpath).code()).isNotZero();
+        assertThat(count("employees")).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE version='2'", Long.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='bootstrap_pending_probe'", Long.class))
+                .isZero();
+    }
+
+    private Result command(String classpath) throws Exception {
         String executable = java.nio.file.Path.of(System.getProperty("java.home"), "bin", "java").toString();
-        var builder = new ProcessBuilder(executable, "-cp", System.getProperty("ownerBootstrap.runtimeClasspath"),
+        var builder = new ProcessBuilder(executable, "-cp", classpath,
                 OwnerBootstrap.class.getName()).redirectErrorStream(true);
         builder.environment().putAll(environment);
         var process = builder.start();
         assertThat(process.waitFor(45, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
         String text = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        assertThat(process.exitValue()).isZero();
-        assertThat(text.strip()).isEqualTo("Initial OWNER created.");
         assertThat(text).doesNotContain(environment.get("OWNER_PASSWORD"), mysql.getPassword(), mysql.getJdbcUrl(),
                 "Tomcat", "Started OpenstudyBackendApplication", "Hikari", "Spring Boot");
+        return new Result(process.exitValue(), text);
+    }
+
+    @Test void actualCommandStartsNoServerAndPrintsNoSecrets() throws Exception {
+        var result = command(System.getProperty("ownerBootstrap.runtimeClasspath"));
+        assertThat(result.code()).isZero();
+        assertThat(result.output().strip()).isEqualTo("Initial OWNER created.");
         assertThat(count("employees")).isEqualTo(1);
         assertThat(count("branches")).isZero();
     }
