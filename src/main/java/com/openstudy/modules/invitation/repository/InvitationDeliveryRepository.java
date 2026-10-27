@@ -8,6 +8,9 @@ import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.ObjectMapper;
+import com.openstudy.common.audit.AuditEvent;
+import com.openstudy.common.audit.AuditTrail;
+import com.openstudy.common.outbox.WorkspaceOutbox;
 
 /** Worker persistence; guarded transitions lock the invitation parent before its job. */
 @Repository
@@ -15,7 +18,12 @@ public class InvitationDeliveryRepository {
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
 
-    public InvitationDeliveryRepository(JdbcTemplate jdbc, ObjectMapper json) { this.jdbc = jdbc; this.json = json; }
+    private final AuditTrail audit;
+    private final WorkspaceOutbox outbox;
+
+    public InvitationDeliveryRepository(JdbcTemplate jdbc, ObjectMapper json, AuditTrail audit, WorkspaceOutbox outbox) {
+        this.jdbc = jdbc; this.json = json; this.audit = audit; this.outbox = outbox;
+    }
 
     public record Candidate(long invitationId, long jobId) {}
     public record InvitationState(long id, long branchId, String status, long revision, Instant expiresAt,
@@ -99,10 +107,8 @@ public class InvitationDeliveryRepository {
     /** Operational evidence has IDs and fixed state codes only; no recipient, token or token hash. */
     public void changed(InvitationState invitation, Job job, String action) {
         String snapshot = json.writeValueAsString(Map.of("jobId", Long.toString(job.id()), "revision", job.revision()));
-        jdbc.update("INSERT INTO audit_events(actor_employee_id,branch_id,entity_type,entity_id,action,after_json) "
-                + "VALUES (NULL,?,'invitations',?,?,?)", invitation.branchId(), invitation.id(), action, snapshot);
-        jdbc.update("INSERT INTO workspace_event_outbox(branch_id,entity_type,entity_id,event_type) VALUES (?,'invitations',?,'INVALIDATE')",
-                invitation.branchId(), invitation.id());
+        audit.record(AuditEvent.change(null, invitation.branchId(), "invitations", invitation.id(), action, null, snapshot, null));
+        outbox.invalidate(invitation.branchId(), "invitations", invitation.id());
     }
 
     private static Instant instant(Timestamp timestamp) { return timestamp == null ? null : timestamp.toInstant(); }

@@ -4,6 +4,10 @@ import java.util.*;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.ObjectMapper;
+import com.openstudy.common.audit.AuditEvent;
+import com.openstudy.common.audit.AuditTrail;
+import com.openstudy.common.outbox.WorkspaceEventType;
+import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.modules.employee.dto.ManagedEmployee;
 import com.openstudy.modules.employee.dto.ManagedEmployee.Membership;
@@ -12,7 +16,11 @@ import com.openstudy.modules.employee.dto.ManagedEmployee.Membership;
 public class EmployeeManagementRepository {
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
-    public EmployeeManagementRepository(JdbcTemplate jdbc, ObjectMapper json) { this.jdbc = jdbc; this.json = json; }
+    private final AuditTrail audit;
+    private final WorkspaceOutbox outbox;
+    public EmployeeManagementRepository(JdbcTemplate jdbc, ObjectMapper json, AuditTrail audit, WorkspaceOutbox outbox) {
+        this.jdbc = jdbc; this.json = json; this.audit = audit; this.outbox = outbox;
+    }
 
     public List<Long> ids() { return jdbc.queryForList("SELECT id FROM employees ORDER BY id", Long.class); }
     public Optional<ManagedEmployee> find(long id, Set<Long> visible, boolean all, boolean lock) {
@@ -49,16 +57,16 @@ public class EmployeeManagementRepository {
         jdbc.update("UPDATE employees SET updated_by=?,version=version+1 WHERE id=?", actor, employee);
     }
     public void changed(long actor, Long branch, long target, String action, Object before, Object after, String requestId) {
-        changed(actor, branch, target, action, before, after, requestId, "AUTHORIZATION_CHANGED");
+        changed(actor, branch, target, action, before, after, requestId, WorkspaceEventType.AUTHORIZATION_CHANGED);
     }
     public void profileChanged(long actor, Object before, Object after, String requestId) {
-        changed(actor, null, actor, "UPDATE_PROFILE", before, after, requestId, "INVALIDATE");
+        changed(actor, null, actor, "UPDATE_PROFILE", before, after, requestId, WorkspaceEventType.INVALIDATE);
     }
-    private void changed(long actor, Long branch, long target, String action, Object before, Object after, String requestId, String eventType) {
-        jdbc.update("INSERT INTO audit_events(actor_employee_id,branch_id,entity_type,entity_id,action,before_json,after_json,request_id) VALUES (?,?,'employee',?,?,?,?,?)",
-                actor, branch, target, action, json.writeValueAsString(before), json.writeValueAsString(after), requestId);
-        jdbc.update("INSERT INTO workspace_event_outbox(branch_id,target_employee_id,entity_type,entity_id,event_type) VALUES (?,?,'employee',?,?)", branch, target, target, eventType);
-        jdbc.update("INSERT INTO workspace_event_outbox(branch_id,entity_type,entity_id,event_type) VALUES (?,'employees',?,'INVALIDATE')", branch, target);
+    private void changed(long actor, Long branch, long target, String action, Object before, Object after, String requestId, WorkspaceEventType eventType) {
+        audit.record(AuditEvent.change(actor, branch, "employee", target, action,
+                json.writeValueAsString(before), json.writeValueAsString(after), requestId));
+        outbox.notifyEmployee(branch, target, "employee", target, eventType);
+        outbox.invalidate(branch, "employees", target);
     }
     public static String status(String db) { return switch(db) { case "ACTIVE" -> "활성"; case "PENDING" -> "승인 대기"; case "SUSPENDED" -> "이용 제한"; case "LEFT" -> "비활성"; default -> throw new IllegalStateException(); }; }
     private static String membershipStatus(String db) { return switch(db) { case "ACTIVE" -> "활성"; case "PENDING" -> "승인 대기"; case "REVOKED" -> "회수"; default -> throw new IllegalStateException(); }; }

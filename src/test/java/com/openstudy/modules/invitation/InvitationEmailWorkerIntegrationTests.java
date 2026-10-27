@@ -30,6 +30,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 
+import com.openstudy.common.audit.AuditTrail;
+import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.modules.invitation.repository.InvitationDeliveryRepository;
 import com.openstudy.modules.invitation.service.DeliveryAttempt;
 import com.openstudy.modules.invitation.service.InvitationDeliveryService;
@@ -49,6 +51,8 @@ class InvitationEmailWorkerIntegrationTests {
     @Autowired InvitationDeliveryRepository repository;
     @Autowired InvitationManagementService management;
     @Autowired ObjectMapper json;
+    @Autowired AuditTrail audit;
+    @Autowired WorkspaceOutbox outbox;
     private long owner, branch;
     private MutableClock clock;
     private InvitationDeliverySettings settings;
@@ -364,7 +368,7 @@ class InvitationEmailWorkerIntegrationTests {
     }
 
     private InvitationEmailWorker workerWithFailingAudit(String failedAction) {
-        var faultyRepository = new InvitationDeliveryRepository(jdbc, json) {
+        var faultyRepository = new InvitationDeliveryRepository(jdbc, json, audit, outbox) {
             @Override public void changed(InvitationState invitation, Job job, String action) {
                 super.changed(invitation, job, action);
                 if (failedAction.equals(action)) throw new IllegalStateException("Controlled worker audit failure");

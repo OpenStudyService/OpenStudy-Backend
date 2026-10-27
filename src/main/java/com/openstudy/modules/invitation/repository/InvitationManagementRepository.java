@@ -14,7 +14,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.ObjectMapper;
+import com.openstudy.common.audit.AuditEvent;
+import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
+import com.openstudy.common.idempotency.IdempotencyStore;
+import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.modules.invitation.dto.Invitation;
 
@@ -23,9 +27,18 @@ public class InvitationManagementRepository {
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
 
-    public InvitationManagementRepository(JdbcTemplate jdbc, ObjectMapper json) {
+    private static final String CREATE = "createInvitation";
+    private final AuditTrail audit;
+    private final WorkspaceOutbox outbox;
+    private final IdempotencyStore requests;
+
+    public InvitationManagementRepository(JdbcTemplate jdbc, ObjectMapper json, AuditTrail audit, WorkspaceOutbox outbox,
+            IdempotencyStore requests) {
         this.jdbc = jdbc;
         this.json = json;
+        this.audit = audit;
+        this.outbox = outbox;
+        this.requests = requests;
     }
 
     public record Stored(long id, long branch, String email, String role, String state, long revision,
@@ -174,37 +187,27 @@ public class InvitationManagementRepository {
     }
 
     public void changed(long actor, long branch, long id, String action, Invitation before, Invitation after, String requestId) {
-        jdbc.update("INSERT INTO audit_events(actor_employee_id,branch_id,entity_type,entity_id,action,before_json,after_json,request_id) "
-                + "VALUES (?,?,'invitations',?,?,?,?,?)", actor, branch, id, action,
-                before == null ? null : json.writeValueAsString(before), json.writeValueAsString(after), requestId);
-        jdbc.update("INSERT INTO workspace_event_outbox(branch_id,entity_type,entity_id,event_type) VALUES (?,'invitations',?,'INVALIDATE')",
-                branch, id);
+        audit.record(AuditEvent.change(actor, branch, "invitations", id, action,
+                before == null ? null : json.writeValueAsString(before), json.writeValueAsString(after), requestId));
+        outbox.invalidate(branch, "invitations", id);
     }
 
-    private record StoredRequest(long id, byte[] hash, String response, Instant expiresAt) {}
-
     public Optional<Invitation> replay(long actor, long branch, String key, Object input, Instant now) {
-        var rows = jdbc.query("SELECT id,request_hash,response_json,expires_at FROM idempotency_records "
-                + "WHERE actor_employee_id=? AND operation='createInvitation' AND scope_key=? AND idempotency_key=? FOR UPDATE",
-                (rs, row) -> new StoredRequest(rs.getLong("id"), rs.getBytes("request_hash"),
-                        rs.getString("response_json"), rs.getTimestamp("expires_at").toInstant()),
-                actor, Long.toString(branch), key);
-        if (rows.isEmpty()) return Optional.empty();
-        var prior = rows.getFirst();
-        if (!now.isBefore(prior.expiresAt())) {
-            jdbc.update("DELETE FROM idempotency_records WHERE id=?", prior.id());
+        var stored = requests.lock(actor, CREATE, Long.toString(branch), key);
+        if (stored.isEmpty()) return Optional.empty();
+        var prior = stored.get();
+        if (!now.isBefore(prior.getExpiresAt())) {
+            requests.discard(prior);
             return Optional.empty();
         }
-        if (!MessageDigest.isEqual(hash(input), prior.hash())) {
+        if (!MessageDigest.isEqual(hash(input), prior.getRequestHash())) {
             throw ApiException.conflict("IDEMPOTENCY_CONFLICT", "같은 키에 다른 입력을 사용할 수 없습니다.");
         }
-        return Optional.of(json.readValue(prior.response(), Invitation.class));
+        return Optional.of(json.readValue(prior.getResponseJson(), Invitation.class));
     }
 
     public void remember(long actor, long branch, String key, Object input, Invitation response, Instant expires) {
-        jdbc.update("INSERT INTO idempotency_records(actor_employee_id,operation,scope_key,idempotency_key,request_hash,"
-                + "state,http_status,response_json,expires_at) VALUES (?,'createInvitation',?,?,?,'COMPLETED',201,?,?)",
-                actor, Long.toString(branch), key, hash(input), json.writeValueAsString(response), Timestamp.from(expires));
+        requests.complete(actor, CREATE, Long.toString(branch), key, hash(input), 201, json.writeValueAsString(response), expires);
     }
 
     private byte[] hash(Object input) {

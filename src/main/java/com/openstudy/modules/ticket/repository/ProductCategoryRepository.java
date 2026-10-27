@@ -2,10 +2,16 @@ package com.openstudy.modules.ticket.repository;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import com.openstudy.common.audit.AuditEvent;
+import com.openstudy.common.audit.AuditTrail;
+import com.openstudy.common.idempotency.IdempotencyStore;
+import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.modules.ticket.dto.ProductCategory;
 import com.openstudy.modules.ticket.dto.ProductTerms;
@@ -13,7 +19,16 @@ import com.openstudy.modules.ticket.dto.ProductTerms;
 @Repository
 public class ProductCategoryRepository {
     private final JdbcTemplate jdbc;
-    public ProductCategoryRepository(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+    private static final String CREATE = "product-categories:create";
+    private final AuditTrail audit;
+    private final WorkspaceOutbox outbox;
+    private final IdempotencyStore requests;
+    private final Clock clock;
+
+    public ProductCategoryRepository(JdbcTemplate jdbc, AuditTrail audit, WorkspaceOutbox outbox, IdempotencyStore requests,
+            Clock clock) {
+        this.jdbc = jdbc; this.audit = audit; this.outbox = outbox; this.requests = requests; this.clock = clock;
+    }
 
     public List<ProductCategory> all() {
         return jdbc.query("SELECT * FROM product_categories ORDER BY id", (rs, n) -> map(rs, ""));
@@ -42,23 +57,18 @@ public class ProductCategoryRepository {
     public record Stored(byte[] hash, String response) {}
 
     public List<Stored> request(long actor, String key) {
-        return jdbc.query("SELECT request_hash,response_json FROM idempotency_records WHERE actor_employee_id=? "
-                + "AND operation='product-categories:create' AND scope_key='all' AND idempotency_key=? FOR UPDATE",
-                (rs, n) -> new Stored(rs.getBytes(1), rs.getString(2)), actor, key);
+        return requests.lock(actor, CREATE, "all", key).map(r -> new Stored(r.getRequestHash(), r.getResponseJson()))
+                .stream().toList();
     }
 
     public void saveRequest(long actor, String key, byte[] hash, String response) {
-        jdbc.update("INSERT INTO idempotency_records(actor_employee_id,operation,scope_key,idempotency_key,request_hash,state,"
-                + "http_status,response_json,expires_at) VALUES(?,'product-categories:create','all',?,?,'COMPLETED',201,?,"
-                + "UTC_TIMESTAMP(6)+INTERVAL 24 HOUR)", actor, key, hash, response);
+        requests.complete(actor, CREATE, "all", key, hash, 201, response, clock.instant().plus(Duration.ofHours(24)));
     }
 
     public void audit(long actor, long id, String action, String before, String after, String requestId) {
-        jdbc.update("INSERT INTO audit_events(actor_employee_id,entity_type,entity_id,action,before_json,after_json,request_id) "
-                + "VALUES(?,'product_categories',?,?,?,?,?)", actor, id, action, before, after, requestId);
+        audit.record(AuditEvent.change(actor, null, "product_categories", id, action, before, after, requestId));
         // Categories are shared by every branch, so every branch stream is told to reload product data.
-        jdbc.update("INSERT INTO workspace_event_outbox(branch_id,entity_type,entity_id,event_type) "
-                + "SELECT id,'product-categories',?,'INVALIDATE' FROM branches", id);
+        outbox.invalidateEveryBranch("product-categories", id);
     }
 
     /** Maps columns with an optional alias prefix so product queries can join the category in one statement. */
