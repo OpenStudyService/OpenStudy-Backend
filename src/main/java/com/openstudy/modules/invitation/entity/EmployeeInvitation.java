@@ -17,8 +17,8 @@ import org.hibernate.generator.EventType;
 import org.hibernate.type.SqlTypes;
 
 /**
- * Flyway owns the schema; ddl-auto=validate checks this mapping. Writes still go through the JDBC invitation
- * repositories until the invitation module is migrated, so this entity is read-only for now.
+ * Flyway owns the schema; ddl-auto=validate checks this mapping. Mail delivery changes it through JPQL updates in
+ * InvitationRepository (phase 6-1); management and acceptance still write through JDBC until phase 6-2.
  * <p>active_invitation_slot is a STORED generated column backing the one-active-invitation UNIQUE key; not mapped.
  * Actor columns are plain employee ids: other modules' entities are never referenced (JPA-03).</p>
  */
@@ -85,6 +85,7 @@ public class EmployeeInvitation {
     public InitialRole getInitialRole() { return initialRole; }
     public Long getPresetId() { return presetId; }
     public InvitationStatus getStatus() { return status; }
+    public byte[] getTokenHash() { return tokenHash == null ? null : tokenHash.clone(); }
     public int getRevision() { return revision; }
     public Instant getExpiresAt() { return expiresAt; }
     public Long getAcceptedEmployeeId() { return acceptedEmployeeId; }
