@@ -12,29 +12,33 @@ import com.openstudy.modules.authorization.service.*;
 import com.openstudy.modules.employee.dto.ManagedEmployee;
 import com.openstudy.modules.employee.dto.ManagedEmployee.Membership;
 import com.openstudy.modules.employee.dto.ManagedEmployee.MembershipResult;
-import com.openstudy.modules.employee.repository.EmployeeManagementRepository;
+import com.openstudy.modules.employee.entity.EmployeeStatus;
+import com.openstudy.modules.employee.entity.GlobalRole;
+import com.openstudy.modules.employee.repository.EmployeeRepository;
 
 @Service
 public class EmployeeManagementService {
-    private final EmployeeManagementRepository repository;
+    private final EmployeeRepository repository;
+    private final EmployeeChanges changes;
     private final AuthorizationService authorization;
     private final AuthorizedCommands commands;
     private final PermissionPresetService presets;
     private final MembershipService memberships;
-    public EmployeeManagementService(EmployeeManagementRepository repository, AuthorizationService authorization,
+    public EmployeeManagementService(EmployeeRepository repository, EmployeeChanges changes, AuthorizationService authorization,
             AuthorizedCommands commands, PermissionPresetService presets, MembershipService memberships) {
-        this.repository=repository; this.authorization=authorization; this.commands=commands; this.presets=presets; this.memberships=memberships;
+        this.repository=repository; this.changes=changes; this.authorization=authorization; this.commands=commands; this.presets=presets; this.memberships=memberships;
     }
     /** The former single read: the account row (FOR UPDATE when locking), then its memberships and grants. */
     private Optional<ManagedEmployee> find(long id, Set<Long> visible, boolean all, boolean lock) {
-        return repository.account(id, lock).map(account -> {
+        return (lock ? repository.findForUpdateById(id) : repository.findById(id)).map(account -> {
             var rows=memberships.all(id,lock).stream().filter(m -> all || visible.contains(m.branchId()))
                     .map(m -> new Membership(Long.toString(m.branchId()), "MANAGER".equals(m.role()) ? "admin" : "staff",
-                            EmployeeManagementRepository.membershipStatus(m.status()), m.permissions(), ApiVersion.fromDatabase(m.dbVersion())))
+                            EmployeeChanges.membershipStatus(m.status()), m.permissions(), ApiVersion.fromDatabase(m.dbVersion())))
                     .toList();
-            return new ManagedEmployee(account.id(), ApiVersion.fromDatabase(account.dbVersion()), account.createdAt(), account.updatedAt(),
-                    rows.isEmpty() ? "all" : rows.getFirst().branchId(), account.name(), account.email(),
-                    EmployeeManagementRepository.status(account.status()), account.nickname(), account.avatarUrl(), account.owner(), rows);
+            return new ManagedEmployee(Long.toString(account.getId()), ApiVersion.fromDatabase(account.getVersion()), account.getCreatedAt(),
+                    account.getUpdatedAt(), rows.isEmpty() ? "all" : rows.getFirst().branchId(), account.getName(), account.getEmail(),
+                    EmployeeChanges.status(account.getStatus().name()), account.getNickname(), Objects.toString(account.getAvatarUrl(), ""),
+                    account.getGlobalRole() == GlobalRole.OWNER, rows);
         });
     }
     private record Visibility(Set<Long> branches, boolean all) {}
@@ -48,7 +52,7 @@ public class EmployeeManagementService {
     public PageResponse<ManagedEmployee> list(long actor, String scope, ListQuery query, String status) {
         if(status!=null && !Set.of("활성","승인 대기","이용 제한","비활성").contains(status)) throw ApiException.validation("status","올바른 상태를 선택해 주세요.");
         var visibility=visible(actor,scope);
-        var rows=repository.ids().stream().map(id->find(id,visibility.branches(),visibility.all(),false).orElseThrow())
+        var rows=repository.findAllIds().stream().map(id->find(id,visibility.branches(),visibility.all(),false).orElseThrow())
                 .filter(e->visibility.all() || !e.memberships().isEmpty())
                 .filter(e->status==null || status.equals(e.status()))
                 .filter(e->(e.name()+" "+e.email()).toLowerCase(Locale.ROOT).contains(query.q().toLowerCase(Locale.ROOT))).toList();
@@ -71,9 +75,13 @@ public class EmployeeManagementService {
             String status=input.has("status") ? input.choice("status","활성","이용 제한","비활성") : before.status();
             if("승인 대기".equals(before.status()) && "활성".equals(status)) throw ApiException.conflict("INVALID_STATE","초대 승인으로만 활성화할 수 있습니다.");
             String db=switch(status) { case "활성"->"ACTIVE"; case "이용 제한"->"SUSPENDED"; case "비활성"->"LEFT"; case "승인 대기"->"PENDING"; default->throw new IllegalStateException(); };
-            repository.updateAccount(target,actor,name,db);
+            var account=repository.findForUpdateById(target).orElseThrow();
+            account.changeAccount(name,EmployeeStatus.valueOf(db),actor);
+            changes.saved(account,before.version()-1);
+            // Every session of a disabled account ends now; requests are independently guarded against current status too.
+            if(!"ACTIVE".equals(db)) repository.deleteSessions(Long.toString(target));
             var result=find(target,Set.of(),true,true).orElseThrow();
-            repository.changed(actor,null,target,"UPDATE_ACCOUNT",before,result,requestId); return result;
+            changes.changed(actor,null,target,"UPDATE_ACCOUNT",before,result,requestId); return result;
         });
     }
     public MembershipResult membership(long actor, long target, long branch, String scope, Map<String,Object> body, String requestId) {
@@ -91,10 +99,12 @@ public class EmployeeManagementService {
             var grants=input.permissions();
             presets.validateCopy(role,grants,input.has("presetId") ? input.id("presetId") : null);
             memberships.update(target,branch,actor,dbRole,dbStatus,grants);
-            repository.touch(target,actor);
+            var account=repository.findForUpdateById(target).orElseThrow();
+            account.touch(actor);
+            changes.saved(account,before.version()-1);
             var after=find(target,Set.of(branch),false,true).orElseThrow();
             var result=new MembershipResult(after.version(),after.memberships().getFirst());
-            repository.changed(actor,branch,target,"UPDATE_MEMBERSHIP",new MembershipResult(before.version(),old),result,requestId); return result;
+            changes.changed(actor,branch,target,"UPDATE_MEMBERSHIP",new MembershipResult(before.version(),old),result,requestId); return result;
         });
     }
 }
