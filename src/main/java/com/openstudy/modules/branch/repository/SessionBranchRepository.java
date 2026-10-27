@@ -1,27 +1,24 @@
 package com.openstudy.modules.branch.repository;
 
+import java.util.Collection;
 import java.util.List;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.stereotype.Repository;
 
-import com.openstudy.modules.branch.dto.SessionBranch;
-import com.openstudy.common.web.ApiVersion;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.Repository;
+import org.springframework.data.repository.query.Param;
 
-@Repository
-public class SessionBranchRepository {
-    private final JdbcTemplate jdbc;
+import com.openstudy.modules.branch.entity.Branch;
 
-    public SessionBranchRepository(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
-    }
+/** Branch reads for the session/auth contract; callers are not authorized branch actors. */
+public interface SessionBranchRepository extends Repository<Branch, Long> {
+    /**
+     * JPA-01 native exception: membership rows belong to the authorization module (JPA-03), so the branch module
+     * keeps this one EXISTS check in SQL instead of mapping branch_memberships here.
+     */
+    @Query(value = "SELECT b.* FROM branches b WHERE (:owner OR EXISTS "
+            + "(SELECT 1 FROM branch_memberships m WHERE m.branch_id = b.id AND m.employee_id = :employeeId "
+            + "AND m.status = 'ACTIVE')) ORDER BY b.id", nativeQuery = true)
+    List<Branch> findAccessible(@Param("employeeId") long employeeId, @Param("owner") boolean owner);
 
-    public List<SessionBranch> accessible(long employeeId, boolean owner) {
-        return jdbc.query("SELECT b.* FROM branches b WHERE (? OR EXISTS "
-                + "(SELECT 1 FROM branch_memberships m WHERE m.branch_id = b.id AND m.employee_id = ? "
-                + "AND m.status = 'ACTIVE')) ORDER BY b.id", (rs, row) -> new SessionBranch(
-                        rs.getString("id"), rs.getString("id"), ApiVersion.fromDatabase(rs.getLong("version")),
-                        rs.getTimestamp("created_at").toInstant().toString(), rs.getTimestamp("updated_at").toInstant().toString(),
-                        rs.getString("name"), rs.getString("address"), rs.getString("phone") == null ? "" : rs.getString("phone"),
-                        "", "ACTIVE".equals(rs.getString("status")) ? "운영 중" : "운영 중지"), owner, employeeId);
-    }
+    List<Branch> findByIdIn(Collection<Long> ids);
 }
