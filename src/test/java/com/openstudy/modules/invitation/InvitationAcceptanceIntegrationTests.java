@@ -244,6 +244,10 @@ class InvitationAcceptanceIntegrationTests {
                 status(waiting.call("GET", "/api/branches", null), 403);
                 // A restricted session may still check a link; it gets the link answer, not an authorization error.
                 status(waiting.call("POST", API + "/preview", Map.of("token", invitation.token())), 422);
+                // Policy: a pending account accepts another branch's invitation only after its first approval.
+                var another = invite(owner, second, invitation.email(), "staff", List.of());
+                status(waiting.call("POST", API + "/accept", existingAccount(another)), 403);
+                assertThat(text("SELECT status FROM employee_invitations WHERE id=?", another.id())).isEqualTo("PENDING");
                 var pending = waiting.call("GET", API + "/approval-status", null);
                 status(pending, 200);
                 assertThat(body(pending).get("accountStatus").asString()).isEqualTo("승인 대기");
@@ -277,6 +281,11 @@ class InvitationAcceptanceIntegrationTests {
                 assertThat(body(me).get("sessionMode").asString()).isEqualTo("WORKSPACE");
                 assertThat(body(me).at("/user/memberships/0/branchId").asString()).isEqualTo(Long.toString(first));
                 status(working.call("GET", "/api/branches", null), 200);
+                var later = jdbc.queryForObject("SELECT id FROM employee_invitations WHERE branch_id=? AND invitee_email=?", Long.class, second, invitation.email());
+                // After approval the business session accepts the remaining invitation (fresh link, as the worker would send).
+                String token = Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[] {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32});
+                jdbc.update("UPDATE employee_invitations SET token_hash=? WHERE id=?", sha256(token), later);
+                status(working.call("POST", API + "/accept", existingAccount(new Invitation(later, invitation.email(), token))), 200);
             }
         }
         assertThat(output.getAll()).doesNotContain(invitation.token(), NEW_PASSWORD);
