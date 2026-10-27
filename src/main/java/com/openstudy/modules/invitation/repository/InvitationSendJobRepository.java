@@ -28,6 +28,26 @@ public interface InvitationSendJobRepository extends JpaRepository<InvitationSen
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<InvitationSendJob> findForUpdateById(long id);
 
+    Optional<InvitationSendJob> findByInvitationIdAndRevision(long invitationId, int revision);
+
+    /** SELECT ... FOR SHARE: the delivery state read under a locked invitation, as before. */
+    @Lock(LockModeType.PESSIMISTIC_READ)
+    Optional<InvitationSendJob> findSharedByInvitationIdAndRevision(long invitationId, int revision);
+
+    /** The former enqueue INSERT; next_attempt_at is the database's UTC time, so this stays one HQL insert. */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("INSERT INTO InvitationSendJob (invitationId, revision, status, nextAttemptAt) VALUES (:invitation, :revision, "
+            + "com.openstudy.modules.invitation.entity.SendJobStatus.PENDING, cast(sql('UTC_TIMESTAMP(6)') as Instant))")
+    int enqueue(@Param("invitation") long invitationId, @Param("revision") int revision);
+
+    /** Management closes open jobs without an error code; expiry by the worker uses {@link #skipOpen}. */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("UPDATE InvitationSendJob j SET j.status = com.openstudy.modules.invitation.entity.SendJobStatus.SKIPPED, "
+            + "j.nextAttemptAt = NULL, j.lockedUntil = NULL, j.workerId = NULL "
+            + "WHERE j.invitationId = :invitation AND j.status IN (com.openstudy.modules.invitation.entity.SendJobStatus.PENDING, "
+            + "com.openstudy.modules.invitation.entity.SendJobStatus.PROCESSING, com.openstudy.modules.invitation.entity.SendJobStatus.FAILED)")
+    int skipOpenJobs(@Param("invitation") long invitationId);
+
     /**
      * JPA-01 native exception: the administration guard is the first lock of every foundation write. The invitation
      * module may not call the authorization repository, so it takes the same statement here.

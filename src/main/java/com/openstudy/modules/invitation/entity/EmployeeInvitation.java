@@ -1,14 +1,20 @@
 package com.openstudy.modules.invitation.entity;
 
 import java.time.Instant;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import org.hibernate.annotations.Generated;
@@ -17,10 +23,11 @@ import org.hibernate.generator.EventType;
 import org.hibernate.type.SqlTypes;
 
 /**
- * Flyway owns the schema; ddl-auto=validate checks this mapping. Mail delivery changes it through JPQL updates in
- * InvitationRepository (phase 6-1); management and acceptance still write through JDBC until phase 6-2.
+ * Flyway owns the schema; ddl-auto=validate checks this mapping. Inserts go through {@link #create}; every later
+ * transition is a JPQL update in InvitationRepository that mirrors the former SQL, so versions advance exactly once.
  * <p>active_invitation_slot is a STORED generated column backing the one-active-invitation UNIQUE key; not mapped.
- * Actor columns are plain employee ids: other modules' entities are never referenced (JPA-03).</p>
+ * Actor columns are plain employee ids and grants are permission ids: other modules' entities are never referenced
+ * (JPA-03).</p>
  */
 @Entity
 @Table(name = "employee_invitations")
@@ -75,8 +82,23 @@ public class EmployeeInvitation {
     private Long createdBy;
     @Column(name = "updated_by")
     private Long updatedBy;
+    @ElementCollection
+    @CollectionTable(name = "invitation_permission_grants", joinColumns = @JoinColumn(name = "invitation_id"))
+    @Column(name = "permission_id", nullable = false)
+    private Set<Long> permissionIds = new LinkedHashSet<>();
 
     protected EmployeeInvitation() {}
+
+    /** A new PENDING invitation at revision 1, as the former INSERT created it. */
+    public static EmployeeInvitation create(long branchId, String name, String email, InitialRole role, Long presetId,
+            List<Long> permissionIds, Instant expiresAt, long actor) {
+        var invitation = new EmployeeInvitation();
+        invitation.branchId = branchId; invitation.inviteeName = name; invitation.inviteeEmail = email;
+        invitation.initialRole = role; invitation.presetId = presetId; invitation.status = InvitationStatus.PENDING;
+        invitation.revision = 1; invitation.expiresAt = expiresAt; invitation.createdBy = actor; invitation.updatedBy = actor;
+        invitation.permissionIds.addAll(permissionIds);
+        return invitation;
+    }
 
     public Long getId() { return id; }
     public Long getBranchId() { return branchId; }
@@ -102,4 +124,5 @@ public class EmployeeInvitation {
     public long getVersion() { return version; }
     public Long getCreatedBy() { return createdBy; }
     public Long getUpdatedBy() { return updatedBy; }
+    public Set<Long> getPermissionIds() { return Set.copyOf(permissionIds); }
 }

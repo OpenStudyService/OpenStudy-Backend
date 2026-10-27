@@ -21,6 +21,7 @@ import com.openstudy.modules.employee.entity.GlobalRole;
 import com.openstudy.modules.employee.repository.EmployeeRepository;
 import com.openstudy.modules.authorization.service.AuthorizedCommands;
 import com.openstudy.modules.authorization.service.MembershipService;
+import com.openstudy.common.persistence.DuplicateKeys;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.StrictInput;
 
@@ -81,7 +82,9 @@ public class EmployeeAccountService {
     /** New-account acceptance. The caller verified the invitation token and holds the invitation lock. */
     @Transactional(propagation = Propagation.MANDATORY)
     public long createInvitedAccount(String email, String passwordHash, String name) {
-        return repository.saveAndFlush(new Employee(email, passwordHash, name, GlobalRole.EMPLOYEE, EmployeeStatus.PENDING)).getId();
+        // Invitation acceptance maps a duplicate email (uk_employees_1) to "already registered".
+        return DuplicateKeys.translate(() -> repository.saveAndFlush(
+                new Employee(email, passwordHash, name, GlobalRole.EMPLOYEE, EmployeeStatus.PENDING))).getId();
     }
 
     /** Acceptance creates or reuses (Q11) only a pending membership; business access waits for approval. */
