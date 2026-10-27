@@ -32,6 +32,8 @@ import tools.jackson.databind.ObjectMapper;
 
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.outbox.WorkspaceOutbox;
+import com.openstudy.modules.invitation.repository.InvitationRepository;
+import com.openstudy.modules.invitation.repository.InvitationSendJobRepository;
 import com.openstudy.modules.invitation.repository.InvitationDeliveryRepository;
 import com.openstudy.modules.invitation.service.DeliveryAttempt;
 import com.openstudy.modules.invitation.service.InvitationDeliveryService;
@@ -53,6 +55,8 @@ class InvitationEmailWorkerIntegrationTests {
     @Autowired ObjectMapper json;
     @Autowired AuditTrail audit;
     @Autowired WorkspaceOutbox outbox;
+    @Autowired InvitationRepository invitationRows;
+    @Autowired InvitationSendJobRepository jobRows;
     private long owner, branch;
     private MutableClock clock;
     private InvitationDeliverySettings settings;
@@ -368,7 +372,7 @@ class InvitationEmailWorkerIntegrationTests {
     }
 
     private InvitationEmailWorker workerWithFailingAudit(String failedAction) {
-        var faultyRepository = new InvitationDeliveryRepository(jdbc, json, audit, outbox) {
+        var faultyRepository = new InvitationDeliveryRepository(invitationRows, jobRows, json, audit, outbox) {
             @Override public void changed(InvitationState invitation, Job job, String action) {
                 super.changed(invitation, job, action);
                 if (failedAction.equals(action)) throw new IllegalStateException("Controlled worker audit failure");

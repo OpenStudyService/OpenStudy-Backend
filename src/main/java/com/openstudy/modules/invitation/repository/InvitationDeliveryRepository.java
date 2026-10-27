@@ -1,28 +1,34 @@
 package com.openstudy.modules.invitation.repository;
 
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.ObjectMapper;
 import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.outbox.WorkspaceOutbox;
+import com.openstudy.modules.invitation.entity.InvitationSendJob;
+import com.openstudy.modules.invitation.entity.SendJobStatus;
 
-/** Worker persistence; guarded transitions lock the invitation parent before its job. */
+/**
+ * Worker persistence; guarded transitions lock the invitation parent before its job.
+ * <p>Reads take entity row locks and hand the service value snapshots, exactly as the former JDBC reads did; every
+ * transition is a JPQL update that mirrors the former statement, so versions advance exactly as before.</p>
+ */
 @Repository
 public class InvitationDeliveryRepository {
-    private final JdbcTemplate jdbc;
+    private final InvitationRepository invitations;
+    private final InvitationSendJobRepository jobs;
     private final ObjectMapper json;
-
     private final AuditTrail audit;
     private final WorkspaceOutbox outbox;
 
-    public InvitationDeliveryRepository(JdbcTemplate jdbc, ObjectMapper json, AuditTrail audit, WorkspaceOutbox outbox) {
-        this.jdbc = jdbc; this.json = json; this.audit = audit; this.outbox = outbox;
+    public InvitationDeliveryRepository(InvitationRepository invitations, InvitationSendJobRepository jobs, ObjectMapper json,
+            AuditTrail audit, WorkspaceOutbox outbox) {
+        this.invitations = invitations; this.jobs = jobs; this.json = json; this.audit = audit; this.outbox = outbox;
     }
 
     public record Candidate(long invitationId, long jobId) {}
@@ -35,73 +41,52 @@ public class InvitationDeliveryRepository {
             Instant nextAttemptAt, Instant leaseUntil, String workerId) {}
 
     public void lockGuard() {
-        jdbc.queryForObject("SELECT id FROM administration_guard WHERE id=1 FOR UPDATE", Long.class);
+        if (jobs.lockGuard().isEmpty()) throw new IllegalStateException("administration_guard row is missing");
     }
 
     /** Non-locking bounded scan: do not acquire a job lock before its parent invitation. */
     public List<Candidate> candidates(Instant now, int limit) {
-        return jdbc.query("SELECT invitation_id,id FROM invitation_send_jobs WHERE "
-                + "(status='PENDING' AND (next_attempt_at IS NULL OR next_attempt_at<=?)) OR "
-                + "(status='PROCESSING' AND (locked_until IS NULL OR locked_until<=?)) ORDER BY id LIMIT ?",
-                (rs, row) -> new Candidate(rs.getLong("invitation_id"), rs.getLong("id")),
-                Timestamp.from(now), Timestamp.from(now), limit);
+        return jobs.candidates(now, Limit.of(limit)).stream()
+                .map(row -> new Candidate(((Number) row[0]).longValue(), ((Number) row[1]).longValue())).toList();
     }
 
     public Optional<InvitationState> invitationForUpdate(long id) {
-        return jdbc.query("SELECT id,branch_id,status,revision,expires_at,invitee_email,invitee_name,token_hash "
-                + "FROM employee_invitations WHERE id=? FOR UPDATE", (rs, row) ->
-                new InvitationState(rs.getLong("id"), rs.getLong("branch_id"), rs.getString("status"), rs.getLong("revision"),
-                        rs.getTimestamp("expires_at").toInstant(), rs.getString("invitee_email"), rs.getString("invitee_name"),
-                        rs.getBytes("token_hash")), id).stream().findFirst();
+        return invitations.findForUpdateById(id).map(i -> new InvitationState(i.getId(), i.getBranchId(), i.getStatus().name(),
+                i.getRevision(), i.getExpiresAt(), i.getInviteeEmail(), i.getInviteeName(), i.getTokenHash()));
     }
 
     public Optional<Job> jobForUpdate(long id) {
-        return jdbc.query("SELECT id,invitation_id,revision,status,attempts,next_attempt_at,locked_until,worker_id "
-                + "FROM invitation_send_jobs WHERE id=? FOR UPDATE", (rs, row) ->
-                new Job(rs.getLong("id"), rs.getLong("invitation_id"), rs.getLong("revision"), rs.getString("status"),
-                        rs.getInt("attempts"), instant(rs.getTimestamp("next_attempt_at")),
-                        instant(rs.getTimestamp("locked_until")), rs.getString("worker_id")), id).stream().findFirst();
+        return jobs.findForUpdateById(id).map(j -> new Job(j.getId(), j.getInvitationId(), j.getRevision(), j.getStatus().name(),
+                j.getAttempts(), j.getNextAttemptAt(), j.getLockedUntil(), j.getWorkerId()));
     }
 
     public void claim(InvitationState invitation, Job job, byte[] hash, String workerId, Instant leaseUntil) {
-        jdbc.update("UPDATE employee_invitations SET token_hash=?,updated_by=NULL,version=version+1 WHERE id=?", hash, invitation.id());
-        jdbc.update("UPDATE invitation_send_jobs SET status='PROCESSING',attempts=attempts+1,worker_id=?,locked_until=?,"
-                + "next_attempt_at=NULL,last_error_code=NULL WHERE id=?", workerId, Timestamp.from(leaseUntil), job.id());
+        invitations.attachToken(invitation.id(), hash);
+        jobs.claim(job.id(), workerId, leaseUntil);
     }
 
     public void sent(InvitationState invitation, Job job, Instant now) {
-        jdbc.update("UPDATE invitation_send_jobs SET status='SENT',sent_at=?,locked_until=NULL,worker_id=NULL,"
-                + "next_attempt_at=NULL,last_error_code=NULL WHERE id=?", Timestamp.from(now), job.id());
-        jdbc.update("UPDATE employee_invitations SET updated_by=NULL,version=version+1 WHERE id=?", invitation.id());
+        jobs.sent(job.id(), now);
+        invitations.markDelivered(invitation.id());
     }
 
     public void reserveRetry(InvitationState invitation, Job job, Instant due, String reason, boolean failed) {
-        finishOld(job, failed ? "FAILED" : "SKIPPED", reason);
-        jdbc.update("UPDATE employee_invitations SET token_hash=NULL,revision=revision+1,updated_by=NULL,version=version+1 WHERE id=?",
-                invitation.id());
+        jobs.finish(job.id(), failed ? SendJobStatus.FAILED : SendJobStatus.SKIPPED, reason);
+        invitations.advanceRevision(invitation.id());
         // Attempts is cumulative within this automatic chain. Manual reissue creates attempts=0.
-        jdbc.update("INSERT INTO invitation_send_jobs(invitation_id,revision,status,attempts,next_attempt_at) VALUES (?,?,'PENDING',?,?)",
-                invitation.id(), invitation.revision() + 1, job.attempts(), Timestamp.from(due));
+        jobs.saveAndFlush(InvitationSendJob.retry(invitation.id(), Math.toIntExact(invitation.revision() + 1), job.attempts(), due));
     }
 
     public void exhaust(InvitationState invitation, Job job, String reason) {
-        finishOld(job, "FAILED", reason);
-        jdbc.update("UPDATE employee_invitations SET token_hash=NULL,updated_by=NULL,version=version+1 WHERE id=?", invitation.id());
+        jobs.finish(job.id(), SendJobStatus.FAILED, reason);
+        invitations.dropToken(invitation.id());
     }
 
-    public void skip(Job job, String reason) { finishOld(job, "SKIPPED", reason); }
-
-    private void finishOld(Job job, String state, String reason) {
-        jdbc.update("UPDATE invitation_send_jobs SET status=?,next_attempt_at=NULL,locked_until=NULL,worker_id=NULL,"
-                + "last_error_code=? WHERE id=?", state, reason, job.id());
-    }
+    public void skip(Job job, String reason) { jobs.finish(job.id(), SendJobStatus.SKIPPED, reason); }
 
     public void expire(InvitationState invitation) {
-        jdbc.update("UPDATE employee_invitations SET status='EXPIRED',token_hash=NULL,updated_by=NULL,version=version+1 WHERE id=?",
-                invitation.id());
-        jdbc.update("UPDATE invitation_send_jobs SET status='SKIPPED',next_attempt_at=NULL,locked_until=NULL,worker_id=NULL,"
-                + "last_error_code='INVITATION_EXPIRED' WHERE invitation_id=? AND status IN ('PENDING','PROCESSING','FAILED')",
-                invitation.id());
+        invitations.expire(invitation.id());
+        jobs.skipOpen(invitation.id());
     }
 
     /** Operational evidence has IDs and fixed state codes only; no recipient, token or token hash. */
@@ -110,6 +95,4 @@ public class InvitationDeliveryRepository {
         audit.record(AuditEvent.change(null, invitation.branchId(), "invitations", invitation.id(), action, null, snapshot, null));
         outbox.invalidate(invitation.branchId(), "invitations", invitation.id());
     }
-
-    private static Instant instant(Timestamp timestamp) { return timestamp == null ? null : timestamp.toInstant(); }
 }
