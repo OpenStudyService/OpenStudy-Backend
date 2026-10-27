@@ -2,6 +2,8 @@ package com.openstudy.modules.ticket.service;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Clock;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -11,13 +13,20 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.UUID;
+import jakarta.persistence.EntityManager;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import com.openstudy.common.audit.AuditEvent;
+import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
+import com.openstudy.common.idempotency.IdempotencyStore;
+import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.ListQuery;
 import com.openstudy.common.web.PageResponse;
@@ -31,9 +40,10 @@ import com.openstudy.modules.ticket.dto.ProductCategory;
 import com.openstudy.modules.ticket.dto.ProductRevision;
 import com.openstudy.modules.ticket.dto.ProductSnapshot;
 import com.openstudy.modules.ticket.dto.ProductTerms;
+import com.openstudy.modules.ticket.entity.RevisionEvent;
 import com.openstudy.modules.ticket.repository.ProductCategoryRepository;
-import com.openstudy.modules.ticket.repository.ProductRecord;
 import com.openstudy.modules.ticket.repository.ProductRepository;
+import com.openstudy.modules.ticket.repository.ProductRevisionRepository;
 
 /**
  * Pass product catalogue. Products are shared across their sale branches (Q7), so every write is authorized
@@ -44,19 +54,34 @@ import com.openstudy.modules.ticket.repository.ProductRepository;
 public class ProductService {
     private static final String ON_SALE = "판매 중";
     private static final String STOPPED = "판매 중지";
+    private static final String CREATE = "products:create";
     private final ProductRepository repository;
     private final ProductCategoryRepository categories;
+    private final ProductRevisionRepository revisions;
+    private final EntityManager entityManager;
     private final AuthorizationService policy;
     private final AuthorizedCommands commands;
     private final ObjectMapper json;
+    private final AuditTrail audit;
+    private final WorkspaceOutbox outbox;
+    private final IdempotencyStore requests;
+    private final Clock clock;
 
     public ProductService(ProductRepository repository, ProductCategoryRepository categories,
-            AuthorizationService policy, AuthorizedCommands commands, ObjectMapper json) {
+            ProductRevisionRepository revisions, EntityManager entityManager, AuthorizationService policy,
+            AuthorizedCommands commands, ObjectMapper json, AuditTrail audit, WorkspaceOutbox outbox,
+            IdempotencyStore requests, Clock clock) {
         this.repository = repository;
         this.categories = categories;
+        this.revisions = revisions;
+        this.entityManager = entityManager;
         this.policy = policy;
         this.commands = commands;
         this.json = json;
+        this.audit = audit;
+        this.outbox = outbox;
+        this.requests = requests;
+        this.clock = clock;
     }
 
     @Transactional(readOnly = true)
@@ -69,7 +94,7 @@ public class ProductService {
         Set<Long> selected = policy.scope(state, scope, BranchAction.READ);
         Set<Long> visible = policy.scope(state, "all", BranchAction.READ);
         String needle = query.q().toLowerCase(Locale.ROOT);
-        var rows = repository.all().stream()
+        var rows = repository.findAllWithDetailsByOrderByIdAsc().stream().map(ProductViews::record)
                 .filter(product -> !Collections.disjoint(product.branchIds(), selected))
                 .filter(product -> status == null || status.equals(statusName(product)))
                 .filter(product -> kind == null || kind.equals(product.terms().kind()))
@@ -105,21 +130,25 @@ public class ProductService {
         byte[] fingerprint = digest(json.writeValueAsString(Arrays.asList(name, price, terms, onSale, categoryId, branches)));
         return commands.inBranches(actor, branches, BranchAction.EDIT_PRODUCT, () -> {}, state -> {
             // Authorization has just been re-evaluated under the guard; only now may a stored result be replayed.
-            var prior = repository.request(actor, key);
-            if (!prior.isEmpty()) {
-                if (!MessageDigest.isEqual(fingerprint, prior.getFirst().hash()))
+            var prior = requests.lock(actor, CREATE, "all", key);
+            if (prior.isPresent()) {
+                if (!MessageDigest.isEqual(fingerprint, prior.get().getRequestHash()))
                     throw ApiException.conflict("IDEMPOTENCY_CONFLICT", "같은 키로 다른 입력을 저장할 수 없습니다.");
-                return json.readValue(prior.getFirst().response(), Product.class);
+                return json.readValue(prior.get().getResponseJson(), Product.class);
             }
             var category = assignableCategory(categoryId, terms.kind());
-            long id = repository.insert(actor, name, price, terms, category.categoryId(), onSale);
-            repository.addBranches(id, branches);
-            var created = repository.find(id).orElseThrow();
-            repository.revision(id, created.dbVersion(), "CREATED", actor, requestId, snapshotJson(created));
-            repository.audit(actor, id, "CREATED", null, snapshotJson(created), requestId);
-            repository.invalidate(id, branches);
+            String code = "PD-" + UUID.randomUUID().toString().replace("-", "").substring(0, 29);
+            var product = repository.saveAndFlush(new com.openstudy.modules.ticket.entity.Product(code, name,
+                    ProductViews.kind(terms.kind()), price, ProductViews.columns(terms), onSale, category.entity(), branches, actor));
+            var created = ProductViews.record(product);
+            long id = created.id();
+            revisions.save(new com.openstudy.modules.ticket.entity.ProductRevision(id, created.dbVersion(), RevisionEvent.CREATED,
+                    actor, requestId, snapshotJson(created)));
+            audit.record(AuditEvent.change(actor, null, "products", id, "CREATED", null, snapshotJson(created), requestId));
+            invalidate(id, branches);
             var result = view(created, state, policy.scope(state, "all", BranchAction.READ));
-            repository.saveRequest(actor, key, fingerprint, json.writeValueAsString(result));
+            requests.complete(actor, CREATE, "all", key, fingerprint, 201, json.writeValueAsString(result),
+                    clock.instant().plus(Duration.ofHours(24)));
             return result;
         });
     }
@@ -134,14 +163,15 @@ public class ProductService {
         Long categoryId = input.has("categoryId") ? input.id("categoryId") : null;
         var found = visibleProduct(policy.current(actor), id, scope);
         return commands.inBranches(actor, Set.copyOf(found.branchIds()), BranchAction.EDIT_PRODUCT, () -> repository.lock(id), state -> {
-            var before = lockedProduct(id);
+            var product = lockedProduct(id);
+            var before = ProductViews.record(product);
             Set<Long> persisted = Set.copyOf(before.branchIds());
             policy.requireSharedProduct(state, persisted, persisted, false);
             ApiVersion.requireCurrent(version, before.dbVersion(), reload(id));
             if (terms != null && !terms.kind().equals(before.terms().kind()))
                 throw ApiException.validation("terms.kind", "상품 유형은 변경할 수 없습니다. 새 상품으로 등록해 주세요.");
             var category = categoryId == null || categoryId == before.categoryId() ? before.category()
-                    : assignableCategory(categoryId, before.terms().kind()).category();
+                    : assignableCategory(categoryId, before.terms().kind()).view();
             String newName = name == null ? before.name() : name;
             long newPrice = price == null ? before.priceKrw() : price;
             ProductTerms newTerms = terms == null ? before.terms() : terms;
@@ -150,7 +180,7 @@ public class ProductService {
                     && category.id().equals(before.category().id())) {
                 return view(before, state, policy.scope(state, "all", BranchAction.READ));
             }
-            return write(actor, state, before, newName, newPrice, newTerms, Long.parseLong(category.id()), before.onSale(),
+            return write(actor, state, product, before, newName, newPrice, newTerms, Long.parseLong(category.id()), before.onSale(),
                     persisted, "UPDATED", requestId);
         });
     }
@@ -161,12 +191,13 @@ public class ProductService {
         boolean onSale = ON_SALE.equals(input.choice("status", ON_SALE, STOPPED));
         var found = visibleProduct(policy.current(actor), id, scope);
         return commands.inBranches(actor, Set.copyOf(found.branchIds()), BranchAction.MANAGE_PRODUCT, () -> repository.lock(id), state -> {
-            var before = lockedProduct(id);
+            var product = lockedProduct(id);
+            var before = ProductViews.record(product);
             Set<Long> persisted = Set.copyOf(before.branchIds());
             policy.requireSharedProduct(state, persisted, persisted, true);
             ApiVersion.requireCurrent(version, before.dbVersion(), reload(id));
             if (before.onSale() == onSale) return view(before, state, policy.scope(state, "all", BranchAction.READ));
-            return write(actor, state, before, before.name(), before.priceKrw(), before.terms(), before.categoryId(), onSale,
+            return write(actor, state, product, before, before.name(), before.priceKrw(), before.terms(), before.categoryId(), onSale,
                     persisted, "STATUS_CHANGED", requestId);
         });
     }
@@ -179,7 +210,8 @@ public class ProductService {
         Set<Long> union = new TreeSet<>(found.branchIds());
         union.addAll(requested);
         return commands.inBranches(actor, union, BranchAction.MANAGE_PRODUCT, () -> repository.lock(id), state -> {
-            var before = lockedProduct(id);
+            var product = lockedProduct(id);
+            var before = ProductViews.record(product);
             Set<Long> persisted = Set.copyOf(before.branchIds());
             // Both the stored and the new scope must be manageable, so a hidden branch cannot be dropped or added.
             policy.requireSharedProduct(state, persisted, requested, true);
@@ -188,11 +220,10 @@ public class ProductService {
             Set<Long> added = new TreeSet<>(requested), removed = new TreeSet<>(persisted);
             added.removeAll(persisted);
             removed.removeAll(requested);
-            repository.removeBranches(id, removed);
-            repository.addBranches(id, added);
+            product.replaceBranches(removed, added);
             Set<Long> affected = new TreeSet<>(persisted);
             affected.addAll(requested);
-            return write(actor, state, before, before.name(), before.priceKrw(), before.terms(), before.categoryId(),
+            return write(actor, state, product, before, before.name(), before.priceKrw(), before.terms(), before.categoryId(),
                     before.onSale(), affected, "BRANCHES_CHANGED", requestId);
         });
     }
@@ -201,11 +232,11 @@ public class ProductService {
     public PageResponse<ProductRevision> history(long actor, long id, String scope, ListQuery query) {
         var state = policy.current(actor);
         var product = visibleProduct(state, id, scope);
-        var stored = repository.revisions(id);
+        var stored = revisions.findByOriginalProductIdOrderByProductVersionAscIdAsc(id);
         List<JsonNode> snapshots = new ArrayList<>();
         Set<Long> related = new TreeSet<>(product.branchIds());
         for (var revision : stored) {
-            JsonNode snapshot = json.readTree(revision.snapshot());
+            JsonNode snapshot = json.readTree(revision.getSnapshotJson());
             snapshots.add(snapshot);
             if (snapshot.has("branchIds"))
                 snapshot.get("branchIds").forEach(branch -> related.add(Long.parseLong(branch.asString())));
@@ -217,11 +248,11 @@ public class ProductService {
         for (int index = 0; index < stored.size(); index++) {
             var revision = stored.get(index);
             JsonNode snapshot = snapshots.get(index);
-            boolean deleted = "DELETED".equals(revision.eventType());
+            boolean deleted = revision.getEventType() == RevisionEvent.DELETED;
             JsonNode before = index == 0 ? null : snapshots.get(index - 1);
-            var row = new ProductRevision(Long.toString(revision.id()), Long.toString(revision.productId()),
-                    ApiVersion.fromDatabase(revision.dbVersion()), revision.changedAt().toString(),
-                    revision.actorId() == null ? null : Long.toString(revision.actorId()), revision.eventType(),
+            var row = new ProductRevision(Long.toString(revision.getId()), Long.toString(revision.getOriginalProductId()),
+                    ApiVersion.fromDatabase(revision.getProductVersion()), revision.getChangedAt().toString(),
+                    revision.getChangedBy() == null ? null : Long.toString(revision.getChangedBy()), revision.getEventType().name(),
                     before, deleted ? null : snapshot);
             if ((snapshot.path("name").asString("") + " " + snapshot.path("categoryName").asString("")).toLowerCase(Locale.ROOT).contains(needle))
                 rows.add(row);
@@ -239,46 +270,66 @@ public class ProductService {
     @Transactional
     public ProductSnapshot requireSellable(long productId, long branchId) {
         repository.lockShared(productId);
-        var product = repository.find(productId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        var product = repository.findWithDetailsById(productId).map(ProductViews::record)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!product.onSale()) throw ApiException.conflict("PRODUCT_NOT_ON_SALE", "판매가 중지된 상품입니다.");
         if (!product.branchIds().contains(branchId))
             throw ApiException.conflict("PRODUCT_NOT_AVAILABLE_AT_BRANCH", "이 지점에서 판매하지 않는 상품입니다.");
         return snapshot(product);
     }
 
-    private Product write(long actor, AuthorizationState state, ProductRecord before, String name, long price,
-            ProductTerms terms, long categoryId, boolean onSale, Set<Long> affected, String action, String requestId) {
-        if (repository.update(actor, before.id(), before.dbVersion(), name, price, terms, categoryId, onSale) != 1)
+    /**
+     * Every real change advances the version by exactly one, as the former UPDATE ... version=version+1 did, also when
+     * only the sale branches changed. A stale version is still a 409 (the former WHERE version=? matched 0 rows).
+     */
+    private Product write(long actor, AuthorizationState state, com.openstudy.modules.ticket.entity.Product product,
+            ProductRecord before, String name, long price, ProductTerms terms, long categoryId, boolean onSale,
+            Set<Long> affected, String action, String requestId) {
+        var category = categoryId == before.categoryId() ? product.getCategory() : categories.getReferenceById(categoryId);
+        product.change(name, price, ProductViews.columns(terms), category, onSale, actor);
+        try {
+            repository.flush();
+        } catch (OptimisticLockingFailureException exception) {
             throw ApiException.versionConflict(ApiVersion.fromDatabase(before.dbVersion() + 1), reload(before.id()));
-        var after = repository.find(before.id()).orElseThrow();
-        repository.revision(after.id(), after.dbVersion(), "UPDATED", actor, requestId, snapshotJson(after));
-        repository.audit(actor, after.id(), action, snapshotJson(before), snapshotJson(after), requestId);
-        repository.invalidate(after.id(), affected);
+        }
+        if (product.getVersion() == before.dbVersion()) repository.incrementVersion(before.id());
+        entityManager.refresh(product);
+        var after = ProductViews.record(product);
+        // The revision event stays UPDATED for status and branch changes too; the audit row carries the action.
+        revisions.save(new com.openstudy.modules.ticket.entity.ProductRevision(after.id(), after.dbVersion(),
+                RevisionEvent.UPDATED, actor, requestId, snapshotJson(after)));
+        audit.record(AuditEvent.change(actor, null, "products", after.id(), action, snapshotJson(before), snapshotJson(after), requestId));
+        invalidate(after.id(), affected);
         return view(after, state, policy.scope(state, "all", BranchAction.READ));
     }
 
-    private ProductRecord lockedProduct(long id) {
-        return repository.find(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+    /** Both the previous and the new branches must reload; the outbox rows commit with the product change. */
+    private void invalidate(long id, Set<Long> branches) {
+        for (long branch : branches) outbox.invalidate(branch, "products", id);
+    }
+
+    private com.openstudy.modules.ticket.entity.Product lockedProduct(long id) {
+        return repository.findWithDetailsById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
     }
 
     /** 404 hides products the reader cannot see in any readable branch, so IDs are not an existence oracle. */
     private ProductRecord visibleProduct(AuthorizationState state, long id, String scope) {
         Set<Long> selected = policy.scope(state, scope, BranchAction.READ);
-        var product = repository.find(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        var product = repository.findWithDetailsById(id).map(ProductViews::record)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (Collections.disjoint(product.branchIds(), selected)) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         return product;
     }
 
-    private record Assignable(ProductCategory category) {
-        long categoryId() { return Long.parseLong(category.id()); }
-    }
+    private record Assignable(com.openstudy.modules.ticket.entity.ProductCategory entity, ProductCategory view) {}
 
     private Assignable assignableCategory(long id, String kind) {
-        var category = categories.findForUpdate(id)
+        var locked = categories.findForUpdateById(id)
                 .orElseThrow(() -> ApiException.validation("categoryId", "존재하지 않는 분류입니다."));
+        var category = ProductViews.category(locked);
         if (!category.kind().equals(kind)) throw ApiException.validation("categoryId", "상품 유형과 분류 유형이 일치하지 않습니다.");
         if (!"활성".equals(category.status())) throw ApiException.validation("categoryId", "비활성 분류에는 상품을 지정할 수 없습니다.");
-        return new Assignable(category);
+        return new Assignable(locked, category);
     }
 
     private Product view(ProductRecord product, AuthorizationState state, Set<Long> readable) {
