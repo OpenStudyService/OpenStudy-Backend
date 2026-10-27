@@ -53,3 +53,14 @@ native query 허용 범위, `@Version` 적용 범위, 소속·권한 테이블 �
 - 이번 엔티티는 아직 어떤 저장소·서비스에서도 사용하지 않는다. 기존 JDBC 저장소 전환, 비관적 잠금(`@Lock`) 순서, `@Modifying` 일괄 갱신 후 영속성 컨텍스트 정합성, N+1 조회는 검증하지 않았다.
 - `json`, `binary(32)` 컬럼과 복합 PK 연결 테이블(`*_grants`, `product_branches`) 매핑은 해당 단계에서 별도로 확인한다.
 - 원격 main 반영과 PR 병합은 사용자가 수행한다.
+
+## 7. 결정 반영 (2026-10-27 후속)
+
+0단계 검증 결과를 확인한 뒤 사용자가 JPA-01~04를 모두 권장안 A로 확정했다. 위 3·6절의 "사용자 선택 대기"는 이 시점에 해소되었고, [설계 선택 기록](../design-decisions/decision-register.md#2026-10-27-jpa-전환-착수-전-선택)에 결정일·결정자를 기록했다.
+
+- JPA-01 A: 엔티티 저장·수정은 JPA. 다중 행 잠금 순서·EXISTS 권한 판정·집계처럼 JPQL로 같은 SQL을 보장하기 어려운 곳만 저장소 안의 native query를 허용한다.
+- JPA-02 A: version을 노출하고 409로 충돌을 거절하는 엔티티에만 `@Version`을 둔다. `Employee`(M1-09 프로필)와 `Branch`(`BranchService.checkVersion`의 409)는 이미 이 조건에 해당하므로 0단계 매핑의 `@Version`을 유지한다.
+- JPA-03 A: `branch_memberships`·`membership_permission_grants` 엔티티는 authorization 모듈이 소유하고 employee 모듈은 공개 service로 요청한다.
+- JPA-04 A: 진행 중인 백엔드 작업 브랜치를 병합한 뒤 1단계(감사·멱등·outbox 공통 컴포넌트)부터 전환한다.
+
+이번 반영은 문서 변경만 포함하며 코드와 테스트 결과는 5절과 같다.
