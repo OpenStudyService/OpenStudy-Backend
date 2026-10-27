@@ -2501,7 +2501,7 @@
           "FR-PROD-07"
         ],
         "x-permission": "활성 계정 + 허용 지점",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
@@ -2616,7 +2616,7 @@
           "FR-PROD-07"
         ],
         "x-permission": "OWNER",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
@@ -2701,7 +2701,7 @@
           "FR-PROD-07"
         ],
         "x-permission": "OWNER",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
@@ -2792,7 +2792,7 @@
           "FR-PROD-05"
         ],
         "x-permission": "활성 계정 + 허용 지점",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
@@ -2920,7 +2920,7 @@
           "FR-PROD-09"
         ],
         "x-permission": "OWNER 또는 명시한 모든 지점 operations:write",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
@@ -3011,7 +3011,7 @@
           "FR-PROD-01"
         ],
         "x-permission": "활성 계정 + 허용 지점",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
@@ -3088,7 +3088,7 @@
           "FR-PROD-09"
         ],
         "x-permission": "OWNER 또는 현재 모든 적용 지점 operations:write",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
@@ -3185,7 +3185,7 @@
           "FR-PROD-08"
         ],
         "x-permission": "OWNER 또는 현재 모든 적용 지점 MANAGER + operations:write",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
@@ -3279,7 +3279,7 @@
           "FR-PROD-05"
         ],
         "x-permission": "OWNER 또는 현재·변경후 모든 지점 MANAGER + operations:write",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
@@ -3374,7 +3374,7 @@
           "FR-PROD-11"
         ],
         "x-permission": "OWNER 또는 현재·이력의 모든 관련 지점 MANAGER + operations:write",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],

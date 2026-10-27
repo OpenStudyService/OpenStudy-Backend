@@ -66,9 +66,10 @@ class LocalPreviewIntegrationTests {
     void previewKeepsExistingUiSortOptionsButRejectsPrivateFields() throws Exception {
         assertThat(get("/api/tasks?sort=status").statusCode()).isEqualTo(200);
         assertThat(get("/api/tasks?sort=due").statusCode()).isEqualTo(200);
-        assertThat(get("/api/products?sort=status").statusCode()).isEqualTo(200);
+        // /api/products is a real operational endpoint now (#16); members is still preview-only.
+        assertThat(get("/api/members?sort=status").statusCode()).isEqualTo(200);
         assertThat(get("/api/tasks?sort=password_hash").statusCode()).isEqualTo(422);
-        assertThat(get("/api/products?sort=due").statusCode()).isEqualTo(422);
+        assertThat(get("/api/members?sort=due").statusCode()).isEqualTo(422);
     }
 
     @Test
