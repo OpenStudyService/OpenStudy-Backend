@@ -59,6 +59,19 @@ public class AuthorizedCommands {
         return command.apply(state);
     }
 
+    /**
+     * Same lock order without an authenticated actor, for a credential-bearing public command such as
+     * invitation acceptance. The callback must verify its own credential under the parent lock.
+     */
+    @Transactional
+    public <T> T publicCommand(Runnable lockBusinessParent, Supplier<T> command) {
+        repository.lockGuard();
+        repository.lockEmployees();
+        repository.lockBranches();
+        lockBusinessParent.run();
+        return command.get();
+    }
+
     @Transactional
     public <T> T membershipChange(long actor, long target, long branch, String requestedRole, String requestedStatus,
             Supplier<T> command) {

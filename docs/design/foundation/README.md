@@ -1,5 +1,7 @@
 # 1차 기반 기능 DB·API 설계
 
+2026-10-27 추가: Issue #15의 초대 미리보기·신규/기존 계정 수락·최종 승인은 [초대 수락·승인 구현 계약](invitation-acceptance-api.md)을 따른다. 기존 요청·응답 모델과 계약 버전은 유지하고 해당 operation의 구현 상태만 OpenAPI에 표시한다.
+
 2026-10-27 추가: Issue #14의 초대 발송 worker·SMTP·lease·재시도는 [메일 발송·장애 복구 계약](invitation-delivery.md)을 따른다. 기본 비활성이며 실제 운영 SMTP 수신 및 공개 수락·승인(#15)의 검증 범위를 구분한다.
 
 2026-10-27 추가: Issue #28의 로그인 계정·접속 출처별 요청 제한, 신뢰 프록시 경계, 인증 사건 감사는 [로그인 보호 기준](login-protection.md)을 따른다. HTTP 계약은 기존 `POST /auth/login`의 429를 유지한다.

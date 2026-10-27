@@ -28,6 +28,8 @@ public class AuthorizationWebConfiguration implements WebMvcConfigurer {
                 // Self-account endpoints have no branch scope; session and command boundaries guard profile writes.
                 if (path.equals("/api/me") || path.equals("/api/me/profile") || path.startsWith("/api/auth/")
                         || path.startsWith("/api/invitations/approval-status")) return true;
+                // Link-holder endpoints are self commands verified by token and own session, not branch administration.
+                if (path.equals("/api/invitations/preview") || path.equals("/api/invitations/accept")) return true;
                 var state = authorization.current(Long.parseLong(authentication.getName()));
                 String scope = request.getParameter("scope");
                 authorization.scope(state, scope, BranchAction.READ);

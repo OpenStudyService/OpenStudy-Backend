@@ -78,6 +78,41 @@ public class EmployeeAccountRepository {
         return true;
     }
 
+    public long createInvitedAccount(String email, String passwordHash, String name) {
+        jdbc.update("INSERT INTO employees (email,password_hash,name,nickname,global_role,status) "
+                + "VALUES (?,?,?,?,'EMPLOYEE','PENDING')", email, passwordHash, name, name);
+        return jdbc.queryForObject("SELECT id FROM employees WHERE email=?", Long.class, email);
+    }
+
+    /** Reuses a revoked row (Q11) or inserts one. A pending membership never carries effective grants. */
+    public void pendInvitationMembership(long employee, long branch, String role, long actor) {
+        var existing = jdbc.queryForList("SELECT id FROM branch_memberships WHERE employee_id=? AND branch_id=? FOR UPDATE",
+                Long.class, employee, branch);
+        if (existing.isEmpty()) {
+            jdbc.update("INSERT INTO branch_memberships(employee_id,branch_id,role,status,created_by,updated_by) "
+                    + "VALUES (?,?,?,'PENDING',?,?)", employee, branch, role, actor, actor);
+        } else {
+            int changed = jdbc.update("UPDATE branch_memberships SET role=?,status='PENDING',approved_by=NULL,approved_at=NULL,"
+                    + "updated_by=?,version=version+1 WHERE id=? AND status='REVOKED'", role, actor, existing.getFirst());
+            if (changed != 1) throw new IllegalStateException("Only a revoked membership can return to pending");
+            jdbc.update("DELETE FROM membership_permission_grants WHERE membership_id=?", existing.getFirst());
+        }
+        jdbc.update("UPDATE employees SET updated_by=?,version=version+1 WHERE id=?", actor, employee);
+    }
+
+    /** Activates only the invitation's pending membership and a PENDING account; SUSPENDED/LEFT stay unchanged. */
+    public void activateInvitationMembership(long employee, long branch, long actor, List<String> grants) {
+        long membership = jdbc.queryForObject("SELECT id FROM branch_memberships WHERE employee_id=? AND branch_id=? "
+                + "AND status='PENDING' FOR UPDATE", Long.class, employee, branch);
+        jdbc.update("UPDATE branch_memberships SET status='ACTIVE',approved_by=?,approved_at=UTC_TIMESTAMP(6),"
+                + "updated_by=?,version=version+1 WHERE id=?", actor, actor, membership);
+        jdbc.update("DELETE FROM membership_permission_grants WHERE membership_id=?", membership);
+        for (String code : grants) jdbc.update("INSERT INTO membership_permission_grants(membership_id,permission_id) "
+                + "SELECT ?,id FROM permission_definitions WHERE code=?", membership, code);
+        jdbc.update("UPDATE employees SET status=IF(status='PENDING','ACTIVE',status),updated_by=?,version=version+1 "
+                + "WHERE id=? AND status IN ('PENDING','ACTIVE')", actor, employee);
+    }
+
     public void updateNickname(long id, String nickname) {
         jdbc.update("UPDATE employees SET nickname=?,updated_by=?,version=version+1 WHERE id=?", nickname, id, id);
     }
