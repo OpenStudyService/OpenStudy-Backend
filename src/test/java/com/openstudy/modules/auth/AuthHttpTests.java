@@ -3,6 +3,7 @@ package com.openstudy.modules.auth;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,10 +20,12 @@ import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.ObjectMapper;
 
 import com.openstudy.common.exception.ApiExceptionHandler;
+import com.openstudy.common.web.ClientAddressResolver;
 import com.openstudy.config.SecurityConfiguration;
 import com.openstudy.modules.auth.controller.AuthController;
 import com.openstudy.modules.auth.service.CurrentUserService;
 import com.openstudy.modules.auth.service.LoginAttemptLimiter;
+import com.openstudy.modules.auth.service.LoginAuditService;
 import com.openstudy.modules.authorization.service.AuthorizationService;
 import com.openstudy.modules.branch.dto.SessionBranch;
 import com.openstudy.modules.branch.service.SessionBranchService;
@@ -38,15 +41,21 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(AuthController.class)
-@Import({SecurityConfiguration.class, CurrentUserService.class, LoginAttemptLimiter.class, ApiExceptionHandler.class})
+// The test profile raises the source limit for the shared integration context; this slice restores the default.
+@WebMvcTest(controllers = AuthController.class, properties = "openstudy.auth.login-limit.source.max-attempts=30")
+@Import({SecurityConfiguration.class, CurrentUserService.class, LoginAttemptLimiter.class, ApiExceptionHandler.class,
+        ClientAddressResolver.class})
 class AuthHttpTests {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
     @MockitoBean EmployeeAccountService employees;
     @MockitoBean SessionBranchService branches;
     @MockitoBean AuthorizationService authorization;
+    @MockitoBean LoginAuditService audit;
 
+    // The limiter lives in the shared context, so every test logs in from its own source address.
+    private static final AtomicInteger SOURCES = new AtomicInteger();
+    private String source;
     private String email;
     private static final String PASSWORD = "test-password-123";
     private static final String HASH = new BCryptPasswordEncoder(4).encode(PASSWORD);
@@ -54,6 +63,7 @@ class AuthHttpTests {
     @BeforeEach
     void accounts() {
         email = UUID.randomUUID() + "@example.com";
+        source = "2001:db8::" + Integer.toHexString(SOURCES.incrementAndGet());
         when(employees.byEmail(anyString())).thenThrow(new UsernameNotFoundException("missing"));
         doReturn(account("ACTIVE")).when(employees).byEmail(email);
         when(employees.byId(42)).thenReturn(account("ACTIVE"));
@@ -173,6 +183,48 @@ class AuthHttpTests {
     }
 
     @Test
+    void sameSourceRotatingAccountsIsLimitedWithTheSameBodyForExistingAndMissingAccounts() throws Exception {
+        var csrf = csrf(null);
+        for (int i = 0; i < 30; i++) {
+            login(csrf, UUID.randomUUID() + "@example.com", "incorrect-password").andExpect(status().isUnauthorized());
+        }
+        var missing = login(csrf, UUID.randomUUID() + "@example.com", "incorrect-password")
+                .andExpect(status().isTooManyRequests()).andReturn().getResponse();
+        var existing = login(csrf, email, PASSWORD)
+                .andExpect(status().isTooManyRequests()).andReturn().getResponse();
+        for (var response : List.of(missing, existing)) {
+            var body = json.readTree(response.getContentAsString());
+            assertThat(body.get("code").asString()).isEqualTo("RATE_LIMITED");
+            assertThat(body.get("requestId").asString()).isEqualTo(response.getHeader("X-Request-ID"));
+        }
+        assertThat(json.readTree(missing.getContentAsString()).get("message"))
+                .isEqualTo(json.readTree(existing.getContentAsString()).get("message"));
+        login(csrf, email, PASSWORD, source + ":1", null).andExpect(status().isOk());
+    }
+
+    @Test
+    void forwardedHeadersFromAnUntrustedPeerCannotBypassTheSourceLimit() throws Exception {
+        var csrf = csrf(null);
+        for (int i = 0; i < 30; i++) {
+            login(csrf, UUID.randomUUID() + "@example.com", "incorrect-password", source, "198.51.100." + i)
+                    .andExpect(status().isUnauthorized());
+        }
+        login(csrf, email, PASSWORD, source, "198.51.100.250").andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+    }
+
+    @Test
+    void sameAccountFromRotatingSourcesKeepsTheAccountLimit() throws Exception {
+        var csrf = csrf(null);
+        for (int i = 0; i < 10; i++) {
+            login(csrf, email, "incorrect-password", source + ":" + Integer.toHexString(i + 1), null)
+                    .andExpect(status().isUnauthorized());
+        }
+        login(csrf, email, PASSWORD, source + ":ff", null).andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+    }
+
+    @Test
     void logoutWithoutAnExistingSessionStillClearsCookie() throws Exception {
         mvc.perform(post("/api/auth/logout")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.ok").value(true)).andExpect(cookie().maxAge("SESSION", 0));
@@ -228,8 +280,16 @@ class AuthHttpTests {
     }
 
     private org.springframework.test.web.servlet.ResultActions login(Csrf csrf, String email, String password) throws Exception {
-        return mvc.perform(post("/api/auth/login").session(csrf.session()).header("X-CSRF-Token", csrf.token())
-                .contentType(MediaType.APPLICATION_JSON).content(body(email, password)));
+        return login(csrf, email, password, source, null);
+    }
+
+    private org.springframework.test.web.servlet.ResultActions login(Csrf csrf, String email, String password,
+            String peer, String forwardedFor) throws Exception {
+        var request = post("/api/auth/login").session(csrf.session()).header("X-CSRF-Token", csrf.token())
+                .contentType(MediaType.APPLICATION_JSON).content(body(email, password))
+                .with(value -> { value.setRemoteAddr(peer); return value; });
+        if (forwardedFor != null) request.header("X-Forwarded-For", forwardedFor);
+        return mvc.perform(request);
     }
 
     private String body(String email, String password) {

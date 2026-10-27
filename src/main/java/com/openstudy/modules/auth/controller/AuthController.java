@@ -27,9 +27,12 @@ import com.openstudy.common.exception.ApiException;
 import com.openstudy.modules.auth.dto.LoginRequest;
 import com.openstudy.modules.auth.service.CurrentUserService;
 import com.openstudy.modules.auth.service.LoginAttemptLimiter;
+import com.openstudy.modules.auth.service.LoginAuditService;
+import com.openstudy.modules.auth.service.LoginRateLimitedException;
 import com.openstudy.modules.employee.service.EmployeeAccountService;
 import com.openstudy.modules.auth.service.SessionBoundaryPolicy;
 import com.openstudy.common.web.ApiRequestFilter;
+import com.openstudy.common.web.ClientAddressResolver;
 
 @RestController
 public class AuthController {
@@ -40,10 +43,13 @@ public class AuthController {
     private final EmployeeAccountService employees;
     private final LoginAttemptLimiter limiter;
     private final SessionBoundaryPolicy sessions;
+    private final ClientAddressResolver clients;
+    private final LoginAuditService audit;
 
     public AuthController(AuthenticationManager authenticationManager, SecurityContextRepository contexts,
             SessionAuthenticationStrategy sessionStrategy, CurrentUserService users,
-            EmployeeAccountService employees, LoginAttemptLimiter limiter, SessionBoundaryPolicy sessions) {
+            EmployeeAccountService employees, LoginAttemptLimiter limiter, SessionBoundaryPolicy sessions,
+            ClientAddressResolver clients, LoginAuditService audit) {
         this.authenticationManager = authenticationManager;
         this.contexts = contexts;
         this.sessionStrategy = sessionStrategy;
@@ -51,6 +57,8 @@ public class AuthController {
         this.employees = employees;
         this.limiter = limiter;
         this.sessions = sessions;
+        this.clients = clients;
+        this.audit = audit;
     }
 
     @GetMapping("/api/auth/csrf")
@@ -61,23 +69,36 @@ public class AuthController {
     @PostMapping("/api/auth/login")
     public ResponseEntity<CurrentUser> login(@Valid @RequestBody LoginRequest body,
             HttpServletRequest request, HttpServletResponse response) {
-        limiter.check(body.email());
-        if (body.password().getBytes(StandardCharsets.UTF_8).length > 72) {
-            throw ApiException.validation("password", "비밀번호는 UTF-8 72바이트 이하여야 합니다.");
+        String requestId = ApiRequestFilter.requestId(request);
+        try {
+            limiter.check(body.email(), clients.resolve(request));
+        } catch (LoginRateLimitedException exception) {
+            audit.limited(body.email(), exception, requestId);
+            throw exception;
         }
-        var authentication = authenticationManager.authenticate(
-                UsernamePasswordAuthenticationToken.unauthenticated(body.email().trim(), body.password()));
-        long employeeId = Long.parseLong(authentication.getName());
-        var current = users.current(employeeId);
-        employees.recordLogin(employeeId);
-        sessionStrategy.onAuthentication(authentication, request, response);
-        var context = SecurityContextHolder.createEmptyContext();
-        context.setAuthentication(authentication);
-        SecurityContextHolder.setContext(context);
-        sessions.start(request.getSession(), current.sessionMode());
-        contexts.saveContext(context, request, response);
-        limiter.success(body.email());
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(current);
+        Long employeeId = null;
+        try {
+            if (body.password().getBytes(StandardCharsets.UTF_8).length > 72) {
+                throw ApiException.validation("password", "비밀번호는 UTF-8 72바이트 이하여야 합니다.");
+            }
+            var authentication = authenticationManager.authenticate(
+                    UsernamePasswordAuthenticationToken.unauthenticated(body.email().trim(), body.password()));
+            employeeId = Long.parseLong(authentication.getName());
+            var current = users.current(employeeId);
+            employees.recordLogin(employeeId);
+            sessionStrategy.onAuthentication(authentication, request, response);
+            var context = SecurityContextHolder.createEmptyContext();
+            context.setAuthentication(authentication);
+            SecurityContextHolder.setContext(context);
+            sessions.start(request.getSession(), current.sessionMode());
+            contexts.saveContext(context, request, response);
+            limiter.success(body.email());
+            audit.succeeded(employeeId, requestId);
+            return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(current);
+        } catch (RuntimeException exception) {
+            audit.failed(body.email(), employeeId, exception, requestId);
+            throw exception;
+        }
     }
 
     @GetMapping("/api/me")

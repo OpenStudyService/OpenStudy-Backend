@@ -1,5 +1,7 @@
 # 1차 기반 기능 DB·API 설계
 
+2026-10-27 추가: Issue #28의 로그인 계정·접속 출처별 요청 제한, 신뢰 프록시 경계, 인증 사건 감사는 [로그인 보호 기준](login-protection.md)을 따른다. HTTP 계약은 기존 `POST /auth/login`의 429를 유지한다.
+
 2026-10-27 추가: Issue #13의 초대 목록·상세·생성·재발급·취소·반려는 [초대 관리 구현 계약](invitation-management-api.md)을 따른다. 발송 작업 예약과 실제 메일 발송(#14), 수락·최종 승인(#15)을 구분한다. 기존 요청·응답 모델은 유지하며 해당 operation의 구현 상태를 OpenAPI에 표시한다.
 
 2026-10-26 추가: Issue #17의 기반 lookups와 단일 인스턴스 SSE는 [workspace-api.md](workspace-api.md) 및 OpenAPI `0.1.4-workspace`의 구현 계약을 따른다. 상품·분류 선택 데이터 및 운영 프록시·다중 인스턴스 검증 범위를 구분한다.

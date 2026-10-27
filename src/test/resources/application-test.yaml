@@ -15,3 +15,10 @@ spring:
   session:
     jdbc:
       cleanup-cron: "-"
+openstudy:
+  auth:
+    login-limit:
+      source:
+        # Every integration test logs in from 127.0.0.1 within one shared context.
+        # Source limiting is verified in AuthHttpTests with the production default and distinct peers.
+        max-attempts: 100000
