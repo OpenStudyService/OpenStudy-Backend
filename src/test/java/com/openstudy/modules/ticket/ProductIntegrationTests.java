@@ -414,12 +414,14 @@ class ProductIntegrationTests {
         long customer = jdbc.queryForObject("SELECT id FROM customers WHERE member_no=?", Long.class, "PT-" + token);
         customers.add(customer);
         jdbc.update("INSERT INTO payments(customer_id,branch_id,product_id,product_name_snapshot,purpose,method,amount_krw,status,"
-                + "idempotency_key,approved_at,created_by) VALUES(?,?,?,?,'PASS','CASH',15000,'APPROVED',?,UTC_TIMESTAMP(6),?)",
+                + "idempotency_key,issued_pass_quantity,approved_at,created_by) VALUES(?,?,?,?,'PASS','CASH',15000,'APPROVED',?,1,UTC_TIMESTAMP(6),?)",
                 customer, first, id, product.name(), "payment-" + token, owner);
         long payment = jdbc.queryForObject("SELECT id FROM payments WHERE customer_id=?", Long.class, customer);
-        jdbc.update("INSERT INTO passes(customer_id,product_id,purchase_payment_id,purchase_branch_id,kind,snapshot_price_krw,"
-                + "snapshot_product_name,snapshot_minutes,remaining_minutes,started_at) VALUES(?,?,?,?,'TIME',15000,?,600,600,UTC_TIMESTAMP(6))",
-                customer, id, payment, first, product.name());
+        long revision = jdbc.queryForObject("SELECT id FROM product_revisions WHERE original_product_id=?", Long.class, id);
+        jdbc.update("INSERT INTO passes(customer_id,product_id,purchase_payment_id,purchase_branch_id,purchase_product_revision_id,kind,snapshot_price_krw,"
+                + "snapshot_product_name,snapshot_category_code,snapshot_category_name,snapshot_minutes,remaining_minutes,started_at) "
+                + "SELECT ?,?,?,?,?,'TIME',15000,?,c.code,c.name,600,600,UTC_TIMESTAMP(6) FROM product_categories c WHERE c.id=?",
+                customer, id, payment, first, revision, product.name(), timeCategory);
         try (var o = login(owner)) {
             var changed = call(o, "PATCH", "/api/products/" + id, Map.of("version", 1, "name", token + " 새 이름",
                     "priceKrw", 18000, "terms", time(900, 60L)));
@@ -432,6 +434,8 @@ class ProductIntegrationTests {
             assertThat(pass.get("snapshot_price_krw")).isEqualTo(java.math.BigInteger.valueOf(15000));
             assertThat(pass.get("snapshot_product_name")).isEqualTo(product.name());
             assertThat(pass.get("snapshot_minutes")).isEqualTo(600L);
+            assertThat(jdbc.queryForObject("SELECT purchase_product_revision_id FROM passes WHERE customer_id=?", Long.class, customer))
+                    .isEqualTo(revision);
             assertThat(jdbc.queryForObject("SELECT product_name_snapshot FROM payments WHERE id=?", String.class, payment)).isEqualTo(product.name());
             assertThatThrownBy(() -> jdbc.update("DELETE FROM products WHERE id=?", id)).hasMessageContaining("foreign key constraint");
 

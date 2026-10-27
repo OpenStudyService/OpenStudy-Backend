@@ -54,69 +54,39 @@ class FoundationMigrationTests {
         jdbc = new JdbcTemplate(dataSource);
     }
     long count(String sql) { return jdbc.queryForObject(sql, Long.class); }
-    void v1Fixture() {
-        flyway("1").migrate();
-        jdbc.update("INSERT INTO employees(id,email,password_hash,name,nickname,global_role,status,version) VALUES(10,' Owner@Example.com ','unchanged-hash','Owner','Owner','OWNER','ACTIVE',7)");
-        jdbc.update("INSERT INTO branches(id,code,name,address,version) VALUES(20,'LEGACY','Legacy branch','Seoul',4)");
-        jdbc.update("INSERT INTO products(id,code,name,kind,price_krw,included_minutes,version) VALUES(30,'LEGACY-TIME','Legacy time','TIME',10000,600,8)");
-        jdbc.update("INSERT INTO employee_invitations(id,branch_id,invitee_email,initial_role,created_by,expires_at,version) VALUES(40,20,' New@Example.com ','STAFF',10,'2099-01-01',3)");
-        jdbc.update("INSERT INTO customers(id,member_no,name) VALUES(50,'LEGACY-CUSTOMER','Customer')");
-        jdbc.update("INSERT INTO payments(id,customer_id,branch_id,product_id,product_name_snapshot,purpose,method,amount_krw,status,idempotency_key,created_by) VALUES(60,50,20,30,'Original purchased name','PASS','CASH',9000,'REFUNDED','legacy-payment',10)");
-    }
-    void reviewedMapping() {
-        jdbc.update("INSERT INTO product_categories(id,code,name,kind) VALUES(70,'REVIEWED-TIME','Reviewed category','TIME')");
-        jdbc.update("UPDATE products SET category_id=70,updated_at=updated_at WHERE id=30");
-        jdbc.update("INSERT INTO product_branches VALUES(30,20)");
-        jdbc.update("UPDATE employee_invitations SET invitee_name='Verified invitee',updated_at=updated_at WHERE id=40");
-        // Reviewed STAFF invitation intentionally has no grants, as required by Q5.
-        jdbc.update("UPDATE foundation_legacy_review SET confirmed=TRUE");
-    }
-
-    @Test void upgradesReviewedV1DataWithoutChangingIdentityVersionsCredentialsOrPurchases() throws Exception {
-        v1Fixture();
-        var times = jdbc.queryForMap("SELECT created_at,updated_at FROM products WHERE id=30");
-        flyway("2").migrate(); reviewedMapping(); flyway(null).migrate();
-        assertThat(jdbc.queryForMap("SELECT created_at,updated_at FROM products WHERE id=30")).isEqualTo(times);
-        assertThat(jdbc.queryForMap("SELECT email,password_hash,version FROM employees WHERE id=10"))
-                .containsEntry("email","owner@example.com").containsEntry("password_hash","unchanged-hash");
-        assertThat(count("SELECT version FROM employees WHERE id=10")).isEqualTo(7);
-        assertThat(count("SELECT version FROM products WHERE id=30")).isEqualTo(8);
-        assertThat(count("SELECT version FROM employee_invitations WHERE id=40")).isEqualTo(3);
-        assertThat(count("SELECT amount_krw FROM payments WHERE id=60")).isEqualTo(9000);
-        assertThat(jdbc.queryForObject("SELECT product_name_snapshot FROM payments WHERE id=60",String.class)).isEqualTo("Original purchased name");
-        assertThat(jdbc.queryForObject("SELECT event_type FROM product_revisions WHERE original_product_id=30",String.class)).isEqualTo("BASELINE");
-        assertThat(jdbc.queryForObject("SELECT JSON_UNQUOTE(JSON_EXTRACT(snapshot_json,'$.branchIds[0]')) FROM product_revisions",String.class)).isEqualTo("20");
-        var snapshot=JsonMapper.builder().build().readTree(jdbc.queryForObject("SELECT snapshot_json FROM product_revisions",String.class));
-        assertThat(snapshot.get("terms").isObject()).isTrue();
-        assertThat(snapshot.get("terms").get("kind").asString()).isEqualTo("시간권");
-        assertThat(snapshot.get("categoryCode").asString()).isEqualTo("REVIEWED-TIME");
-        assertThat(count("SELECT COUNT(*) FROM invitation_permission_grants")).isZero();
-        assertThatThrownBy(() -> jdbc.update("DELETE FROM products WHERE id=30")).hasMessageContaining("foreign key constraint");
+    @Test void createsOnlyTheConsolidatedBaselineAndPreservesDataOnRestart() {
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success=1", String.class))
+                .containsExactly("1");
+        assertThat(count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name <> 'flyway_schema_history'"))
+                .isEqualTo(65);
+        assertThat(count("SELECT COUNT(*) FROM employees")).isZero();
+        assertThat(count("SELECT COUNT(*) FROM administration_guard WHERE id=1")).isEqualTo(1);
+        jdbc.update("INSERT INTO branches(code,name,address) VALUES('RESTART','Restart test','Test')");
         assertThat(flyway(null).validateWithResult().validationSuccessful).isTrue();
         assertThat(flyway(null).migrate().migrationsExecuted).isZero();
+        assertThat(count("SELECT COUNT(*) FROM branches WHERE code='RESTART'")).isEqualTo(1);
     }
 
-    @Test void blocksUnreviewedLegacyScopeBeforeFinalizingAndCanResumeAfterExplicitReview() {
-        v1Fixture(); flyway("2").migrate();
-        assertThatThrownBy(() -> flyway(null).migrate()).hasStackTraceContaining("FOUNDATION_MAPPING_REQUIRED");
-        assertThat(count("SELECT version FROM products WHERE id=30")).isEqualTo(8);
-        assertThat(count("SELECT COUNT(*) FROM product_branches")).isZero();
-        assertThat(count("SELECT COUNT(*) FROM product_revisions")).isZero();
-        reviewedMapping();
-        // Only this isolated test DB is repaired. V3 failed in its preflight, before data/DDL changes.
-        flyway(null).repair(); flyway(null).migrate();
-        assertThat(flyway(null).validateWithResult().validationSuccessful).isTrue();
+    @Test void rejectsAnExistingDifferentV1WithoutChangingItsDataOrHistory() {
+        flyway(null).migrate();
+        jdbc.update("INSERT INTO branches(code,name,address) VALUES('OLD','Old test database','Test')");
+        // Simulate an already-applied, different V1 in this disposable database only.
+        jdbc.update("UPDATE flyway_schema_history SET checksum=checksum+1 WHERE version='1'");
+        var history = jdbc.queryForList("SELECT * FROM flyway_schema_history ORDER BY installed_rank");
+        assertThat(flyway(null).validateWithResult().validationSuccessful).isFalse();
+        assertThatThrownBy(() -> flyway(null).migrate()).hasMessageContaining("checksum mismatch");
+        assertThat(jdbc.queryForList("SELECT * FROM flyway_schema_history ORDER BY installed_rank")).isEqualTo(history);
+        assertThat(count("SELECT COUNT(*) FROM branches WHERE code='OLD'")).isEqualTo(1);
     }
 
-    @Test void rejectsNormalizedEmailCollisionAndConflictingSystemPreset() {
-        flyway("1").migrate();
-        jdbc.update("INSERT INTO employees(email,password_hash,name,nickname) VALUES(' x@example.com','hash','A','A'),('x@example.com','hash','B','B')");
-        flyway("2").migrate();
-        assertThatThrownBy(() -> flyway(null).migrate()).hasStackTraceContaining("FOUNDATION_EMAIL_COLLISION");
-        jdbc.update("DELETE FROM employees WHERE email=' x@example.com'");
-        jdbc.update("INSERT INTO permission_presets(name,role,is_system) VALUES('일반 직원 기본','STAFF',FALSE)");
-        flyway(null).repair();
-        assertThatThrownBy(() -> flyway(null).migrate()).hasStackTraceContaining("FOUNDATION_PRESET_SEED_CONFLICT");
+    @Test void rejectsANonemptyDatabaseWithoutHistoryInsteadOfBaseliningIt() {
+        jdbc.execute("CREATE TABLE existing_data (id INT PRIMARY KEY)");
+        jdbc.update("INSERT INTO existing_data VALUES(1)");
+        assertThatThrownBy(() -> flyway(null).migrate()).hasMessageContaining("non-empty schema");
+        assertThat(count("SELECT COUNT(*) FROM existing_data")).isEqualTo(1);
+        assertThat(count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='employees'"))
+                .isZero();
     }
 
     @Test void enforcesProductInvitationOwnerAndIdempotencyConstraintsAndRetainsDeletedHistory() {
@@ -147,6 +117,37 @@ class FoundationMigrationTests {
         assertThat(count("SELECT COUNT(*) FROM permission_preset_grants g JOIN permission_presets p ON p.id=g.preset_id WHERE p.role='MANAGER'")).isEqualTo(9);
     }
 
+    @Test void enforcesPurchaseQuantityRevisionPairAndPeriodActivation() {
+        flyway(null).migrate();
+        jdbc.update("INSERT INTO employees(id,email,password_hash,name,nickname,global_role,status) VALUES(10,'owner@example.com','hash','Owner','Owner','OWNER','ACTIVE')");
+        jdbc.update("INSERT INTO branches(id,code,name,address) VALUES(20,'B','B','Test')");
+        jdbc.update("INSERT INTO customers(id,member_no,name) VALUES(50,'C','Customer')");
+        jdbc.update("INSERT INTO product_categories(id,code,name,kind) VALUES(70,'PERIOD','Period','PERIOD')");
+        jdbc.update("INSERT INTO products(id,code,name,kind,price_krw,period_days,category_id) VALUES(30,'P','Period','PERIOD',1000,30,70),(31,'OTHER','Other','PERIOD',1000,30,70)");
+        jdbc.update("INSERT INTO product_revisions(id,product_id,original_product_id,product_version,event_type,changed_at,request_id,snapshot_json) VALUES(80,30,30,0,'CREATED',UTC_TIMESTAMP(6),'test','{}'),(81,31,31,0,'CREATED',UTC_TIMESTAMP(6),'test','{}')");
+        jdbc.update("INSERT INTO payments(id,customer_id,branch_id,product_id,purpose,method,amount_krw,status,idempotency_key,issued_pass_quantity,created_by) VALUES(60,50,20,30,'PASS','CASH',1000,'PENDING','payment',0,10)");
+        assertThatThrownBy(() -> jdbc.update("UPDATE payments SET status='APPROVED' WHERE id=60"))
+                .hasStackTraceContaining("ck_payments_issued_pass_quantity");
+        assertThatThrownBy(() -> jdbc.update("UPDATE payments SET issued_pass_quantity=1 WHERE id=60"))
+                .hasStackTraceContaining("ck_payments_issued_pass_quantity");
+        jdbc.update("UPDATE payments SET status='APPROVED',issued_pass_quantity=1 WHERE id=60");
+        assertThatThrownBy(() -> jdbc.update("UPDATE payments SET issued_pass_quantity=2 WHERE id=60"))
+                .hasStackTraceContaining("ck_payments_issued_pass_quantity");
+        String insert = "INSERT INTO passes(customer_id,product_id,purchase_payment_id,purchase_branch_id,purchase_product_revision_id,kind,snapshot_price_krw,snapshot_product_name,snapshot_category_code,snapshot_category_name,snapshot_period_days,status) VALUES(50,30,60,20,?,'PERIOD',1000,'Purchased period','PERIOD','Purchased category',30,'NOT_STARTED')";
+        assertThatThrownBy(() -> jdbc.update(insert,81)).hasStackTraceContaining("fk_passes_purchase_revision_product");
+        jdbc.update(insert,80);
+        assertThatThrownBy(() -> jdbc.update(insert,80)).hasStackTraceContaining("uk_passes_1");
+        assertThatThrownBy(() -> jdbc.update("UPDATE passes SET status='ACTIVE'"))
+                .hasStackTraceContaining("ck_passes_period_activation");
+        jdbc.update("UPDATE passes SET status='ACTIVE',started_at='2026-10-27 00:00:00',expires_at='2026-11-26 00:00:00'");
+        assertThatThrownBy(() -> jdbc.update("UPDATE passes SET expires_at=started_at"))
+                .hasStackTraceContaining("ck_passes_period_activation");
+        assertThatThrownBy(() -> jdbc.update("DELETE FROM product_revisions WHERE id=80"))
+                .hasStackTraceContaining("fk_passes_purchase_revision_product");
+        jdbc.update("UPDATE products SET name='Changed product' WHERE id=30");
+        assertThat(jdbc.queryForObject("SELECT snapshot_product_name FROM passes",String.class)).isEqualTo("Purchased period");
+    }
+
     @Test void exportsPristineSchemaAndRestoresItWithMatchingFlywayHistoryAndMetadata() throws Exception {
         flyway(null).migrate();
         var columns = jdbc.queryForList("SELECT TABLE_NAME,COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,COLUMN_KEY,COLUMN_DEFAULT,EXTRA,COLUMN_COMMENT FROM information_schema.columns WHERE table_schema=DATABASE() ORDER BY TABLE_NAME,ORDINAL_POSITION");
@@ -159,7 +160,7 @@ class FoundationMigrationTests {
                     .allMatch(k->t.equals(k.get("REFERENCED_TABLE_NAME")) || ordered.contains(k.get("REFERENCED_TABLE_NAME")))) ordered.add(t);
             if(before==ordered.size()) throw new IllegalStateException("Unresolved FK cycle: "+tableNames);
         }
-        var sql = new StringBuilder("-- OpenStudy foundation 0.1.2 / MySQL 8.4 / Flyway V1-V3\n-- EMPTY database only. Includes real Flyway history, reference seeds, no business credentials.\nSET NAMES utf8mb4;\nSET time_zone = '+00:00';\n");
+        var sql = new StringBuilder("-- OpenStudy consolidated V1 / MySQL 8.4 / Flyway V1\n-- EMPTY database only. Includes real Flyway history, reference seeds, no business credentials.\nSET NAMES utf8mb4;\nSET time_zone = '+00:00';\n");
         for(String t:ordered) sql.append(jdbc.queryForMap("SHOW CREATE TABLE `"+t+"`").get("Create Table")).append(";\n\n");
         for(String t:List.of("permission_definitions","permission_presets","permission_preset_grants","administration_guard","flyway_schema_history")) {
             for(var row:jdbc.queryForList("SELECT * FROM `"+t+"`")) {
@@ -174,15 +175,17 @@ class FoundationMigrationTests {
         assertThat(flyway(null).validateWithResult().validationSuccessful).isTrue();
         assertThat(flyway(null).migrate().migrationsExecuted).isZero();
         assertThat(jdbc.queryForList("SELECT TABLE_NAME,COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,COLUMN_KEY,COLUMN_DEFAULT,EXTRA,COLUMN_COMMENT FROM information_schema.columns WHERE table_schema=DATABASE() ORDER BY TABLE_NAME,ORDINAL_POSITION")).isEqualTo(columns);
+        assertThat(jdbc.queryForList("SELECT k.TABLE_NAME,k.COLUMN_NAME,k.REFERENCED_TABLE_NAME,k.REFERENCED_COLUMN_NAME,k.CONSTRAINT_NAME,r.DELETE_RULE FROM information_schema.key_column_usage k JOIN information_schema.referential_constraints r ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME WHERE k.TABLE_SCHEMA=DATABASE() ORDER BY k.TABLE_NAME,k.CONSTRAINT_NAME,k.ORDINAL_POSITION")).isEqualTo(keys);
         assertThat(count("SELECT COUNT(*) FROM employees")).isZero();
         assertThat(count("SELECT COUNT(*) FROM permission_definitions")).isEqualTo(9);
         if(System.getProperty("foundation.exportDir")!=null) {
             Path out=Path.of(System.getProperty("foundation.exportDir")); Files.createDirectories(out);
             Files.copy(temp,out.resolve("schema-full.sql"),java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             var metadata=new LinkedHashMap<String,Object>();
-            metadata.put("contractVersion","0.1.2-design"); metadata.put("flywayVersion",3);
+            metadata.put("contractVersion","consolidated-v1"); metadata.put("flywayVersion",1);
             metadata.put("mysqlVersion",jdbc.queryForObject("SELECT VERSION()",String.class));
             metadata.put("tables",tableNames); metadata.put("columns",columns); metadata.put("foreignKeys",keys);
+            metadata.put("uniqueIndexes",jdbc.queryForList("SELECT TABLE_NAME,INDEX_NAME,COLUMN_NAME FROM information_schema.statistics WHERE TABLE_SCHEMA=DATABASE() AND NON_UNIQUE=0 ORDER BY TABLE_NAME,INDEX_NAME,SEQ_IN_INDEX"));
             Files.writeString(out.resolve("schema-metadata.json"),JsonMapper.builder().build().writerWithDefaultPrettyPrinter().writeValueAsString(metadata));
         }
         Files.delete(temp);

@@ -1,4 +1,4 @@
--- OpenStudy foundation 0.1.2 / MySQL 8.4 / Flyway V1-V3
+-- OpenStudy consolidated V1 / MySQL 8.4 / Flyway V1
 -- EMPTY database only. Includes real Flyway history, reference seeds, no business credentials.
 SET NAMES utf8mb4;
 SET time_zone = '+00:00';
@@ -531,6 +531,7 @@ CREATE TABLE `payments` (
   `amount_krw` bigint unsigned NOT NULL,
   `status` enum('PENDING','APPROVED','FAILED','REFUNDED') NOT NULL DEFAULT 'PENDING',
   `idempotency_key` varchar(120) NOT NULL,
+  `issued_pass_quantity` smallint unsigned NOT NULL DEFAULT '0',
   `approved_at` datetime(6) DEFAULT NULL,
   `failed_at` datetime(6) DEFAULT NULL,
   `created_by` bigint unsigned NOT NULL,
@@ -550,7 +551,8 @@ CREATE TABLE `payments` (
   CONSTRAINT `fk_payments_3` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_payments_4` FOREIGN KEY (`created_by`) REFERENCES `employees` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `ck_payments_1` CHECK ((((`purpose` = _utf8mb4'PASS') and (`product_id` is not null)) or ((`purpose` in (_utf8mb4'ROOM',_utf8mb4'LOCKER')) and (`product_id` is null)))),
-  CONSTRAINT `ck_payments_2` CHECK ((`amount_krw` > 0))
+  CONSTRAINT `ck_payments_2` CHECK ((`amount_krw` > 0)),
+  CONSTRAINT `ck_payments_issued_pass_quantity` CHECK ((((`purpose` = _utf8mb4'PASS') and (((`status` in (_utf8mb4'APPROVED',_utf8mb4'REFUNDED')) and (`issued_pass_quantity` = 1)) or ((`status` in (_utf8mb4'PENDING',_utf8mb4'FAILED')) and (`issued_pass_quantity` = 0)))) or ((`purpose` <> _utf8mb4'PASS') and (`issued_pass_quantity` = 0))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='이용권·스터디룸·사물함 내부 Mock 승인/실패, 구매 지점의 원거래';
 
 CREATE TABLE `permission_preset_grants` (
@@ -584,6 +586,7 @@ CREATE TABLE `product_revisions` (
   `snapshot_json` json NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_product_revisions_version` (`original_product_id`,`product_version`),
+  UNIQUE KEY `uk_product_revisions_id_original` (`id`,`original_product_id`),
   KEY `ix_product_revisions_history` (`original_product_id`,`changed_at`,`id`),
   KEY `fk_product_revisions_live` (`product_id`),
   KEY `fk_product_revisions_actor` (`changed_by`),
@@ -861,9 +864,12 @@ CREATE TABLE `passes` (
   `product_id` bigint unsigned NOT NULL,
   `purchase_payment_id` bigint unsigned NOT NULL,
   `purchase_branch_id` bigint unsigned NOT NULL,
+  `purchase_product_revision_id` bigint unsigned NOT NULL,
   `kind` enum('TIME','PERIOD','STORED_VALUE') NOT NULL,
   `snapshot_price_krw` bigint unsigned NOT NULL,
   `snapshot_product_name` varchar(120) NOT NULL,
+  `snapshot_category_code` varchar(40) NOT NULL,
+  `snapshot_category_name` varchar(100) NOT NULL,
   `snapshot_minutes` int unsigned DEFAULT NULL,
   `snapshot_period_days` int unsigned DEFAULT NULL,
   `snapshot_credit_krw` bigint unsigned DEFAULT NULL,
@@ -871,8 +877,8 @@ CREATE TABLE `passes` (
   `snapshot_valid_days` int unsigned DEFAULT NULL,
   `remaining_minutes` int unsigned DEFAULT NULL,
   `remaining_credit_krw` bigint unsigned DEFAULT NULL,
-  `status` enum('ACTIVE','EXHAUSTED','EXPIRED','REFUNDED') NOT NULL DEFAULT 'ACTIVE',
-  `started_at` datetime(6) NOT NULL,
+  `status` enum('ACTIVE','EXHAUSTED','EXPIRED','REFUNDED','NOT_STARTED') NOT NULL DEFAULT 'ACTIVE',
+  `started_at` datetime(6) DEFAULT NULL,
   `expires_at` datetime(6) DEFAULT NULL,
   `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
@@ -881,13 +887,17 @@ CREATE TABLE `passes` (
   UNIQUE KEY `uk_passes_1` (`purchase_payment_id`),
   KEY `ix_passes_1` (`customer_id`,`status`,`expires_at`),
   KEY `ix_passes_2` (`purchase_branch_id`,`created_at`),
+  KEY `ix_passes_revision_product` (`purchase_product_revision_id`,`product_id`),
+  KEY `ix_passes_customer_status_created` (`customer_id`,`status`,`created_at`),
   KEY `fk_passes_2` (`product_id`),
   KEY `fk_passes_3` (`purchase_payment_id`,`customer_id`,`purchase_branch_id`,`product_id`),
   CONSTRAINT `fk_passes_1` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_passes_2` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_passes_3` FOREIGN KEY (`purchase_payment_id`, `customer_id`, `purchase_branch_id`, `product_id`) REFERENCES `payments` (`id`, `customer_id`, `branch_id`, `product_id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_passes_4` FOREIGN KEY (`purchase_branch_id`) REFERENCES `branches` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `ck_passes_1` CHECK ((((`kind` = _utf8mb4'TIME') and (`snapshot_minutes` is not null) and (`snapshot_minutes` > 0) and (`remaining_minutes` is not null) and (`snapshot_credit_krw` is null) and (`remaining_credit_krw` is null)) or ((`kind` = _utf8mb4'PERIOD') and (`snapshot_period_days` is not null) and (`snapshot_period_days` > 0) and (`remaining_minutes` is null) and (`remaining_credit_krw` is null)) or ((`kind` = _utf8mb4'STORED_VALUE') and (`snapshot_credit_krw` is not null) and (`snapshot_hourly_rate_krw` is not null) and (`snapshot_credit_krw` > 0) and (`snapshot_hourly_rate_krw` > 0) and (`remaining_credit_krw` is not null) and (`remaining_minutes` is null))))
+  CONSTRAINT `fk_passes_purchase_revision_product` FOREIGN KEY (`purchase_product_revision_id`, `product_id`) REFERENCES `product_revisions` (`id`, `original_product_id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_passes_1` CHECK ((((`kind` = _utf8mb4'TIME') and (`snapshot_minutes` is not null) and (`snapshot_minutes` > 0) and (`remaining_minutes` is not null) and (`snapshot_credit_krw` is null) and (`remaining_credit_krw` is null)) or ((`kind` = _utf8mb4'PERIOD') and (`snapshot_period_days` is not null) and (`snapshot_period_days` > 0) and (`remaining_minutes` is null) and (`remaining_credit_krw` is null)) or ((`kind` = _utf8mb4'STORED_VALUE') and (`snapshot_credit_krw` is not null) and (`snapshot_hourly_rate_krw` is not null) and (`snapshot_credit_krw` > 0) and (`snapshot_hourly_rate_krw` > 0) and (`remaining_credit_krw` is not null) and (`remaining_minutes` is null)))),
+  CONSTRAINT `ck_passes_period_activation` CHECK ((((`kind` = _utf8mb4'PERIOD') and (((`status` = _utf8mb4'NOT_STARTED') and (`started_at` is null) and (`expires_at` is null)) or ((`status` = _utf8mb4'REFUNDED') and (((`started_at` is null) and (`expires_at` is null)) or ((`started_at` is not null) and (`expires_at` is not null) and (`expires_at` > `started_at`)))) or ((`status` in (_utf8mb4'ACTIVE',_utf8mb4'EXHAUSTED',_utf8mb4'EXPIRED')) and (`started_at` is not null) and (`expires_at` is not null) and (`expires_at` > `started_at`)))) or ((`kind` in (_utf8mb4'TIME',_utf8mb4'STORED_VALUE')) and (`status` <> _utf8mb4'NOT_STARTED') and (`started_at` is not null))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='승인 결제 발급권, 구매 당시 상품 조건 스냅샷';
 
 CREATE TABLE `room_reservations` (
@@ -1349,8 +1359,8 @@ INSERT INTO `permission_definitions` (`id`,`code`,`description`,`is_admin_only`)
 INSERT INTO `permission_definitions` (`id`,`code`,`description`,`is_admin_only`) VALUES (7,'notices:write','공지 관리',0);
 INSERT INTO `permission_definitions` (`id`,`code`,`description`,`is_admin_only`) VALUES (8,'people:manage','직원 및 권한 관리',1);
 INSERT INTO `permission_definitions` (`id`,`code`,`description`,`is_admin_only`) VALUES (9,'ai:read','AI 분석 조회',0);
-INSERT INTO `permission_presets` (`id`,`name`,`role`,`is_system`,`created_by`,`created_at`,`updated_at`,`version`,`updated_by`) VALUES (1,'일반 직원 기본','STAFF',1,NULL,'2026-10-23T15:55:26.002933','2026-10-23T15:55:26.002933',0,NULL);
-INSERT INTO `permission_presets` (`id`,`name`,`role`,`is_system`,`created_by`,`created_at`,`updated_at`,`version`,`updated_by`) VALUES (2,'지점 관리자 기본','MANAGER',1,NULL,'2026-10-23T15:55:26.004124','2026-10-23T15:55:26.004124',0,NULL);
+INSERT INTO `permission_presets` (`id`,`name`,`role`,`is_system`,`created_by`,`created_at`,`updated_at`,`version`,`updated_by`) VALUES (1,'일반 직원 기본','STAFF',1,NULL,'2026-10-27T10:04:47.308400','2026-10-27T10:04:47.308400',0,NULL);
+INSERT INTO `permission_presets` (`id`,`name`,`role`,`is_system`,`created_by`,`created_at`,`updated_at`,`version`,`updated_by`) VALUES (2,'지점 관리자 기본','MANAGER',1,NULL,'2026-10-27T10:04:47.311410','2026-10-27T10:04:47.311410',0,NULL);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,1);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,2);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,3);
@@ -1360,7 +1370,5 @@ INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,6
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,7);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,8);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,9);
-INSERT INTO `administration_guard` (`id`,`updated_at`) VALUES (1,'2026-10-23T15:55:25.258430');
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (1,'1','init schema','SQL','V1__init_schema.sql',1092103982,'foundation_test','2026-10-24 00:55:24.0',2924,1);
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (2,'2','foundation expand','SQL','V2__foundation_expand.sql',1760913033,'foundation_test','2026-10-24 00:55:25.0',1230,1);
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (3,'3','foundation validate and finalize','SQL','V3__foundation_validate_and_finalize.sql',-783819602,'foundation_test','2026-10-24 00:55:26.0',636,1);
+INSERT INTO `administration_guard` (`id`,`updated_at`) VALUES (1,'2026-10-27T10:04:47.331611');
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (1,'1','init schema','SQL','V1__init_schema.sql',-747993029,'foundation_test','2026-10-27 19:04:47.0',4852,1);

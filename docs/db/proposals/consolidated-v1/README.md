@@ -1,5 +1,7 @@
 # 신규 DB용 통합 V1 (검토 초안)
 
+> 이 문서는 채택 전 검토 기록이다. 2026-10-27 개발 DB 재생성 방침에 따라 실행 정본과 검증을 정리한다. 현재 적용 기준·검증 상태는 [DB 관리 안내](../../README.md)와 [전환 기록](../../../development-log/2026-10-27-consolidated-v1-rollout.md)을 따른다. 아래 미실행 표시는 초안 작성 당시의 상태이며 이 폴더의 SQL을 직접 실행하지 않는다.
+
 이 파일은 `docs/db/proposals/consolidated-v1/`에서만 관리하며 Flyway가 자동 실행하지 않습니다. MySQL 8.4의 빈 DB를 대상으로 기존 V1~V3 최종 스키마 및 M3~M4 V4/V5 확정 설계 조건을 `CREATE TABLE`에 통합했습니다.
 
 ## 반영
