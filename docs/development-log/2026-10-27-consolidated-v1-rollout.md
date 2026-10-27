@@ -51,3 +51,9 @@ Backend가 migration SQL과 버전의 정본을 관리한다. Infra는 인스턴
 - [Infra DB/Flyway 인계 #1](https://github.com/OpenStudyService/OpenStudy-Infra/issues/1)
 - [현재 DB 안내](../db/README.md), [팀 전환 절차](../db/foundation-upgrade.md)
 - [OWNER 초기화 보완 기록](2026-10-26-owner-bootstrap-consolidated-v1.md). 당시 집중 시험과 이번 전체 검증을 구분한다.
+
+## 전달 상태 (2026-10-27)
+
+- 구현 커밋 `6dc4739`를 `chore/consolidated-v1-rollout`으로 push하고 [PR #40](https://github.com/OpenStudyService/OpenStudy-Backend/pull/40)을 생성했다. main은 변경하지 않았으며 사용자 병합 대기다.
+- Infra #1에 기존 내용을 보존하면서 새 재생성 방침·인수 조건·PR을 연결하려 했지만 GitHub 연동이 `403 Resource not accessible by integration`으로 거부했다. 이슈의 제목·본문은 변경하지 못했다. 기존 V3 이관 계획을 현재 방침으로 해석하지 않으며 담당자가 갱신해야 한다.
+- 이슈 수정 문안은 작업공간 `outputs/2026-10-27-infra-db-handoff-issue.md`에 로컬 인계 자료로 보관했다. 코드 저장소에 중간 이슈 본문을 중복 등록하지 않는다. 새 방침과 실제 DB 적용 전 인계 조건은 이 PR의 전환 안내에도 포함돼 있다.
