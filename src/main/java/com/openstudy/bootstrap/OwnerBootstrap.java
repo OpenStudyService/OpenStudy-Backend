@@ -14,7 +14,12 @@ import org.flywaydb.core.api.logging.Log;
 import org.flywaydb.core.api.logging.LogCreator;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
-/** Explicit offline operator command. Never component-scanned or invoked by server startup. */
+/**
+ * Explicit offline operator command. Never component-scanned or invoked by server startup.
+ * <p>The only plain-JDBC code in the application (JPA migration phase 7): it runs without a Spring context by design
+ * (M1-10), so it opens one connection and keeps the foundation lock order itself (guard, then employees). The
+ * PersistenceAccessTests architecture rule names this file as its single exception.</p>
+ */
 public final class OwnerBootstrap {
     private OwnerBootstrap() {}
 

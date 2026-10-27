@@ -75,6 +75,14 @@ src/main/java/com/openstudy/
 
 JPA 업무 엔티티와 별도 영속 모델을 기계적으로 이중화하지 않는다. Service 인터페이스/구현도 필요할 때만 분리한다. 모듈 간 전달용 DTO가 필요하면 dto 아래에 별도 타입을 추가하며 HTTP 요청 DTO를 내부 명령으로 무조건 재사용하지 않는다.
 
+### 데이터 접근 규칙 (2026-10-28 JPA 전환 완료)
+
+- 업무 데이터는 JPA 엔티티와 Spring Data Repository로만 읽고 쓴다. `JdbcTemplate`·`JdbcClient`·직접 `Connection` 사용은 금지한다. 유일한 예외는 Spring 컨텍스트 없이 실행하는 최초 사장님 초기화 명령 `bootstrap/OwnerBootstrap`이다.
+- native SQL은 Repository(`*Repository`)의 `@Query(nativeQuery = true)`에만 둔다. JPA-01에 따라 잠금 순서·EXISTS 권한 판정·집계, 그리고 다른 모듈 소유 테이블을 읽는 판정처럼 JPQL로 같은 SQL을 보장하기 어려운 경우에 한정한다.
+- 같은 트랜잭션에서 JPA 밖(native UPDATE·JDBC)으로 엔티티 행을 바꾸면 이미 로드된 엔티티가 그 변경을 보지 못한다. 상태 전이를 JPQL 일괄 UPDATE로 하는 저장소(초대·발송 작업)는 실행 시 영속성 컨텍스트를 비우므로, 전이 이후에는 새로 조회한 값만 사용한다.
+- 화면에 version을 노출하고 409로 충돌을 거절하는 엔티티는 `@Version`을 둔다(JPA-02). 기존 계약상 값이 같아도 version이 1 오르는 명령은 서비스가 flush 후 증가 여부를 확인해 정확히 1회 증가를 보장한다.
+- `test/architecture/PersistenceAccessTests`가 앞의 두 규칙(직접 JDBC 금지, native SQL은 Repository에만)을 검사한다.
+
 ## 의존 방향과 모듈 경계
 
 - Controller → Service → Repository의 호출 흐름을 따른다. Service와 Repository는 해당 모듈 Entity를 사용한다.
@@ -94,14 +102,15 @@ JPA 업무 엔티티와 별도 영속 모델을 기계적으로 이중화하지 
 
 ## 공통 설정과 기반 기능
 
-현재는 config/와 common/exception/만 준비한다. 아래 후속 위치는 해당 기능을 실제 구현할 때 추가하며 빈 기술 계층을 미리 만들지 않는다.
+현재 config/와 common/exception·web·audit·idempotency·outbox·persistence가 있다. 아래 후속 위치는 해당 기능을 실제 구현할 때 추가하며 빈 기술 계층을 미리 만들지 않는다.
 
 | 위치 | 책임 |
 |---|---|
 | config/ | 보안 필터 체인·Clock·외부 클라이언트 등 Spring 설정. 업무 규칙은 두지 않는다. |
 | common/exception/ | 공통 오류 코드·예외·@RestControllerAdvice 기반 HTTP 예외 매핑. |
 | common/validation, time, money, pagination | 필요한 공통 검증·시간·금액·페이지 값. 매출·차감 정책은 각 업무 모듈에 둔다. |
-| common/audit, idempotency, outbox | 감사·멱등·발송 대기/재시도 기술 기반. 비밀값을 저장하지 않는다. |
+| common/audit, idempotency, outbox | 감사·멱등·발송 대기/재시도 기술 기반. 비밀값을 저장하지 않는다. 각 테이블의 유일한 쓰기 경로다. |
+| common/persistence | JPA 공통 기술 보조. 예: MySQL 중복 키(1062)만 `DuplicateKeyException`으로 좁히는 `DuplicateKeys`. |
 | common/mail, realtime, storage | 메일·SSE·이미지 저장 기술 기능. 수신 대상·현재 권한·이미지 정책은 업무 Service가 판단한다. |
 | modules/auth/service | 최초 사장님 초기화 업무. 전용 명령은 일반 기동과 분리해 후속 구현한다. |
 | common/seed | local/test 전용 시드 실행. 기능 구현 시 추가하고 명시적으로 실행한다. |
@@ -122,7 +131,7 @@ src/main/resources/db/migration/은 순차 DDL의 정본이며 현재 V1__init_s
 
 | 위치 | 검증 책임 |
 |---|---|
-| architecture/ | 후속 ArchUnit: 모듈 순환·공개 Service/DTO 외 접근·Controller의 Repository 직접 호출·Entity/DTO 경계·common/config 의존 방향. |
+| architecture/ | 소스 검사 테스트. `ModuleBoundaryTests`(다른 모듈은 service·dto만 참조, 모듈 순환 금지), `PersistenceAccessTests`(직접 JDBC 금지, native SQL은 Repository에만). 후속: Controller의 Repository 직접 호출·Entity/DTO 경계·common/config 의존 방향. |
 | modules/<module>/ | 해당 업무 규칙·Service·Controller·Repository 테스트. |
 | common/ | 감사·멱등·outbox·전달 기반 등 공통 기능 테스트. |
 | integration/http/ | 실제 HTTP·세션·CSRF·권한·계약·커밋 결과. 현재 DB 초기화/제약 테스트도 이 위치에 있다. |
