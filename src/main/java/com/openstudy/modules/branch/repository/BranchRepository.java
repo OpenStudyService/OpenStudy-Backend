@@ -1,19 +1,32 @@
 package com.openstudy.modules.branch.repository;
 
+import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
+import com.openstudy.common.audit.AuditEvent;
+import com.openstudy.common.audit.AuditTrail;
+import com.openstudy.common.idempotency.IdempotencyStore;
+import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.modules.branch.dto.Branch;
 import com.openstudy.modules.branch.dto.Branch.WeeklyHours;
 
 @Repository
 public class BranchRepository {
+    private static final String CREATE="branches:create";
     private final JdbcTemplate jdbc;
-    public BranchRepository(JdbcTemplate jdbc) { this.jdbc=jdbc; }
+    private final AuditTrail audit;
+    private final WorkspaceOutbox outbox;
+    private final IdempotencyStore requests;
+    private final Clock clock;
+    public BranchRepository(JdbcTemplate jdbc,AuditTrail audit,WorkspaceOutbox outbox,IdempotencyStore requests,Clock clock) {
+        this.jdbc=jdbc; this.audit=audit; this.outbox=outbox; this.requests=requests; this.clock=clock;
+    }
 
     public List<Long> ids() { return jdbc.queryForList("SELECT id FROM branches ORDER BY id", Long.class); }
     public Branch get(long id) {
@@ -54,15 +67,14 @@ public class BranchRepository {
                 id,h.weekday(),h.isClosed(),h.opensMinute(),h.closesMinute());
     }
     public List<StoredRequest> request(long actor,String key) {
-        return jdbc.query("SELECT request_hash,response_json FROM idempotency_records WHERE actor_employee_id=? AND operation='branches:create' AND scope_key='all' AND idempotency_key=? FOR UPDATE",
-                (rs,n)->new StoredRequest(rs.getBytes(1),rs.getString(2)),actor,key);
+        return requests.lock(actor,CREATE,"all",key).map(r->new StoredRequest(r.getRequestHash(),r.getResponseJson())).stream().toList();
     }
     public record StoredRequest(byte[] hash,String response) {}
     public void saveRequest(long actor,String key,byte[] hash,String response) {
-        jdbc.update("INSERT INTO idempotency_records(actor_employee_id,operation,scope_key,idempotency_key,request_hash,state,http_status,response_json,expires_at) VALUES(?,'branches:create','all',?,?,'COMPLETED',201,?,UTC_TIMESTAMP(6)+INTERVAL 24 HOUR)",actor,key,hash,response);
+        requests.complete(actor,CREATE,"all",key,hash,201,response,clock.instant().plus(Duration.ofHours(24)));
     }
     public void audit(long actor,long id,String action,String before,String after,String requestId) {
-        jdbc.update("INSERT INTO audit_events(actor_employee_id,branch_id,entity_type,entity_id,action,before_json,after_json,request_id) VALUES(?,?,'branches',?,?,?,?,?)",actor,id,id,action,before,after,requestId);
-        jdbc.update("INSERT INTO workspace_event_outbox(branch_id,entity_type,entity_id,event_type) VALUES(?,'branches',?,'INVALIDATE')",id,id);
+        audit.record(AuditEvent.change(actor,id,"branches",id,action,before,after,requestId));
+        outbox.invalidate(id,"branches",id);
     }
 }

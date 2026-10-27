@@ -4,11 +4,17 @@ import java.util.*;
 import java.sql.Statement;
 import java.security.MessageDigest;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Duration;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.ObjectMapper;
+import com.openstudy.common.audit.AuditEvent;
+import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
+import com.openstudy.common.idempotency.IdempotencyStore;
+import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.modules.authorization.dto.PermissionPreset;
 import com.openstudy.modules.authorization.dto.PermissionDefinition;
@@ -17,9 +23,17 @@ import com.openstudy.modules.authorization.dto.PermissionDefinition;
 public class PermissionPresetRepository {
     private static final Set<String> CODES = Set.of("members:write", "operations:write", "payments:read",
             "payments:write", "sales:read", "facilities:write", "notices:write", "people:manage", "ai:read");
+    private static final String CREATE = "createPermissionPreset";
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
-    public PermissionPresetRepository(JdbcTemplate jdbc, ObjectMapper json) { this.jdbc = jdbc; this.json = json; }
+    private final AuditTrail audit;
+    private final WorkspaceOutbox outbox;
+    private final IdempotencyStore requests;
+    private final Clock clock;
+    public PermissionPresetRepository(JdbcTemplate jdbc, ObjectMapper json, AuditTrail audit, WorkspaceOutbox outbox,
+            IdempotencyStore requests, Clock clock) {
+        this.jdbc = jdbc; this.json = json; this.audit = audit; this.outbox = outbox; this.requests = requests; this.clock = clock;
+    }
     public List<PermissionPreset> list() {
         return jdbc.queryForList("SELECT id FROM permission_presets ORDER BY id", Long.class).stream().map(id -> find(id, false).orElseThrow()).toList();
     }
@@ -58,20 +72,20 @@ public class PermissionPresetRepository {
         for (String code : grants) jdbc.update("INSERT INTO permission_preset_grants(preset_id,permission_id) SELECT ?,id FROM permission_definitions WHERE code=?", id, code);
     }
     public void changed(long actor, long id, String action, Object before, Object after, String requestId) {
-        jdbc.update("INSERT INTO audit_events(actor_employee_id,entity_type,entity_id,action,before_json,after_json,request_id) VALUES (?,'permission-preset',?,?,?,?,?)",
-                actor,id,action,json.writeValueAsString(before),json.writeValueAsString(after),requestId);
-        jdbc.update("INSERT INTO workspace_event_outbox(entity_type,entity_id,event_type) VALUES ('permission-presets',?,'INVALIDATE')", id);
+        audit.record(AuditEvent.change(actor, null, "permission-preset", id, action,
+                json.writeValueAsString(before), json.writeValueAsString(after), requestId));
+        outbox.invalidate(null, "permission-presets", id);
     }
     public Optional<PermissionPreset> replay(long actor, String key, Object input) {
         byte[] hash = hash(input);
-        var rows = jdbc.queryForList("SELECT request_hash,response_json FROM idempotency_records WHERE actor_employee_id=? AND operation='createPermissionPreset' AND scope_key='all' AND idempotency_key=? FOR UPDATE", actor,key);
-        if (rows.isEmpty()) return Optional.empty();
-        if (!MessageDigest.isEqual(hash,(byte[])rows.getFirst().get("request_hash"))) throw ApiException.conflict("IDEMPOTENCY_CONFLICT", "같은 키에 다른 입력을 사용할 수 없습니다.");
-        return Optional.of(json.readValue(rows.getFirst().get("response_json").toString(),PermissionPreset.class));
+        var stored = requests.lock(actor, CREATE, "all", key);
+        if (stored.isEmpty()) return Optional.empty();
+        if (!MessageDigest.isEqual(hash,stored.get().getRequestHash())) throw ApiException.conflict("IDEMPOTENCY_CONFLICT", "같은 키에 다른 입력을 사용할 수 없습니다.");
+        return Optional.of(json.readValue(stored.get().getResponseJson(),PermissionPreset.class));
     }
     public void remember(long actor, String key, Object input, PermissionPreset result) {
-        jdbc.update("INSERT INTO idempotency_records(actor_employee_id,operation,scope_key,idempotency_key,request_hash,state,http_status,response_json,expires_at) VALUES (?,'createPermissionPreset','all',?,?,'COMPLETED',201,?,DATE_ADD(UTC_TIMESTAMP(6), INTERVAL 24 HOUR))",
-                actor,key,hash(input),json.writeValueAsString(result));
+        requests.complete(actor, CREATE, "all", key, hash(input), 201, json.writeValueAsString(result),
+                clock.instant().plus(Duration.ofHours(24)));
     }
     private byte[] hash(Object input) {
         try { return MessageDigest.getInstance("SHA-256").digest(json.writeValueAsString(input).getBytes(StandardCharsets.UTF_8)); }
