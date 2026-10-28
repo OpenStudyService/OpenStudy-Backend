@@ -110,3 +110,6 @@ Desktop.ini
 
 # Local HTTPS verification stack: generated certificates, trust stores and downloaded drivers
 /deploy/local-https/.local/
+
+# Local graphify knowledge graph output
+/graphify-out/
