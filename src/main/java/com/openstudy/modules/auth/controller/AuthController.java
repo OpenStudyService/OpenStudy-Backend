@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -35,6 +36,7 @@ import com.openstudy.common.web.ApiRequestFilter;
 import com.openstudy.common.web.ClientAddressResolver;
 
 @RestController
+@RequiredArgsConstructor
 public class AuthController {
     private final AuthenticationManager authenticationManager;
     private final SecurityContextRepository contexts;
@@ -45,21 +47,6 @@ public class AuthController {
     private final SessionBoundaryPolicy sessions;
     private final ClientAddressResolver clients;
     private final LoginAuditService audit;
-
-    public AuthController(AuthenticationManager authenticationManager, SecurityContextRepository contexts,
-            SessionAuthenticationStrategy sessionStrategy, CurrentUserService users,
-            EmployeeAccountService employees, LoginAttemptLimiter limiter, SessionBoundaryPolicy sessions,
-            ClientAddressResolver clients, LoginAuditService audit) {
-        this.authenticationManager = authenticationManager;
-        this.contexts = contexts;
-        this.sessionStrategy = sessionStrategy;
-        this.users = users;
-        this.employees = employees;
-        this.limiter = limiter;
-        this.sessions = sessions;
-        this.clients = clients;
-        this.audit = audit;
-    }
 
     @GetMapping("/api/auth/csrf")
     public ResponseEntity<Map<String, String>> csrf(CsrfToken token) {
