@@ -6,3 +6,4 @@
 docs/design/foundation/** text eol=lf
 *.xlsx binary
 *.pdf binary
+*.sh text eol=lf

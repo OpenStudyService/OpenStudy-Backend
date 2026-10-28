@@ -114,9 +114,13 @@ Spring Boot가 실행 작업 디렉터리의 `.env`를 Java properties 형식으
 
 공통 설정과 `.env.example`은 Git에 포함하고, 실제 비밀값을 담은 `.env`는 Git과 배포 이미지에 포함하지 않습니다. `.env`는 이미 Git에서 제외되어 있습니다. 개인별 설정은 Git에서 제외하는 `application-local.yaml`, `application-*-local.yaml` 등에도 둘 수 있습니다. Gradle 캐시·빌드 결과·IDE 설정·로그·업로드 파일은 커밋하지 않습니다.
 
+### 실행 이미지와 운영 설정
+
+배포용 컨테이너 이미지(`Dockerfile`)와 `prod` 프로필의 빌드·환경 변수·프록시·DB 계약은 [운영 계약](docs/deployment/README.md)을 따릅니다. 로컬 TLS 프록시 검증 구성은 `deploy/local-https/`에 있습니다.
+
 ### 운영 사장님 최초 초기화
 
-일반 서버 부팅과 분리된 `./gradlew ownerBootstrap --no-daemon`(Windows: `.\gradlew.bat ownerBootstrap --no-daemon`) 명령을 제공합니다. 서버, 웹 포트, preview 시드, 메일을 실행하지 않습니다. 통합 V1을 포함해 현재 코드의 migration이 모두 적용되고 Flyway 검증을 통과한 스키마에만 연결합니다. 마이그레이션을 자동 적용하지 않습니다. 먼저 [DB 전환 절차](docs/db/foundation-upgrade.md)를 완료합니다.
+일반 서버 부팅과 분리된 `./gradlew ownerBootstrap --no-daemon`(Windows: `.\gradlew.bat ownerBootstrap --no-daemon`) 명령을 제공합니다. 실행 이미지에서는 진입점을 바꿔 같은 클래스를 실행합니다([운영 계약 8절](docs/deployment/README.md#8-owner-초기화)). 서버, 웹 포트, preview 시드, 메일을 실행하지 않습니다. 통합 V1을 포함해 현재 코드의 migration이 모두 적용되고 Flyway 검증을 통과한 스키마에만 연결합니다. 마이그레이션을 자동 적용하지 않습니다. 먼저 [DB 전환 절차](docs/db/foundation-upgrade.md)를 완료합니다.
 
 명령 실행 프로세스에 다음 환경 변수를 주입합니다. 운영에서는 비밀값 관리 서비스 또는 제한된 작업 실행 환경이 주입하도록 합니다. 비밀번호를 CLI 인자나 Gradle `-P` 인자로 전달하지 않습니다.
 
