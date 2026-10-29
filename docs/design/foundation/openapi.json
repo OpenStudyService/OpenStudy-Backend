@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "OpenStudy 1차 기반 기능 API 설계",
-    "version": "0.1.4-workspace",
-    "description": "검토 완료 8중분류/61요구사항의 구현 전 목표 계약. Q1~Q12의 2026-10-23 당시 사용자 답변을 기록하되 Q8은 SRS v1.1 정책으로 대체됨. decisions.md 참고. 기존 서버 전체 구현 명세가 아니다. ID문자열·API version=DB+1. 상태 변경은 CSRF, 지점과 행위 인가를 함께 검증한다. Issue #27의 /me/profile 및 CurrentUser는 구현된 M1 닉네임 계약이다. 나머지 operation의 구현 상태는 각각의 표기를 따른다. SRS v1.1 확정 상품 정책: 거래 유무와 무관하게 물리 삭제 미제공; 판매 중지·재개 및 기존 상품·거래·revision 보존. 이전 Q8 조건부 삭제안은 적용하지 않는다. /lookups와 /workspace/events는 단일 인스턴스 기반 workspace 구현 계약이다. 상품/분류 선택 데이터는 관련 업무 API 구현 전까지 빈 배열이다."
+    "version": "0.1.5-m4-customer-sales",
+    "description": "검토 완료 8중분류/61요구사항의 구현 전 목표 계약. Q1~Q12의 2026-10-23 당시 사용자 답변을 기록하되 Q8은 SRS v1.1 정책으로 대체됨. decisions.md 참고. 기존 서버 전체 구현 명세가 아니다. ID문자열·API version=DB+1. 상태 변경은 CSRF, 지점과 행위 인가를 함께 검증한다. Issue #27의 /me/profile 및 CurrentUser는 구현된 M1 닉네임 계약이다. 나머지 operation의 구현 상태는 각각의 표기를 따른다. SRS v1.1 확정 상품 정책: 거래 유무와 무관하게 물리 삭제 미제공; 판매 중지·재개 및 기존 상품·거래·revision 보존. 이전 Q8 조건부 삭제안은 적용하지 않는다. /lookups와 /workspace/events는 단일 인스턴스 기반 workspace 구현 계약이다. 상품/분류 선택 데이터는 관련 업무 API 구현 전까지 빈 배열이다. M4 고객·Mock 결제·발급 이용권·환불 operation은 Issue #55의 설계 계약(customer-sales-api.md, ADR-M4-002)이며 구현은 #56~#58에서 진행한다. 결제·환불 요청에는 금액 필드가 없고 Idempotency-Key가 필수다."
   },
   "servers": [
     {
@@ -48,6 +48,15 @@
     },
     {
       "name": "workspace"
+    },
+    {
+      "name": "customers"
+    },
+    {
+      "name": "payments"
+    },
+    {
+      "name": "passes"
     }
   ],
   "x-source": {
@@ -3708,6 +3717,1164 @@
           }
         }
       }
+    },
+    "/customers": {
+      "get": {
+        "operationId": "listCustomers",
+        "summary": "고객 목록·검색",
+        "tags": [
+          "customers"
+        ],
+        "description": "scope 지점에 등록되었거나 scope 지점에서 결제(상태 무관)한 고객만 반환한다. q는 이름 부분 일치, 회원번호 정확 일치, 숫자 4자리 이상이면 연락처 부분 일치다. 범위 밖 고객은 total에도 포함하지 않는다. 다른 지점 고객 최소 요약은 M6(FR-MEM-03).",
+        "x-requirement-ids": [
+          "FR-MEM-01",
+          "FR-MEM-05",
+          "NFR-SEC-06"
+        ],
+        "x-permission": "OWNER 또는 대상 지점의 유효 소속(역할·행위 권한 무관). 조회 범위는 등록 지점 또는 결제 지점이 scope 안에 있는 고객(M4-D05)",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "$ref": "#/components/parameters/Q"
+          },
+          {
+            "$ref": "#/components/parameters/Direction"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "registeredAt",
+                "name"
+              ]
+            },
+            "description": "기본 registeredAt. 동률은 id로 안정 정렬."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "정상",
+                "이용 제한",
+                "비활성"
+              ]
+            }
+          }
+        ],
+        "x-error-codes": [
+          "FORBIDDEN",
+          "VALIDATION_FAILED"
+        ],
+        "x-adr-decisions": [
+          "M4-D05"
+        ]
+      },
+      "post": {
+        "operationId": "createCustomer",
+        "summary": "고객 등록",
+        "tags": [
+          "customers"
+        ],
+        "description": "회원번호는 서버가 만든다. 연락처 중복은 허용한다(중복 병합은 M13). 운영 중지 지점에는 등록할 수 없다. 같은 키·같은 입력은 저장된 결과, 같은 키·다른 입력은 409 IDEMPOTENCY_CONFLICT.",
+        "x-requirement-ids": [
+          "FR-MEM-02",
+          "NFR-SEC-06"
+        ],
+        "x-permission": "OWNER 또는 registeredBranchId 지점의 members:write",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "201": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Customer"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerCreate"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "FORBIDDEN",
+          "BRANCH_NOT_ACTIVE",
+          "IDEMPOTENCY_CONFLICT",
+          "REQUEST_IN_PROGRESS",
+          "VALIDATION_FAILED"
+        ],
+        "x-adr-decisions": [
+          "M4-D05",
+          "M4-D06"
+        ]
+      }
+    },
+    "/customers/{id}": {
+      "get": {
+        "operationId": "getCustomer",
+        "summary": "고객 상세",
+        "tags": [
+          "customers"
+        ],
+        "description": "조회 범위 밖이면 404이며 존재 여부를 알 수 없다. 결제 내역은 포함하지 않는다.",
+        "x-requirement-ids": [
+          "FR-MEM-01",
+          "NFR-SEC-06"
+        ],
+        "x-permission": "OWNER 또는 대상 지점의 유효 소속(역할·행위 권한 무관). 조회 범위는 등록 지점 또는 결제 지점이 scope 안에 있는 고객(M4-D05)",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Customer"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "x-error-codes": [
+          "NOT_FOUND"
+        ],
+        "x-adr-decisions": [
+          "M4-D05"
+        ]
+      },
+      "patch": {
+        "operationId": "updateCustomer",
+        "summary": "고객 기본 정보 수정",
+        "tags": [
+          "customers"
+        ],
+        "description": "이름·연락처·이메일·메모를 수정한다. 변경자·시각을 감사로 남긴다. 낡은 version은 409 VERSION_CONFLICT.",
+        "x-requirement-ids": [
+          "FR-MEM-04",
+          "NFR-SEC-06"
+        ],
+        "x-permission": "OWNER 또는 고객을 조회 범위에 넣는 지점(등록 지점·결제 지점) 중 하나 이상에서 members:write",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Customer"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerUpdate"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN",
+          "VERSION_CONFLICT",
+          "IMMUTABLE_FIELD",
+          "VALIDATION_FAILED"
+        ],
+        "x-adr-decisions": [
+          "M4-D05",
+          "M4-D06"
+        ]
+      }
+    },
+    "/customers/{id}/status": {
+      "post": {
+        "operationId": "changeCustomerStatus",
+        "summary": "고객 상태 변경",
+        "tags": [
+          "customers"
+        ],
+        "description": "정상·이용 제한·비활성 전환과 사유를 기록한다. 고객 행·결제·이용권·이용 기록을 삭제하지 않는다. 같은 상태 요청은 현재 값을 돌려주며 이력을 만들지 않는다.",
+        "x-requirement-ids": [
+          "FR-MEM-02",
+          "FR-MEM-06"
+        ],
+        "x-permission": "OWNER 또는 고객을 조회 범위에 넣는 지점(등록 지점·결제 지점) 중 하나 이상에서 members:write",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Customer"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerStatusChange"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN",
+          "VERSION_CONFLICT",
+          "VALIDATION_FAILED"
+        ]
+      }
+    },
+    "/payments": {
+      "get": {
+        "operationId": "listPayments",
+        "summary": "Mock 결제 목록",
+        "tags": [
+          "payments"
+        ],
+        "description": "scope 지점 중 payments:read가 있는 지점의 결제만 반환한다. from·to는 createdAt 기준 [from, to) UTC다. 고급 필터(수단·분류·처리자)는 M13.",
+        "x-requirement-ids": [
+          "FR-PAY-05",
+          "FR-PAY-06",
+          "NFR-SEC-06"
+        ],
+        "x-permission": "OWNER 또는 scope 지점의 payments:read",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "$ref": "#/components/parameters/Direction"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "createdAt",
+                "amountKrw"
+              ]
+            },
+            "description": "기본 createdAt. 동률은 id로 안정 정렬."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "승인",
+                "실패",
+                "환불"
+              ],
+              "description": "Mock 결제는 요청 안에서 승인·실패가 확정되므로 PENDING은 저장·응답하지 않는다."
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "customerId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          }
+        ],
+        "x-error-codes": [
+          "FORBIDDEN",
+          "VALIDATION_FAILED"
+        ]
+      },
+      "post": {
+        "operationId": "createPayment",
+        "summary": "Mock 결제 생성·이용권 발급",
+        "tags": [
+          "payments"
+        ],
+        "description": "고객·지점·상품을 서버에서 검증하고 상품의 현재 가격으로 금액을 산정한다. 승인이면 결제와 이용권 1장을 한 트랜잭션으로 확정하고, 실패면 실패 결제만 남기고 이용권을 만들지 않는다. 두 결과 모두 201이며 멱등 결과로 저장한다. 같은 키·같은 입력은 저장된 결과, 같은 키·다른 입력은 409 IDEMPOTENCY_CONFLICT.",
+        "x-requirement-ids": [
+          "FR-PAY-01",
+          "FR-PAY-02",
+          "FR-PAY-04",
+          "FR-PAY-05",
+          "FR-PAY-08",
+          "FR-PASS-02",
+          "FR-PASS-03",
+          "FR-PASS-04",
+          "FR-PASS-08",
+          "NFR-DATA-05"
+        ],
+        "x-permission": "OWNER 또는 branchId 지점의 payments:write. 고객은 요청자의 고객 조회 범위 안이어야 한다",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "201": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Payment"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentCreate"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN",
+          "BRANCH_NOT_ACTIVE",
+          "CUSTOMER_NOT_ACTIVE",
+          "PRODUCT_NOT_ON_SALE",
+          "PRODUCT_NOT_AVAILABLE_AT_BRANCH",
+          "IDEMPOTENCY_CONFLICT",
+          "REQUEST_IN_PROGRESS",
+          "VALIDATION_FAILED"
+        ],
+        "x-adr-decisions": [
+          "M4-D01",
+          "M4-D02",
+          "M4-D03",
+          "M4-D07"
+        ]
+      }
+    },
+    "/payments/{id}": {
+      "get": {
+        "operationId": "getPayment",
+        "summary": "Mock 결제 상세",
+        "tags": [
+          "payments"
+        ],
+        "description": "결제 지점의 payments:read가 없으면 404다. 환불 사건을 함께 반환한다.",
+        "x-requirement-ids": [
+          "FR-PAY-05",
+          "FR-PAY-06",
+          "FR-PAY-10"
+        ],
+        "x-permission": "OWNER 또는 결제 지점의 payments:read",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Payment"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "x-error-codes": [
+          "NOT_FOUND"
+        ]
+      }
+    },
+    "/payments/{id}/refund": {
+      "post": {
+        "operationId": "refundPayment",
+        "summary": "미사용 이용권 전액 환불",
+        "tags": [
+          "payments"
+        ],
+        "description": "원결제·이용권을 잠근 뒤 승인 상태, 실제 사용 이력 없음, 미만료(expiresAt이 없거나 현재 < expiresAt)를 다시 확인한다. 환불 사건·결제 환불·이용권 환불·감사·멱등 결과를 한 트랜잭션으로 남긴다. 금액은 원결제 전액이며 처리 지점은 원결제 지점이다. 같은 키·같은 입력은 저장된 결과, 같은 키·다른 입력은 409 IDEMPOTENCY_CONFLICT.",
+        "x-requirement-ids": [
+          "FR-PAY-09",
+          "FR-PAY-10",
+          "NFR-DATA-05"
+        ],
+        "x-permission": "OWNER 또는 원결제 지점의 payments:write",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Payment"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefundCreate"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN",
+          "PAYMENT_NOT_REFUNDABLE",
+          "ALREADY_REFUNDED",
+          "PASS_ALREADY_USED",
+          "PASS_EXPIRED",
+          "IDEMPOTENCY_CONFLICT",
+          "REQUEST_IN_PROGRESS",
+          "VALIDATION_FAILED"
+        ],
+        "x-adr-decisions": [
+          "M4-D04",
+          "M4-D08"
+        ]
+      }
+    },
+    "/passes": {
+      "get": {
+        "operationId": "listPasses",
+        "summary": "발급 이용권 목록",
+        "tags": [
+          "passes"
+        ],
+        "description": "구매 지점이 scope 안에 있는 이용권만 반환한다. 다른 지점에서 산 이용권 요약은 M6(FR-MEM-03). status는 요청 시각 기준 실효 상태로 검색한다.",
+        "x-requirement-ids": [
+          "FR-PASS-01",
+          "FR-PASS-04",
+          "FR-PASS-08",
+          "FR-PASS-11",
+          "NFR-SEC-06"
+        ],
+        "x-permission": "OWNER 또는 구매 지점의 유효 소속(역할·행위 권한 무관)",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PassPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "$ref": "#/components/parameters/Direction"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "createdAt",
+                "expiresAt"
+              ]
+            },
+            "description": "기본 createdAt. expiresAt 정렬에서 null(만료 없음)은 가장 뒤. 동률은 id."
+          },
+          {
+            "name": "customerId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "활성",
+                "소진",
+                "만료",
+                "환불"
+              ],
+              "description": "요청 처리 시각 기준 실효 상태. 환불 > 만료(expiresAt <= 현재) > 소진 > 활성 순으로 판정한다. NOT_STARTED는 신규 발급에서 만들지 않으며 응답하지 않는다(M4-D01)."
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "시간권",
+                "기간권",
+                "정액권"
+              ]
+            }
+          }
+        ],
+        "x-error-codes": [
+          "FORBIDDEN",
+          "VALIDATION_FAILED"
+        ],
+        "x-adr-decisions": [
+          "M4-D01",
+          "M4-D02",
+          "M4-D03"
+        ]
+      }
+    },
+    "/passes/{id}": {
+      "get": {
+        "operationId": "getPass",
+        "summary": "발급 이용권 상세",
+        "tags": [
+          "passes"
+        ],
+        "description": "구매 지점의 유효 소속이 없으면 404다.",
+        "x-requirement-ids": [
+          "FR-PASS-01",
+          "FR-PASS-03",
+          "FR-PASS-04",
+          "FR-PASS-08"
+        ],
+        "x-permission": "OWNER 또는 구매 지점의 유효 소속(역할·행위 권한 무관)",
+        "x-implementation-status": "design-target",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pass"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "x-error-codes": [
+          "NOT_FOUND"
+        ],
+        "x-adr-decisions": [
+          "M4-D01",
+          "M4-D02",
+          "M4-D03"
+        ]
+      }
     }
   },
   "components": {
@@ -5908,7 +7075,10 @@
               "invitations",
               "products",
               "lookups",
-              "permissions"
+              "permissions",
+              "customers",
+              "payments",
+              "passes"
             ]
           },
           "entityId": {
@@ -6102,6 +7272,709 @@
             "$ref": "#/components/schemas/Version"
           }
         }
+      },
+      "CustomerStatus": {
+        "type": "string",
+        "enum": [
+          "정상",
+          "이용 제한",
+          "비활성"
+        ]
+      },
+      "CustomerSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "memberNo": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "id",
+          "memberNo",
+          "name"
+        ],
+        "additionalProperties": false,
+        "description": "결제·이용권 응답에 쓰는 고객 최소 식별 정보. 연락처·이메일·메모는 담지 않는다."
+      },
+      "ActorSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false,
+        "description": "처리 직원 식별 정보."
+      },
+      "CustomerListItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "memberNo": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "phone": {
+            "type": "string",
+            "pattern": "^[0-9]{9,11}$",
+            "description": "숫자만 9~11자리. 입력 시 하이픈·공백은 서버가 제거한 뒤 검증하고 숫자만 저장한다."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "정상",
+              "이용 제한",
+              "비활성"
+            ]
+          },
+          "registeredBranchId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Id"
+              }
+            ],
+            "nullable": true
+          },
+          "registeredAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "memberNo",
+          "name",
+          "phone",
+          "status",
+          "registeredBranchId",
+          "registeredAt"
+        ],
+        "additionalProperties": false,
+        "description": "검색에 필요한 정보만 반환한다(FR-MEM-05, NFR-SEC-06). 이메일·메모·상태 사유는 상세에서만 제공한다."
+      },
+      "Customer": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "memberNo": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "phone": {
+            "type": "string",
+            "pattern": "^[0-9]{9,11}$",
+            "description": "숫자만 9~11자리. 입력 시 하이픈·공백은 서버가 제거한 뒤 검증하고 숫자만 저장한다."
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254,
+            "nullable": true
+          },
+          "memo": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "고객 응대 메모(M4-D06). 빈 문자열은 null로 저장한다.",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "정상",
+              "이용 제한",
+              "비활성"
+            ]
+          },
+          "statusReason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "nullable": true
+          },
+          "registeredBranchId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Id"
+              }
+            ],
+            "nullable": true
+          },
+          "registeredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "canEdit": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "memberNo",
+          "name",
+          "phone",
+          "email",
+          "memo",
+          "status",
+          "statusReason",
+          "registeredBranchId",
+          "registeredAt",
+          "updatedAt",
+          "canEdit"
+        ],
+        "additionalProperties": false,
+        "description": "registeredBranchId가 null인 고객은 V2 이전에 결제 없이 저장된 고객이다(OWNER만 조회). canEdit은 화면 표시용이며 서버 검증을 대체하지 않는다. 결제 정보는 포함하지 않는다."
+      },
+      "CustomerPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustomerListItem"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "additionalProperties": false
+      },
+      "CustomerCreate": {
+        "type": "object",
+        "properties": {
+          "registeredBranchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "phone": {
+            "type": "string",
+            "pattern": "^[0-9]{9,11}$",
+            "description": "숫자만 9~11자리. 입력 시 하이픈·공백은 서버가 제거한 뒤 검증하고 숫자만 저장한다."
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254,
+            "nullable": true
+          },
+          "memo": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "고객 응대 메모(M4-D06). 빈 문자열은 null로 저장한다.",
+            "nullable": true
+          }
+        },
+        "required": [
+          "registeredBranchId",
+          "name",
+          "phone"
+        ],
+        "additionalProperties": false,
+        "description": "회원번호·상태·등록 시각은 서버가 정한다. 신규 고객은 정상 상태로 등록한다.",
+        "example": {
+          "registeredBranchId": "1",
+          "name": "홍길동",
+          "phone": "01012345678",
+          "email": null,
+          "memo": "창가 자리 선호"
+        }
+      },
+      "CustomerUpdate": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "phone": {
+            "type": "string",
+            "pattern": "^[0-9]{9,11}$",
+            "description": "숫자만 9~11자리. 입력 시 하이픈·공백은 서버가 제거한 뒤 검증하고 숫자만 저장한다."
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254,
+            "nullable": true
+          },
+          "memo": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "고객 응대 메모(M4-D06). 빈 문자열은 null로 저장한다.",
+            "nullable": true
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "additionalProperties": false,
+        "description": "누락 필드는 유지하고 email·memo의 명시적 null은 삭제다. memberNo·registeredBranchId·status는 받지 않는다(422 IMMUTABLE_FIELD).",
+        "minProperties": 2
+      },
+      "CustomerStatusChange": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "정상",
+              "이용 제한",
+              "비활성"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "version",
+          "status",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "customer_status_events에 이전·새 상태와 사유를 남긴다. 결제·이용권·이용 기록은 바뀌지 않는다(FR-MEM-06)."
+      },
+      "PaymentCreate": {
+        "type": "object",
+        "properties": {
+          "customerId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "productId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "현금",
+              "카드",
+              "계좌이체",
+              "기타"
+            ]
+          },
+          "mockOutcome": {
+            "type": "string",
+            "enum": [
+              "APPROVED",
+              "FAILED"
+            ],
+            "default": "APPROVED",
+            "description": "Mock 승인·실패 선택(M4-D07). 실제 결제사 호출이나 금전 이동은 없다."
+          }
+        },
+        "required": [
+          "customerId",
+          "branchId",
+          "productId",
+          "method"
+        ],
+        "additionalProperties": false,
+        "description": "금액·수량·상품명·발급 조건 필드는 없다. 금액은 서버가 잠근 상품의 현재 가격으로 산정한다(FR-PAY-02). 정의되지 않은 필드(amountKrw 등)는 422다.",
+        "example": {
+          "customerId": "10",
+          "branchId": "1",
+          "productId": "3",
+          "method": "카드",
+          "mockOutcome": "APPROVED"
+        }
+      },
+      "Refund": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "amountKrw": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "refundedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "processingBranchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "processedBy": {
+            "$ref": "#/components/schemas/ActorSummary"
+          }
+        },
+        "required": [
+          "id",
+          "amountKrw",
+          "reason",
+          "refundedAt",
+          "processingBranchId",
+          "processedBy"
+        ],
+        "additionalProperties": false,
+        "description": "원결제당 1회 전액 환불 사건(FR-PAY-10). processingBranchId는 원결제 지점이다(M4-D08)."
+      },
+      "Payment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "mock": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "description": "항상 true. 실제 금전 이동이 없는 Mock 거래임을 화면에 표시한다(FR-PAY-01)."
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "이용권"
+            ],
+            "description": "M4는 이용권 결제만 다룬다. 스터디룸·사물함은 M6."
+          },
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "customer": {
+            "$ref": "#/components/schemas/CustomerSummary"
+          },
+          "productId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "productName": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "결제 당시 상품명 스냅샷"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "현금",
+              "카드",
+              "계좌이체",
+              "기타"
+            ]
+          },
+          "amountKrw": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "승인",
+              "실패",
+              "환불"
+            ],
+            "description": "Mock 결제는 요청 안에서 승인·실패가 확정되므로 PENDING은 저장·응답하지 않는다."
+          },
+          "approvedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "failedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdBy": {
+            "$ref": "#/components/schemas/ActorSummary"
+          },
+          "passId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Id"
+              }
+            ],
+            "nullable": true
+          },
+          "refund": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Refund"
+              }
+            ],
+            "nullable": true
+          },
+          "canRefund": {
+            "type": "boolean",
+            "description": "요청자에게 원결제 지점 payments:write가 있고 승인·미사용·미만료이면 true. 서버 검증을 대체하지 않는다."
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "mock",
+          "purpose",
+          "branchId",
+          "customer",
+          "productId",
+          "productName",
+          "method",
+          "amountKrw",
+          "status",
+          "approvedAt",
+          "failedAt",
+          "createdAt",
+          "createdBy",
+          "passId",
+          "refund",
+          "canRefund"
+        ],
+        "additionalProperties": false,
+        "description": "승인 결제는 passId와 approvedAt, 실패 결제는 failedAt을 가지며 passId가 null이다. 환불 후에도 amountKrw와 approvedAt은 원래 값을 유지한다."
+      },
+      "PaymentPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Payment"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "additionalProperties": false
+      },
+      "RefundCreate": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "금액 필드는 없다. 환불 금액은 원결제 amountKrw 전액이다(M4-D04, 부분 환불 없음).",
+        "example": {
+          "reason": "고객 단순 변심(미사용)"
+        }
+      },
+      "PassStatus": {
+        "type": "string",
+        "enum": [
+          "활성",
+          "소진",
+          "만료",
+          "환불"
+        ],
+        "description": "요청 처리 시각 기준 실효 상태. 환불 > 만료(expiresAt <= 현재) > 소진 > 활성 순으로 판정한다. NOT_STARTED는 신규 발급에서 만들지 않으며 응답하지 않는다(M4-D01)."
+      },
+      "Pass": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "customer": {
+            "$ref": "#/components/schemas/CustomerSummary"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "시간권",
+              "기간권",
+              "정액권"
+            ]
+          },
+          "productId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "productName": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "categoryName": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "terms": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProductTerms"
+              }
+            ],
+            "description": "발급 당시 조건 스냅샷(FR-PASS-03). 현재 상품 수정은 반영하지 않는다."
+          },
+          "remainingMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295,
+            "nullable": true,
+            "description": "시간권만 값이 있다."
+          },
+          "remainingCreditKrw": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "nullable": true,
+            "description": "정액권만 값이 있다."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "활성",
+              "소진",
+              "만료",
+              "환불"
+            ],
+            "description": "요청 처리 시각 기준 실효 상태. 환불 > 만료(expiresAt <= 현재) > 소진 > 활성 순으로 판정한다. NOT_STARTED는 신규 발급에서 만들지 않으며 응답하지 않는다(M4-D01)."
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "null이면 만료 없음(유효기간 없는 시간권·정액권, M4-D03). 경계는 [startedAt, expiresAt).",
+            "nullable": true
+          },
+          "purchaseBranchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "purchasePaymentId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "used": {
+            "type": "boolean",
+            "description": "seat_sessions 또는 pass_balance_events USE 이력이 있으면 true."
+          },
+          "canRefund": {
+            "type": "boolean",
+            "description": "Payment.canRefund와 같은 기준"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "customer",
+          "kind",
+          "productId",
+          "productName",
+          "categoryName",
+          "terms",
+          "remainingMinutes",
+          "remainingCreditKrw",
+          "status",
+          "startedAt",
+          "expiresAt",
+          "purchaseBranchId",
+          "purchasePaymentId",
+          "createdAt",
+          "used",
+          "canRefund"
+        ],
+        "additionalProperties": false,
+        "description": "가격은 담지 않는다. 결제 금액은 payments:read가 있을 때 결제 API로 조회한다."
+      },
+      "PassPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Pass"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "additionalProperties": false
       }
     }
   },

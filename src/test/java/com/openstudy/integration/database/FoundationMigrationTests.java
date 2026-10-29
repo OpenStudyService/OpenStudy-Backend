@@ -54,10 +54,10 @@ class FoundationMigrationTests {
         jdbc = new JdbcTemplate(dataSource);
     }
     long count(String sql) { return jdbc.queryForObject(sql, Long.class); }
-    @Test void createsOnlyTheConsolidatedBaselineAndPreservesDataOnRestart() {
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(1);
-        assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success=1", String.class))
-                .containsExactly("1");
+    @Test void createsTheConsolidatedBaselineWithIncrementalMigrationsAndPreservesDataOnRestart() {
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(2);
+        assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank", String.class))
+                .containsExactly("1", "2");
         assertThat(count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name <> 'flyway_schema_history'"))
                 .isEqualTo(65);
         assertThat(count("SELECT COUNT(*) FROM employees")).isZero();
@@ -146,6 +146,40 @@ class FoundationMigrationTests {
                 .hasStackTraceContaining("fk_passes_purchase_revision_product");
         jdbc.update("UPDATE products SET name='Changed product' WHERE id=30");
         assertThat(jdbc.queryForObject("SELECT snapshot_product_name FROM passes",String.class)).isEqualTo("Purchased period");
+    }
+
+    @Test void v2AddsCustomerBranchAndMemoToAV1DatabaseAndBackfillsTheFirstPaymentBranch() {
+        assertThat(flyway("1").migrate().migrationsExecuted).isEqualTo(1);
+        jdbc.update("INSERT INTO employees(id,email,password_hash,name,nickname,global_role,status) VALUES(10,'owner@example.com','hash','Owner','Owner','OWNER','ACTIVE')");
+        jdbc.update("INSERT INTO branches(id,code,name,address) VALUES(20,'A','A','Test'),(21,'B','B','Test'),(22,'C','C','Test')");
+        jdbc.update("INSERT INTO customers(id,member_no,name,updated_at,version) VALUES(50,'PAID','Paid','2026-01-01 00:00:00',3),(51,'NONE','No payment','2026-01-01 00:00:00',0)");
+        jdbc.update("INSERT INTO product_categories(id,code,name,kind) VALUES(70,'TIME','Time','TIME')");
+        jdbc.update("INSERT INTO products(id,code,name,kind,price_krw,included_minutes,category_id) VALUES(30,'T','Time','TIME',1000,60,70)");
+        // The later payment has the smaller id, so ordering must follow created_at first.
+        jdbc.update("INSERT INTO payments(id,customer_id,branch_id,product_id,purpose,method,amount_krw,status,idempotency_key,created_by,created_at) VALUES"
+                + "(60,50,20,30,'PASS','CASH',1000,'FAILED','late',10,'2026-03-01 00:00:00'),"
+                + "(61,50,21,30,'PASS','CASH',1000,'FAILED','early',10,'2026-02-01 00:00:00')");
+
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(flyway(null).validateWithResult().validationSuccessful).isTrue();
+        var paid = jdbc.queryForMap("SELECT registered_branch_id,memo,updated_at,version FROM customers WHERE id=50");
+        assertThat(((Number) paid.get("registered_branch_id")).longValue()).isEqualTo(21);
+        assertThat(paid.get("memo")).isNull();
+        assertThat(paid.get("updated_at").toString()).startsWith("2026-01-01");
+        assertThat(((Number) paid.get("version")).longValue()).isEqualTo(3);
+        assertThat(jdbc.queryForObject("SELECT registered_branch_id FROM customers WHERE id=51", Long.class)).isNull();
+
+        var columns = jdbc.queryForList("SELECT COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='customers' AND COLUMN_NAME IN ('registered_branch_id','memo') ORDER BY COLUMN_NAME");
+        assertThat(columns).containsExactly(
+                Map.of("COLUMN_NAME", "memo", "COLUMN_TYPE", "varchar(1000)", "IS_NULLABLE", "YES"),
+                Map.of("COLUMN_NAME", "registered_branch_id", "COLUMN_TYPE", "bigint unsigned", "IS_NULLABLE", "YES"));
+        jdbc.update("INSERT INTO customers(member_no,name,phone,registered_branch_id,memo) VALUES('NEW','New','01012345678',22,?)", "가".repeat(1000));
+        assertThatThrownBy(() -> jdbc.update("UPDATE customers SET memo=? WHERE member_no='NEW'", "가".repeat(1001)))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO customers(member_no,name,registered_branch_id) VALUES('BAD','Bad',999)"))
+                .hasStackTraceContaining("fk_customers_registered_branch");
+        assertThatThrownBy(() -> jdbc.update("DELETE FROM branches WHERE id=22"))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }
 
     @Test void exportsPristineSchemaAndRestoresItWithMatchingFlywayHistoryAndMetadata() throws Exception {

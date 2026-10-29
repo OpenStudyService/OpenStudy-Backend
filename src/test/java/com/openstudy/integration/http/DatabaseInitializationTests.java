@@ -53,7 +53,7 @@ class DatabaseInitializationTests {
 
     @Test
     void migratesAllTablesAndDoesNotReapplyV1OrRemoveData() {
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("1");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("2");
         assertThat(flyway.validateWithResult().validationSuccessful).isTrue();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables "
                 + "WHERE table_schema = DATABASE() AND table_name <> 'flyway_schema_history'", Integer.class))

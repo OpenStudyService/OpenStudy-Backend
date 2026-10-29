@@ -69,7 +69,7 @@ class OwnerBootstrapTests {
 
     @Test void createsOneActiveOwnerAndAuditWithoutMembershipOrSecretAuditData() {
         assertThat(jdbc.queryForObject("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank DESC LIMIT 1", String.class))
-                .isEqualTo("1");
+                .isEqualTo("2");
         assertThat(run(environment).code()).isZero();
         var account = jdbc.queryForMap("SELECT * FROM employees");
         assertThat(account).containsEntry("email", "owner@example.com").containsEntry("global_role", "OWNER")
@@ -152,12 +152,14 @@ class OwnerBootstrapTests {
 
     @Test void pendingMigrationIsRejectedWithoutApplyingItOrCreatingOwner(@TempDir Path directory) throws Exception {
         Path migrations = Files.createDirectories(directory.resolve("db/migration"));
-        Files.writeString(migrations.resolve("V2__bootstrap_pending_test.sql"),
+        // One past the applied schema, so the probe stays pending as real migrations are added.
+        long pending = jdbc.queryForObject("SELECT MAX(CAST(version AS UNSIGNED)) FROM flyway_schema_history WHERE success=1", Long.class) + 1;
+        Files.writeString(migrations.resolve("V" + pending + "__bootstrap_pending_test.sql"),
                 "CREATE TABLE bootstrap_pending_probe (id INT PRIMARY KEY);");
         String classpath = directory + java.io.File.pathSeparator + System.getProperty("ownerBootstrap.runtimeClasspath");
         assertThat(command(classpath).code()).isNotZero();
         assertThat(count("employees")).isZero();
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE version='2'", Long.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE version=?", Long.class, String.valueOf(pending))).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='bootstrap_pending_probe'", Long.class))
                 .isZero();
     }
