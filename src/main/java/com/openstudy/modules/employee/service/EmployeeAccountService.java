@@ -1,5 +1,7 @@
 package com.openstudy.modules.employee.service;
 
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -52,6 +54,13 @@ public class EmployeeAccountService {
 
     public EmployeeAccount byId(long id) {
         return repository.findById(id).map(EmployeeChanges::account).orElseThrow(() -> new UsernameNotFoundException("Invalid account"));
+    }
+
+    /** Display names for actor summaries (who created a payment); unknown ids are simply absent. */
+    public Map<Long, String> names(Collection<Long> ids) {
+        Map<Long, String> result = new HashMap<>();
+        repository.findAllById(Set.copyOf(ids)).forEach(employee -> result.put(employee.getId(), employee.getName()));
+        return result;
     }
 
     public List<EmployeeMembership> memberships(long id) {

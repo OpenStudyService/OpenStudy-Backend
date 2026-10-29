@@ -127,6 +127,8 @@ public class WorkspaceEventService {
         if(event.branchId()!=null) {
             if(!current.branches().contains(event.branchId())) return;
             if("invitations".equals(resource) && !authorization.permits(current.state(),event.branchId(),BranchAction.MANAGE_PEOPLE)) return;
+            // Payment ids are only meaningful to readers who may open them (payments:read).
+            if("payments".equals(resource) && !authorization.permits(current.state(),event.branchId(),BranchAction.READ_PAYMENTS)) return;
             // A removed peer is no longer in minimal lookups, even while this branch remains readable.
             String entityId="employees".equals(resource) || event.entityId()==null ? null : event.entityId().toString();
             send(connection,new WorkspaceEvent("invalidate",resource,
@@ -148,6 +150,8 @@ public class WorkspaceEventService {
             case "invitation","invitations"->"invitations";
             case "product","products","product-category","product-categories"->"products";
             case "customer","customers"->"customers";
+            case "payment","payments"->"payments";
+            case "pass","passes"->"passes";
             case "lookups"->"lookups";
             default->null;
         };

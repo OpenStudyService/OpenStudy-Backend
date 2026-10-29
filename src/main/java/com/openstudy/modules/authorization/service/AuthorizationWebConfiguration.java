@@ -34,6 +34,8 @@ public class AuthorizationWebConfiguration implements WebMvcConfigurer {
                 String scope = request.getParameter("scope");
                 authorization.scope(state, scope, BranchAction.READ);
                 BranchAction action = path.matches("/api/(employees|invitations)(/.*)?") ? BranchAction.MANAGE_PEOPLE
+                        // Selling and refunding need payments:write only; a cashier need not read the payment ledger.
+                        : path.matches("/api/payments(/.*)?") && "POST".equals(request.getMethod()) ? BranchAction.WRITE_PAYMENT_HISTORY
                         : path.matches("/api/payments(/.*)?") ? BranchAction.READ_PAYMENTS
                         : path.matches("/api/sales(/.*)?") ? BranchAction.READ_SALES
                         : path.matches("/api/ai(/.*)?") ? BranchAction.READ_AI : BranchAction.READ;

@@ -7,6 +7,8 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +37,7 @@ import com.openstudy.modules.authorization.service.AuthorizationService;
 import com.openstudy.modules.authorization.service.AuthorizedCommands;
 import com.openstudy.modules.customer.dto.response.CustomerDetail;
 import com.openstudy.modules.customer.dto.response.CustomerListItem;
+import com.openstudy.modules.customer.dto.response.CustomerSummary;
 import com.openstudy.modules.customer.entity.Customer;
 import com.openstudy.modules.customer.entity.CustomerStatus;
 import com.openstudy.modules.customer.entity.CustomerStatusEvent;
@@ -171,6 +174,31 @@ public class CustomerService {
             invalidate(customer);
             return detail(customer, state);
         });
+    }
+
+    /**
+     * Entry point for the sale flow, inside the payment transaction. The customer must be in the actor's lookup scope
+     * (404 otherwise, POL-08 cross-branch sales are M5) and NORMAL; the shared row lock holds the status until commit.
+     */
+    @Transactional
+    public CustomerSummary requirePurchasable(AuthorizationState state, long id) {
+        repository.lockShared(id);
+        var customer = visibleCustomer(state, id, "all");
+        if (customer.getStatus() != CustomerStatus.NORMAL)
+            throw ApiException.conflict("CUSTOMER_NOT_ACTIVE", "정상 상태가 아닌 고객에게는 판매할 수 없습니다.");
+        return summary(customer);
+    }
+
+    /** Identification for payment and pass views; the caller has already authorized the rows that name them. */
+    @Transactional(readOnly = true)
+    public Map<Long, CustomerSummary> summaries(Collection<Long> ids) {
+        Map<Long, CustomerSummary> result = new HashMap<>();
+        repository.findAllById(Set.copyOf(ids)).forEach(customer -> result.put(customer.getId(), summary(customer)));
+        return result;
+    }
+
+    private static CustomerSummary summary(Customer customer) {
+        return new CustomerSummary(Long.toString(customer.getId()), customer.getMemberNo(), customer.getName());
     }
 
     private void flush(Customer customer) {

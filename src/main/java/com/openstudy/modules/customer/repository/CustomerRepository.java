@@ -16,6 +16,10 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
     @Query(value = "SELECT id FROM customers WHERE id = :id FOR UPDATE", nativeQuery = true)
     List<Long> lock(@Param("id") long id);
 
+    /** Shared lock for a sale: a concurrent status change waits until the payment commits (M4 transaction table). */
+    @Query(value = "SELECT id FROM customers WHERE id = :id FOR SHARE", nativeQuery = true)
+    List<Long> lockShared(@Param("id") long id);
+
     /**
      * Branches where the customer has paid (any payment status), which widen the lookup scope beyond the registration
      * branch (M4-D05). Read from the table until the payment module publishes an entry point for it (#57).
