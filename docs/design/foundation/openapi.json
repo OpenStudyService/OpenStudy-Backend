@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "OpenStudy 1차 기반 기능 API 설계",
-    "version": "0.1.5-m4-customer-sales",
-    "description": "검토 완료 8중분류/61요구사항의 구현 전 목표 계약. Q1~Q12의 2026-10-23 당시 사용자 답변을 기록하되 Q8은 SRS v1.1 정책으로 대체됨. decisions.md 참고. 기존 서버 전체 구현 명세가 아니다. ID문자열·API version=DB+1. 상태 변경은 CSRF, 지점과 행위 인가를 함께 검증한다. Issue #27의 /me/profile 및 CurrentUser는 구현된 M1 닉네임 계약이다. 나머지 operation의 구현 상태는 각각의 표기를 따른다. SRS v1.1 확정 상품 정책: 거래 유무와 무관하게 물리 삭제 미제공; 판매 중지·재개 및 기존 상품·거래·revision 보존. 이전 Q8 조건부 삭제안은 적용하지 않는다. /lookups와 /workspace/events는 단일 인스턴스 기반 workspace 구현 계약이다. 상품/분류 선택 데이터는 관련 업무 API 구현 전까지 빈 배열이다. M4 고객·Mock 결제·발급 이용권·환불 operation은 Issue #55의 설계 계약(customer-sales-api.md, ADR-M4-002)이며 구현은 #56~#58에서 진행한다. 결제·환불 요청에는 금액 필드가 없고 Idempotency-Key가 필수다."
+    "version": "0.1.6-m5-seat-usage",
+    "description": "검토 완료 8중분류/61요구사항의 구현 전 목표 계약. Q1~Q12의 2026-10-23 당시 사용자 답변을 기록하되 Q8은 SRS v1.1 정책으로 대체됨. decisions.md 참고. 기존 서버 전체 구현 명세가 아니다. ID문자열·API version=DB+1. 상태 변경은 CSRF, 지점과 행위 인가를 함께 검증한다. Issue #27의 /me/profile 및 CurrentUser는 구현된 M1 닉네임 계약이다. 나머지 operation의 구현 상태는 각각의 표기를 따른다. SRS v1.1 확정 상품 정책: 거래 유무와 무관하게 물리 삭제 미제공; 판매 중지·재개 및 기존 상품·거래·revision 보존. 이전 Q8 조건부 삭제안은 적용하지 않는다. /lookups와 /workspace/events는 단일 인스턴스 기반 workspace 구현 계약이다. 상품/분류 선택 데이터는 관련 업무 API 구현 전까지 빈 배열이다. M4 고객·Mock 결제·발급 이용권·환불 operation은 Issue #55의 설계 계약(customer-sales-api.md, ADR-M4-002)이며 구현은 #56~#58에서 진행한다. 결제·환불 요청에는 금액 필드가 없고 Idempotency-Key가 필수다. M5 좌석·입퇴실·차감·정확 일치 조회·수동 조정 operation은 Issue #60의 설계 계약(seat-usage-api.md, ADR-M5-001)이며 구현은 #61~#64에서 진행한다. 입실·퇴실·이동·조정은 Idempotency-Key가 필수이고, 퇴실·조정 요청에 차감량 필드는 없다."
   },
   "servers": [
     {
@@ -57,6 +57,15 @@
     },
     {
       "name": "passes"
+    },
+    {
+      "name": "seats"
+    },
+    {
+      "name": "seat-sessions"
+    },
+    {
+      "name": "customer-lookups"
     }
   ],
   "x-source": {
@@ -4876,6 +4885,1516 @@
           "M4-D03"
         ]
       }
+    },
+    "/seats": {
+      "get": {
+        "operationId": "listSeats",
+        "summary": "좌석 목록",
+        "tags": [
+          "seats"
+        ],
+        "description": "scope 지점의 좌석을 zone → seatNo → id 오름차순으로 반환한다. status의 사용 중은 활성 이용 기록으로 계산한다. 범위 밖 좌석은 total에 포함하지 않는다.",
+        "x-requirement-ids": [
+          "FR-SEAT-01",
+          "FR-SEAT-15"
+        ],
+        "x-permission": "OWNER 또는 scope 지점의 유효 소속",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#61",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "name": "zone",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "일반",
+                "모니터",
+                "기타"
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/SeatStatus"
+            }
+          }
+        ],
+        "x-error-codes": [
+          "FORBIDDEN",
+          "VALIDATION_FAILED"
+        ]
+      },
+      "post": {
+        "operationId": "createSeat",
+        "summary": "좌석 등록",
+        "tags": [
+          "seats"
+        ],
+        "description": "같은 지점의 좌석 번호 중복은 409 DUPLICATE_SEAT_NO. 같은 키·같은 입력은 저장된 결과, 같은 키·다른 입력은 409 IDEMPOTENCY_CONFLICT.",
+        "x-requirement-ids": [
+          "FR-SEAT-03",
+          "FR-SEAT-13"
+        ],
+        "x-permission": "OWNER 또는 branchId 지점의 operations:write",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#61",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "201": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Seat"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeatCreate"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "FORBIDDEN",
+          "DUPLICATE_SEAT_NO",
+          "IDEMPOTENCY_CONFLICT",
+          "REQUEST_IN_PROGRESS",
+          "VALIDATION_FAILED"
+        ]
+      }
+    },
+    "/seats/board": {
+      "get": {
+        "operationId": "getSeatBoard",
+        "summary": "좌석 배치도와 현황",
+        "tags": [
+          "seats"
+        ],
+        "description": "한 지점의 전체 좌석을 구역별로 묶고 같은 기준 시점의 현황을 함께 준다. 좌표는 없다(V1 스키마).",
+        "x-requirement-ids": [
+          "FR-SEAT-11",
+          "FR-SEAT-15"
+        ],
+        "x-permission": "OWNER 또는 branchId 지점의 유효 소속",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#61",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatBoard"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "branchId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "일반",
+                "모니터",
+                "기타"
+              ]
+            }
+          }
+        ],
+        "x-error-codes": [
+          "FORBIDDEN",
+          "NOT_FOUND",
+          "VALIDATION_FAILED"
+        ]
+      }
+    },
+    "/seats/occupancy": {
+      "get": {
+        "operationId": "getSeatOccupancy",
+        "summary": "지점별 좌석 현황·점유율",
+        "tags": [
+          "seats"
+        ],
+        "description": "scope 지점마다 전체·사용 중·사용 가능·운영 중단 수와 점유율, 기준 시점을 준다. 좌석이 없는 지점은 수치 0과 occupancyRate null.",
+        "x-requirement-ids": [
+          "FR-SEAT-11"
+        ],
+        "x-permission": "OWNER 또는 scope 지점의 유효 소속",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#61",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatOccupancy"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "x-error-codes": [
+          "FORBIDDEN",
+          "VALIDATION_FAILED"
+        ]
+      }
+    },
+    "/seats/{id}": {
+      "get": {
+        "operationId": "getSeat",
+        "summary": "좌석 상세",
+        "tags": [
+          "seats"
+        ],
+        "description": "범위 밖 좌석은 404.",
+        "x-requirement-ids": [
+          "FR-SEAT-02"
+        ],
+        "x-permission": "OWNER 또는 좌석 지점의 유효 소속",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#61",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Seat"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN"
+        ]
+      },
+      "patch": {
+        "operationId": "updateSeat",
+        "summary": "좌석 정보 수정",
+        "tags": [
+          "seats"
+        ],
+        "description": "구역·좌석 번호·유형만 수정한다. 사용 중 좌석도 수정할 수 있다. 감사에 전후 값을 남긴다.",
+        "x-requirement-ids": [
+          "FR-SEAT-04",
+          "FR-SEAT-13"
+        ],
+        "x-permission": "OWNER 또는 좌석 지점의 operations:write",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#61",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Seat"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeatUpdate"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN",
+          "DUPLICATE_SEAT_NO",
+          "VERSION_CONFLICT",
+          "VALIDATION_FAILED",
+          "IMMUTABLE_FIELD"
+        ]
+      }
+    },
+    "/seats/{id}/status": {
+      "post": {
+        "operationId": "changeSeatStatus",
+        "summary": "좌석 운영 중단·재개",
+        "tags": [
+          "seats"
+        ],
+        "description": "사용 중 좌석의 운영 중단은 409 SEAT_OCCUPIED. 전후 상태·사유·작업자·시각을 감사에 남긴다.",
+        "x-requirement-ids": [
+          "FR-SEAT-05",
+          "FR-SEAT-13"
+        ],
+        "x-permission": "OWNER 또는 좌석 지점의 MANAGER(role=admin) + operations:write",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#61",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Seat"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeatStatusChange"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN",
+          "SEAT_OCCUPIED",
+          "VERSION_CONFLICT",
+          "VALIDATION_FAILED"
+        ]
+      }
+    },
+    "/customer-lookups/check-in": {
+      "post": {
+        "operationId": "lookupCheckInCustomer",
+        "summary": "입실용 정확 일치 고객 조회",
+        "tags": [
+          "customer-lookups"
+        ],
+        "description": "회원번호 또는 연락처가 정확히 일치하는 고객(최대 10명)과 지금 쓸 수 있는 이용권만 반환한다. 일치 고객마다 customer_service_interactions에, 일치 없음은 audit_events에 기록한다. 일반 고객 조회 범위는 넓히지 않는다. 횟수 제한은 후속(M5-D08).",
+        "x-requirement-ids": [
+          "FR-SEAT-06",
+          "FR-PASS-13",
+          "NFR-SEC-06"
+        ],
+        "x-permission": "OWNER 또는 branchId 지점의 유효 소속(모든 지점에서 허용)",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#62",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckInLookupResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckInLookup"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "FORBIDDEN",
+          "VALIDATION_FAILED"
+        ],
+        "x-adr-decisions": [
+          "M5-D01",
+          "M5-D05",
+          "M5-D07",
+          "M5-D08"
+        ]
+      }
+    },
+    "/seat-sessions": {
+      "get": {
+        "operationId": "listSeatSessions",
+        "summary": "입퇴실 이력",
+        "tags": [
+          "seat-sessions"
+        ],
+        "description": "이용 지점이 scope 안인 이용 기록. 고객 조회 범위와 무관하며 고객은 최소 정보만 담는다(M5-D06). 구매 지점과 이용 지점을 구분한다.",
+        "x-requirement-ids": [
+          "FR-SEAT-13",
+          "FR-SEAT-18"
+        ],
+        "x-permission": "OWNER 또는 scope 지점의 유효 소속",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#64",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatSessionPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "$ref": "#/components/parameters/Direction"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "checkedInAt"
+              ]
+            },
+            "description": "기본 checkedInAt. 같으면 id 순."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "이용 중",
+                "종료"
+              ]
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "입실(내역은 사건) 시각 하한, 포함."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "상한, 미포함. from < to."
+          },
+          {
+            "name": "seatId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "name": "customerId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          }
+        ],
+        "x-error-codes": [
+          "FORBIDDEN",
+          "VALIDATION_FAILED"
+        ],
+        "x-adr-decisions": [
+          "M5-D06"
+        ]
+      },
+      "post": {
+        "operationId": "checkIn",
+        "summary": "직원 예외 입실",
+        "tags": [
+          "seat-sessions"
+        ],
+        "description": "좌석·고객·이용권을 잠근 뒤 검증하고 활성 이용 기록을 만든다. 같은 좌석·같은 고객의 동시 입실은 하나만 성공한다. 이용권은 모든 활성 지점에서 사용 가능하다. 같은 키·같은 입력은 저장된 결과, 같은 키·다른 입력은 409 IDEMPOTENCY_CONFLICT.",
+        "x-requirement-ids": [
+          "FR-SEAT-06",
+          "FR-SEAT-08",
+          "FR-SEAT-14",
+          "FR-PASS-10",
+          "FR-PASS-13",
+          "FR-BR-08"
+        ],
+        "x-permission": "OWNER 또는 좌석 지점의 유효 소속",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#62",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "201": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatSession"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckIn"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN",
+          "BRANCH_NOT_ACTIVE",
+          "SEAT_BLOCKED",
+          "SEAT_OCCUPIED",
+          "CUSTOMER_NOT_ACTIVE",
+          "CUSTOMER_ALREADY_CHECKED_IN",
+          "PASS_REFUNDED",
+          "PASS_EXPIRED",
+          "PASS_EXHAUSTED",
+          "IDEMPOTENCY_CONFLICT",
+          "REQUEST_IN_PROGRESS",
+          "VALIDATION_FAILED"
+        ],
+        "x-adr-decisions": [
+          "M5-D01",
+          "M5-D05"
+        ]
+      }
+    },
+    "/seat-sessions/{id}": {
+      "get": {
+        "operationId": "getSeatSession",
+        "summary": "이용 기록 상세",
+        "tags": [
+          "seat-sessions"
+        ],
+        "description": "이동 이력을 포함한다. 이용 지점이 범위 밖이면 404.",
+        "x-requirement-ids": [
+          "FR-SEAT-13",
+          "FR-SEAT-18"
+        ],
+        "x-permission": "OWNER 또는 이용 지점의 유효 소속",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#62",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatSession"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN"
+        ],
+        "x-adr-decisions": [
+          "M5-D06"
+        ]
+      }
+    },
+    "/seat-sessions/{id}/check-out": {
+      "post": {
+        "operationId": "checkOut",
+        "summary": "직원 예외 퇴실과 차감",
+        "tags": [
+          "seat-sessions"
+        ],
+        "description": "이용 분(분 올림)과 구매 당시 조건으로 차감·초과량을 계산하고, 이용 기록 종료·USE 원장·잔량·좌석 해제를 한 트랜잭션으로 확정한다. 이미 종료된 기록은 다른 키면 409 SESSION_ALREADY_CLOSED. 같은 키·같은 입력은 저장된 결과, 같은 키·다른 입력은 409 IDEMPOTENCY_CONFLICT.",
+        "x-requirement-ids": [
+          "FR-SEAT-07",
+          "FR-SEAT-14",
+          "FR-PASS-09",
+          "NFR-DATA-05"
+        ],
+        "x-permission": "OWNER 또는 이용 지점의 유효 소속",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#62",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatSession"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckOut"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN",
+          "SESSION_ALREADY_CLOSED",
+          "IDEMPOTENCY_CONFLICT",
+          "REQUEST_IN_PROGRESS",
+          "VALIDATION_FAILED"
+        ],
+        "x-adr-decisions": [
+          "M5-D02",
+          "M5-D03",
+          "M5-D06"
+        ]
+      }
+    },
+    "/seat-sessions/{id}/move": {
+      "post": {
+        "operationId": "moveSeatSession",
+        "summary": "이용 중 좌석 이동",
+        "tags": [
+          "seat-sessions"
+        ],
+        "description": "같은 이용 기록·이용권·입실 시각을 유지하고 좌석만 바꾼다. 원래 좌석 해제와 목적 좌석 점유는 한 트랜잭션이다. 같은 키·같은 입력은 저장된 결과, 같은 키·다른 입력은 409 IDEMPOTENCY_CONFLICT.",
+        "x-requirement-ids": [
+          "FR-SEAT-17",
+          "FR-SEAT-08",
+          "FR-SEAT-13"
+        ],
+        "x-permission": "OWNER 또는 이용 지점의 operations:write",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#63",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatSession"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeatSessionMove"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN",
+          "SESSION_ALREADY_CLOSED",
+          "BRANCH_NOT_ACTIVE",
+          "SEAT_BLOCKED",
+          "SEAT_OCCUPIED",
+          "IDEMPOTENCY_CONFLICT",
+          "REQUEST_IN_PROGRESS",
+          "VALIDATION_FAILED"
+        ],
+        "x-adr-decisions": [
+          "M5-D06"
+        ]
+      }
+    },
+    "/passes/{id}/adjustments": {
+      "post": {
+        "operationId": "adjustPass",
+        "summary": "이용권 잔여량·유효기간 수동 조정",
+        "tags": [
+          "passes"
+        ],
+        "description": "조정 후 값을 받아 ADJUST 원장(증감)과 감사(전후 값)를 남긴다. 환불 이용권은 재활성화하지 않는다. 같은 키·같은 입력은 저장된 결과, 같은 키·다른 입력은 409 IDEMPOTENCY_CONFLICT.",
+        "x-requirement-ids": [
+          "FR-PASS-09",
+          "FR-PASS-12"
+        ],
+        "x-permission": "OWNER 또는 구매 지점의 payments:write",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#64",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pass"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PassAdjustment"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN",
+          "PASS_REFUNDED",
+          "VERSION_CONFLICT",
+          "IDEMPOTENCY_CONFLICT",
+          "REQUEST_IN_PROGRESS",
+          "VALIDATION_FAILED"
+        ],
+        "x-adr-decisions": [
+          "M5-D04"
+        ]
+      }
+    },
+    "/customers/{id}/pass-history": {
+      "get": {
+        "operationId": "getCustomerPassHistory",
+        "summary": "고객의 구매·사용 내역",
+        "tags": [
+          "customers"
+        ],
+        "description": "고객 조회 범위(M4-D05) 안의 고객만. 구매 지점이 scope 안인 이용권의 구매·환불·이용·조정 사건과 원장 대조를 준다. 다른 지점에서의 이용도 이용 지점·시각·증감량을 담되 처리자·사유는 담지 않는다. 결제 금액은 담지 않는다.",
+        "x-requirement-ids": [
+          "FR-MEM-07",
+          "FR-PASS-09",
+          "NFR-SEC-06"
+        ],
+        "x-permission": "OWNER 또는 고객 조회 범위를 만드는 지점의 유효 소속",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#64",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerPassHistory"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "입실(내역은 사건) 시각 하한, 포함."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "상한, 미포함. from < to."
+          }
+        ],
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN",
+          "VALIDATION_FAILED"
+        ],
+        "x-adr-decisions": [
+          "M5-D05"
+        ]
+      }
     }
   },
   "components": {
@@ -7079,7 +8598,9 @@
               "permissions",
               "customers",
               "payments",
-              "passes"
+              "passes",
+              "seats",
+              "seat-sessions"
             ]
           },
           "entityId": {
@@ -7974,6 +9495,1035 @@
         "required": [
           "items",
           "meta"
+        ],
+        "additionalProperties": false
+      },
+      "SeatKind": {
+        "type": "string",
+        "enum": [
+          "일반",
+          "모니터",
+          "기타"
+        ]
+      },
+      "SeatStatus": {
+        "type": "string",
+        "enum": [
+          "사용 가능",
+          "사용 중",
+          "운영 중단"
+        ],
+        "description": "사용 중은 저장 상태가 아니라 활성 이용 기록 유무로 계산한다. 세 상태는 겹치지 않는다."
+      },
+      "SeatRef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "zone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "seatNo": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30
+          }
+        },
+        "required": [
+          "id",
+          "zone",
+          "seatNo"
+        ],
+        "additionalProperties": false,
+        "description": "이용 기록·이동 이력에 쓰는 좌석 최소 정보."
+      },
+      "ActiveSessionSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "customer": {
+            "$ref": "#/components/schemas/CustomerSummary"
+          },
+          "checkedInAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "customer",
+          "checkedInAt"
+        ],
+        "additionalProperties": false,
+        "description": "사용 중 좌석의 현재 이용. 고객 정보는 최소 정보(M5-D06)."
+      },
+      "Seat": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "zone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "seatNo": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SeatKind"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SeatStatus"
+          },
+          "activeSession": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ActiveSessionSummary"
+              }
+            ],
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "branchId",
+          "zone",
+          "seatNo",
+          "kind",
+          "status",
+          "activeSession",
+          "createdAt"
+        ],
+        "additionalProperties": false,
+        "description": "좌석. 좌표 열은 없으며 배치도는 구역·좌석 번호 순서로 그린다."
+      },
+      "SeatPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Seat"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "additionalProperties": false
+      },
+      "SeatCreate": {
+        "type": "object",
+        "properties": {
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "zone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "seatNo": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "일반",
+              "모니터",
+              "기타"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "사용 가능",
+              "운영 중단"
+            ],
+            "default": "사용 가능"
+          }
+        },
+        "required": [
+          "branchId",
+          "zone",
+          "seatNo",
+          "kind"
+        ],
+        "additionalProperties": false,
+        "description": "같은 지점의 좌석 번호는 유일하다(409 DUPLICATE_SEAT_NO).",
+        "example": {
+          "branchId": "1",
+          "zone": "A",
+          "seatNo": "A-01",
+          "kind": "일반"
+        }
+      },
+      "SeatUpdate": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "zone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "seatNo": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "일반",
+              "모니터",
+              "기타"
+            ]
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "additionalProperties": false,
+        "description": "누락 필드는 유지한다. status는 받지 않는다(422 IMMUTABLE_FIELD). 운영 상태는 POST /seats/{id}/status."
+      },
+      "SeatStatusChange": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "사용 가능",
+              "운영 중단"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "version",
+          "status",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "사용 중 좌석의 운영 중단은 409 SEAT_OCCUPIED. 같은 상태 요청은 현재 값을 반환한다."
+      },
+      "SeatCounts": {
+        "type": "object",
+        "properties": {
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "inUse": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "available": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "blocked": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "occupancyRate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "nullable": true,
+            "description": "inUse ÷ total × 100, 소수 첫째 자리 HALF_UP. total이 0이면 null(해당 없음)."
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "branchId",
+          "total",
+          "inUse",
+          "available",
+          "blocked",
+          "occupancyRate",
+          "asOf"
+        ],
+        "additionalProperties": false,
+        "description": "한 지점의 같은 기준 시점 좌석 현황. inUse + available + blocked = total."
+      },
+      "SeatOccupancy": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SeatCounts"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "description": "scope 안 지점마다 한 항목. 지점 ID 오름차순."
+      },
+      "SeatZone": {
+        "type": "object",
+        "properties": {
+          "zone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "seats": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Seat"
+            }
+          }
+        },
+        "required": [
+          "zone",
+          "seats"
+        ],
+        "additionalProperties": false
+      },
+      "SeatBoard": {
+        "type": "object",
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/SeatCounts"
+          },
+          "zones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SeatZone"
+            }
+          }
+        },
+        "required": [
+          "counts",
+          "zones"
+        ],
+        "additionalProperties": false,
+        "description": "한 지점의 전체 좌석(페이지 없음)을 구역 이름순으로 묶는다. kind 필터를 주면 좌석과 counts 모두 그 유형만 계산한다."
+      },
+      "CheckInLookup": {
+        "type": "object",
+        "properties": {
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "memberNo": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "phone": {
+            "type": "string",
+            "minLength": 9,
+            "maxLength": 20,
+            "description": "하이픈·공백 제거 후 숫자 9~11자리."
+          }
+        },
+        "required": [
+          "branchId"
+        ],
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "required": [
+              "memberNo"
+            ]
+          },
+          {
+            "required": [
+              "phone"
+            ]
+          }
+        ],
+        "description": "memberNo 또는 phone 중 정확히 하나. 부분 일치·이름 검색은 없다. 연락처가 URL에 남지 않도록 본문으로 받는다.",
+        "example": {
+          "branchId": "2",
+          "phone": "010-1234-5678"
+        }
+      },
+      "UsablePass": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "시간권",
+              "기간권",
+              "정액권"
+            ]
+          },
+          "productName": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "remainingMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295,
+            "nullable": true
+          },
+          "remainingCreditKrw": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "nullable": true
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "purchaseBranchId": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "productName",
+          "remainingMinutes",
+          "remainingCreditKrw",
+          "expiresAt",
+          "purchaseBranchId"
+        ],
+        "additionalProperties": false,
+        "description": "지금 입실에 쓸 수 있는 이용권(실효 상태 활성, 시간권·정액권은 잔량 > 0). 모든 활성 지점에서 사용 가능(M5-D01)."
+      },
+      "CheckInCandidate": {
+        "type": "object",
+        "properties": {
+          "customer": {
+            "$ref": "#/components/schemas/CustomerSummary"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CustomerStatus"
+          },
+          "activeSession": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "branchId": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "checkedInAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "id",
+              "branchId",
+              "checkedInAt"
+            ],
+            "additionalProperties": false,
+            "nullable": true
+          },
+          "usablePasses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsablePass"
+            }
+          }
+        },
+        "required": [
+          "customer",
+          "status",
+          "activeSession",
+          "usablePasses"
+        ],
+        "additionalProperties": false,
+        "description": "입실에 필요한 최소 정보(M5-D05). 연락처·이메일·메모·결제 정보는 담지 않는다."
+      },
+      "CheckInLookupResult": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "$ref": "#/components/schemas/CheckInCandidate"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "SeatSessionPass": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "시간권",
+              "기간권",
+              "정액권"
+            ]
+          },
+          "productName": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "purchaseBranchId": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "productName",
+          "purchaseBranchId"
+        ],
+        "additionalProperties": false,
+        "description": "구매 지점(purchaseBranchId)과 이용 지점(SeatSession.branchId)을 구분한다(FR-SEAT-18)."
+      },
+      "SeatMove": {
+        "type": "object",
+        "properties": {
+          "fromSeat": {
+            "$ref": "#/components/schemas/SeatRef"
+          },
+          "toSeat": {
+            "$ref": "#/components/schemas/SeatRef"
+          },
+          "movedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "movedBy": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ActorSummary"
+              }
+            ],
+            "nullable": true
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "nullable": true
+          }
+        },
+        "required": [
+          "fromSeat",
+          "toSeat",
+          "movedAt",
+          "movedBy",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "SeatSession": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "이용 중",
+              "종료"
+            ]
+          },
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "seat": {
+            "$ref": "#/components/schemas/SeatRef"
+          },
+          "customer": {
+            "$ref": "#/components/schemas/CustomerSummary"
+          },
+          "pass": {
+            "$ref": "#/components/schemas/SeatSessionPass"
+          },
+          "checkedInAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "checkedOutAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "usedMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          },
+          "deductedMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          },
+          "deductedKrw": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "overageMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          },
+          "overageKrw": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "passRemainingMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295,
+            "nullable": true,
+            "description": "응답 시점 이용권 잔량. 시간권만 값이 있다."
+          },
+          "passRemainingCreditKrw": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "nullable": true,
+            "description": "응답 시점 이용권 잔량. 정액권만 값이 있다."
+          },
+          "checkedInBy": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ActorSummary"
+              }
+            ],
+            "nullable": true
+          },
+          "checkInReason": {
+            "type": "string",
+            "maxLength": 500,
+            "nullable": true
+          },
+          "moves": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SeatMove"
+            },
+            "description": "상세에서만 채우고 목록에서는 빈 배열."
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "status",
+          "branchId",
+          "seat",
+          "customer",
+          "pass",
+          "checkedInAt",
+          "checkedOutAt",
+          "usedMinutes",
+          "deductedMinutes",
+          "deductedKrw",
+          "overageMinutes",
+          "overageKrw",
+          "passRemainingMinutes",
+          "passRemainingCreditKrw",
+          "checkedInBy",
+          "checkInReason",
+          "moves"
+        ],
+        "additionalProperties": false,
+        "description": "좌석 이용 기록. 이용 중이면 사용량 필드가 0이다. 계산 규칙은 seat-usage-api.md \"퇴실과 차감\"."
+      },
+      "SeatSessionPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SeatSession"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "additionalProperties": false
+      },
+      "CheckIn": {
+        "type": "object",
+        "properties": {
+          "seatId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "customerId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "passId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "seatId",
+          "customerId",
+          "passId"
+        ],
+        "additionalProperties": false,
+        "description": "직원 예외 입실. 이용권의 소유 고객이 customerId와 다르면 404.",
+        "example": {
+          "seatId": "31",
+          "customerId": "10",
+          "passId": "55",
+          "reason": "QR 미연동 현장 배정"
+        }
+      },
+      "CheckOut": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "additionalProperties": false,
+        "description": "분·금액 필드는 없다. 차감량은 서버가 계산한다(M5-D02·D03).",
+        "example": {}
+      },
+      "SeatSessionMove": {
+        "type": "object",
+        "properties": {
+          "toSeatId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "toSeatId"
+        ],
+        "additionalProperties": false,
+        "description": "같은 지점의 사용 가능한 좌석으로만 이동한다.",
+        "example": {
+          "toSeatId": "32"
+        }
+      },
+      "PassAdjustment": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "remainingMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295,
+            "description": "조정 후 남은 분. 시간권만."
+          },
+          "remainingCreditKrw": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "조정 후 남은 금액. 정액권만."
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "조정 후 만료 시각. 시간권·정액권은 null로 만료 없음 지정. 기간권은 null 불가."
+          }
+        },
+        "required": [
+          "version",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "remainingMinutes"
+            ]
+          },
+          {
+            "required": [
+              "remainingCreditKrw"
+            ]
+          },
+          {
+            "required": [
+              "expiresAt"
+            ]
+          }
+        ],
+        "description": "증감량이 아니라 조정 후 값을 받는다. 환불 이용권은 409 PASS_REFUNDED.",
+        "example": {
+          "version": 3,
+          "reason": "전산 오류 보정",
+          "remainingMinutes": 600
+        }
+      },
+      "PassHistoryEvent": {
+        "type": "object",
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "구매",
+              "환불",
+              "이용",
+              "조정"
+            ]
+          },
+          "passId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "productName": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "deltaMinutes": {
+            "type": "integer",
+            "description": "원장 증감(분). 기간권 이용은 0, 이용 분은 usedMinutes."
+          },
+          "deltaKrw": {
+            "type": "integer"
+          },
+          "usedMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295,
+            "nullable": true
+          },
+          "branchId": {
+            "$ref": "#/components/schemas/Id",
+            "nullable": true,
+            "description": "사건 지점. 요청자 scope 밖 지점에서의 이용도 지점 ID를 담는다(2026-10-30 결정). 이 경우 reason·actor는 null이다."
+          },
+          "paymentId": {
+            "$ref": "#/components/schemas/Id",
+            "nullable": true
+          },
+          "seatSessionId": {
+            "$ref": "#/components/schemas/Id",
+            "nullable": true
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "nullable": true
+          },
+          "actor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ActorSummary"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "at",
+          "type",
+          "passId",
+          "productName",
+          "deltaMinutes",
+          "deltaKrw",
+          "usedMinutes",
+          "branchId",
+          "paymentId",
+          "seatSessionId",
+          "reason",
+          "actor"
+        ],
+        "additionalProperties": false,
+        "description": "결제 금액은 담지 않는다(NFR-SEC-06)."
+      },
+      "PassLedgerCheck": {
+        "type": "object",
+        "properties": {
+          "passId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "시간권",
+              "기간권",
+              "정액권"
+            ]
+          },
+          "productName": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "활성",
+              "소진",
+              "만료",
+              "환불"
+            ]
+          },
+          "purchaseBranchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "issuedMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295,
+            "nullable": true
+          },
+          "issuedCreditKrw": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "nullable": true
+          },
+          "ledgerMinutes": {
+            "type": "integer"
+          },
+          "ledgerKrw": {
+            "type": "integer"
+          },
+          "remainingMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295,
+            "nullable": true
+          },
+          "remainingCreditKrw": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "nullable": true
+          }
+        },
+        "required": [
+          "passId",
+          "kind",
+          "productName",
+          "status",
+          "purchaseBranchId",
+          "issuedMinutes",
+          "issuedCreditKrw",
+          "ledgerMinutes",
+          "ledgerKrw",
+          "remainingMinutes",
+          "remainingCreditKrw"
+        ],
+        "additionalProperties": false,
+        "description": "기간과 무관한 전체 원장 기준. issued + ledger = remaining(FR-PASS-09)."
+      },
+      "CustomerPassHistory": {
+        "type": "object",
+        "properties": {
+          "customer": {
+            "$ref": "#/components/schemas/CustomerSummary"
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PassHistoryEvent"
+            }
+          },
+          "passes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PassLedgerCheck"
+            }
+          }
+        },
+        "required": [
+          "customer",
+          "from",
+          "to",
+          "events",
+          "passes"
         ],
         "additionalProperties": false
       }
