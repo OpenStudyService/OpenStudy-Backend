@@ -182,8 +182,10 @@ erDiagram
     varchar_100 name
     varchar_30 phone
     varchar_254 email
+    bigint_unsigned registered_branch_id FK
     enum__NORMAL___RESTRICTED___INACTIVE status
     varchar_500 status_reason
+    varchar_1000 memo
     datetime_6 registered_at
     datetime_6 updated_at
     bigint_unsigned version
@@ -847,6 +849,7 @@ erDiagram
   customers ||--o{ passes : "fk_passes_1: customer_id"
   products ||--o{ passes : "fk_passes_2: product_id"
   payments ||--o| passes : "fk_passes_3: purchase_payment_id,customer_id,purchase_branch_id,product_id"
+  branches |o--o{ customers : "fk_customers_registered_branch: registered_branch_id"
   branches ||--o{ passes : "fk_passes_4: purchase_branch_id"
   product_revisions ||--o{ passes : "fk_passes_purchase_revision_product: purchase_product_revision_id,product_id"
   customers ||--o{ payments : "fk_payments_1: customer_id"
