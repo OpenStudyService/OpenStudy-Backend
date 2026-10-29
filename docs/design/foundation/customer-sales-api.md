@@ -2,7 +2,7 @@
 
 Backend [#55](https://github.com/OpenStudyService/OpenStudy-Backend/issues/55)의 M4 계약이다. 구현은 고객(#56), 결제·발급(#57), 환불(#58)에서 이 문서를 기준으로 진행하고, Frontend는 같은 [OpenAPI](openapi.json)(`0.1.5-m4-customer-sales`)로 연동한다. 정책 근거는 [ADR-M4-002](../../db/ADR-M4-002.md)(M4-D01~D08)와 [ADR-M3M4-001](../../db/ADR-M3M4-001.md)의 유지 결정(D01 결제 1건당 이용권 1장, D02 구매 조건 스냅샷)이다. 공통 요청·응답·오류·목록 규칙은 [API 계약](api.md)을 따른다.
 
-이 문서의 operation은 모두 설계 계약(`design-target`)이며 아직 서버에 구현되어 있지 않다.
+고객 operation 5개는 #56에서 구현했다(`implemented`). 결제·환불·이용권 operation은 아직 설계 계약(`design-target`)이며 서버에 구현되어 있지 않다.
 
 ## 제공 범위
 

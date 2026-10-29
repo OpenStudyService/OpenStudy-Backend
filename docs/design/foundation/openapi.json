@@ -3732,7 +3732,7 @@
           "NFR-SEC-06"
         ],
         "x-permission": "OWNER 또는 대상 지점의 유효 소속(역할·행위 권한 무관). 조회 범위는 등록 지점 또는 결제 지점이 scope 안에 있는 고객(M4-D05)",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
@@ -3845,7 +3845,7 @@
           "NFR-SEC-06"
         ],
         "x-permission": "OWNER 또는 registeredBranchId 지점의 members:write",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
@@ -3942,7 +3942,7 @@
           "NFR-SEC-06"
         ],
         "x-permission": "OWNER 또는 대상 지점의 유효 소속(역할·행위 권한 무관). 조회 범위는 등록 지점 또는 결제 지점이 scope 안에 있는 고객(M4-D05)",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
@@ -4024,7 +4024,7 @@
           "NFR-SEC-06"
         ],
         "x-permission": "OWNER 또는 고객을 조회 범위에 넣는 지점(등록 지점·결제 지점) 중 하나 이상에서 members:write",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
@@ -4126,7 +4126,7 @@
           "FR-MEM-06"
         ],
         "x-permission": "OWNER 또는 고객을 조회 범위에 넣는 지점(등록 지점·결제 지점) 중 하나 이상에서 members:write",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],

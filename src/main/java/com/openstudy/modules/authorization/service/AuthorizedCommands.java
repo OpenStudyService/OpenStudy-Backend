@@ -60,6 +60,22 @@ public class AuthorizedCommands {
     }
 
     /**
+     * For a record shared by several branches where any one of them may act, e.g. a customer who registered at one
+     * branch and paid at another (M4-D05). The branch set is read after the parent lock, so it is the persisted one.
+     */
+    @Transactional
+    public <T> T inAnyBranch(long actor, BranchAction action, Runnable lockBusinessParent, Supplier<Set<Long>> serverBranchIds,
+            Function<AuthorizationState, T> command) {
+        repository.lockGuard();
+        repository.lockEmployees();
+        repository.lockBranches();
+        lockBusinessParent.run();
+        var state = repository.currentLocked(actor);
+        authorization.requireAny(state, serverBranchIds.get(), action);
+        return command.apply(state);
+    }
+
+    /**
      * Same lock order without an authenticated actor, for a credential-bearing public command such as
      * invitation acceptance. The callback must verify its own credential under the parent lock.
      */
