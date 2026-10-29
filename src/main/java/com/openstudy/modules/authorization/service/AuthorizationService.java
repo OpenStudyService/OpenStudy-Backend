@@ -57,6 +57,16 @@ public class AuthorizationService {
         if (serverBranchIds.isEmpty() || serverBranchIds.stream().anyMatch(id -> !permits(state, id, action))) throw forbidden();
     }
 
+    /** At least one branch must permit the action; OWNER passes even when the set is empty (an unassigned customer). */
+    public void requireAny(AuthorizationState state, Set<Long> serverBranchIds, BranchAction action) {
+        if (!permitsAny(state, serverBranchIds, action)) throw forbidden();
+    }
+
+    public boolean permitsAny(AuthorizationState state, Set<Long> serverBranchIds, BranchAction action) {
+        if (!"ACTIVE".equals(state.status())) return false;
+        return state.owner() || serverBranchIds.stream().anyMatch(id -> permits(state, id, action));
+    }
+
     /** IDs must come from the persisted product AND requested new scope, not a client canEdit flag. */
     @Transactional(readOnly = true)
     public void requireSharedProduct(long actor, Set<Long> persisted, Set<Long> requested, boolean administration) {

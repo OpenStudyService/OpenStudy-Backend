@@ -147,6 +147,7 @@ public class WorkspaceEventService {
             case "permission-preset","permission-presets","permissions"->"permissions";
             case "invitation","invitations"->"invitations";
             case "product","products","product-category","product-categories"->"products";
+            case "customer","customers"->"customers";
             case "lookups"->"lookups";
             default->null;
         };
