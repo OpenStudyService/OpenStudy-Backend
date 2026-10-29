@@ -4553,7 +4553,7 @@
           "NFR-DATA-05"
         ],
         "x-permission": "OWNER 또는 원결제 지점의 payments:write",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],

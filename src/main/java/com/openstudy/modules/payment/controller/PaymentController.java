@@ -51,5 +51,13 @@ public class PaymentController {
         return ResponseEntity.created(URI.create("/api/payments/" + result.id())).body(result);
     }
 
+    /** A refund is a separate event; the response is the payment with its refund, never a rewritten payment. */
+    @PostMapping("/{id}/refund")
+    public PaymentDetail refund(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope,
+            @RequestHeader(name = "Idempotency-Key", required = false) String key,
+            @RequestBody Map<String, Object> body, HttpServletRequest request) {
+        return service.refund(actor(actor), id, scope, key, body, ApiRequestFilter.requestId(request));
+    }
+
     private static long actor(Authentication authentication) { return Long.parseLong(authentication.getName()); }
 }

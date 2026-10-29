@@ -82,6 +82,7 @@ class PaymentIntegrationTests {
         for (long customer : customerIds) {
             jdbc.update("DELETE FROM pass_balance_events WHERE pass_id IN (SELECT id FROM passes WHERE customer_id=?)", customer);
             jdbc.update("DELETE FROM passes WHERE customer_id=?", customer);
+            jdbc.update("DELETE FROM refunds WHERE payment_id IN (SELECT id FROM payments WHERE customer_id=?)", customer);
             jdbc.update("DELETE FROM payments WHERE customer_id=?", customer);
             jdbc.update("DELETE FROM customer_status_events WHERE customer_id=?", customer);
             jdbc.update("DELETE FROM customers WHERE id=?", customer);
@@ -212,6 +213,12 @@ class PaymentIntegrationTests {
     HttpResponse<String> pay(Session session, Object body, String key) throws Exception {
         return http(session.client(), "POST", "/api/payments", session.token(), body, key);
     }
+
+    HttpResponse<String> refund(Session session, long payment, Object body, String key) throws Exception {
+        return http(session.client(), "POST", "/api/payments/" + payment + "/refund", session.token(), body, key);
+    }
+
+    static Map<String, Object> reason(String text) { return Map.of("reason", text); }
 
     JsonNode node(HttpResponse<String> response) { return json.readTree(response.body()); }
 
@@ -597,6 +604,190 @@ class PaymentIntegrationTests {
             assertThat(get(o, "/api/payments?sort=method").statusCode()).isEqualTo(422);
             assertThat(get(o, "/api/payments?status=PENDING").statusCode()).isEqualTo(422);
             assertThat(http(o.client(), "DELETE", "/api/payments/" + paymentId, o.token(), null, null).statusCode()).isEqualTo(405);
+        }
+    }
+
+    // ---- refund -------------------------------------------------------------------------------------------
+
+    @Test void refundRecordsAFullRefundEventWithoutRewritingThePayment() throws Exception {
+        long product = product("환불", 25000, period(30), periodCategory, first);
+        long customer = customer(first, "환불 고객");
+        try (var s = login(seller)) {
+            var made = node(pay(s, sale(customer, first, product), key()));
+            long paymentId = made.get("id").asLong();
+            long passId = made.get("passId").asLong();
+            Instant approvedAt = at("SELECT approved_at FROM payments WHERE id=?", paymentId);
+            Instant startedAt = at("SELECT started_at FROM passes WHERE id=?", passId);
+            Instant expiresAt = at("SELECT expires_at FROM passes WHERE id=?", passId);
+
+            // The amount is never an input, and the reason and key are required.
+            var withAmount = refund(s, paymentId, Map.of("reason", "고객 요청", "amountKrw", 1000), key());
+            assertThat(withAmount.statusCode()).isEqualTo(422);
+            assertThat(refund(s, paymentId, reason(""), key()).statusCode()).isEqualTo(422);
+            assertThat(refund(s, paymentId, reason("x".repeat(501)), key()).statusCode()).isEqualTo(422);
+            assertThat(refund(s, paymentId, reason("고객 요청"), null).statusCode()).isEqualTo(422);
+            assertThat(count("SELECT COUNT(*) FROM refunds WHERE payment_id=?", paymentId)).isZero();
+
+            var done = refund(s, paymentId, reason("고객 요청"), key());
+            assertThat(done.statusCode()).isEqualTo(200);
+            var body = node(done);
+            assertThat(body.get("status").asString()).isEqualTo("환불");
+            assertThat(body.get("amountKrw").asLong()).isEqualTo(25000);
+            assertThat(body.get("approvedAt").asString()).isEqualTo(made.get("approvedAt").asString());
+            assertThat(body.get("canRefund").asBoolean()).isFalse();
+            assertThat(body.at("/refund/amountKrw").asLong()).isEqualTo(25000);
+            assertThat(body.at("/refund/reason").asString()).isEqualTo("고객 요청");
+            assertThat(body.at("/refund/processingBranchId").asString()).isEqualTo(Long.toString(first));
+            assertThat(body.at("/refund/processedBy/id").asString()).isEqualTo(Long.toString(seller));
+            assertThat(body.at("/refund/processedBy/name").asString()).isEqualTo("결제 직원");
+            assertThat(body.at("/refund/refundedAt").isNull()).isFalse();
+
+            // The original payment keeps its amount and approval time; the pass keeps its period.
+            assertThat(count("SELECT amount_krw FROM payments WHERE id=?", paymentId)).isEqualTo(25000);
+            assertThat(at("SELECT approved_at FROM payments WHERE id=?", paymentId)).isEqualTo(approvedAt);
+            assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE id=?", String.class, paymentId)).isEqualTo("REFUNDED");
+            assertThat(jdbc.queryForObject("SELECT status FROM passes WHERE id=?", String.class, passId)).isEqualTo("REFUNDED");
+            assertThat(at("SELECT started_at FROM passes WHERE id=?", passId)).isEqualTo(startedAt);
+            assertThat(at("SELECT expires_at FROM passes WHERE id=?", passId)).isEqualTo(expiresAt);
+            assertThat(count("SELECT COUNT(*) FROM refunds WHERE payment_id=? AND amount_krw=25000 AND processing_branch_id=? "
+                    + "AND processed_by=? AND reason='고객 요청'", paymentId, first, seller)).isEqualTo(1);
+            assertThat(count("SELECT COUNT(*) FROM audit_events WHERE entity_type='payments' AND entity_id=? AND action='REFUNDED'", paymentId)).isEqualTo(1);
+            assertThat(count("SELECT COUNT(*) FROM audit_events WHERE entity_type='passes' AND entity_id=? AND action='REFUNDED'", passId)).isEqualTo(1);
+            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_type='payments' AND entity_id=?", paymentId)).isEqualTo(2);
+
+            var pass = node(get(s, "/api/passes/" + passId));
+            assertThat(pass.get("status").asString()).isEqualTo("환불");
+            assertThat(pass.get("canRefund").asBoolean()).isFalse();
+            assertThat(ids(node(get(s, "/api/passes?customerId=" + customer + "&status=" + enc("환불"))))).containsExactly(passId);
+            assertThat(ids(node(get(s, "/api/payments?customerId=" + customer + "&status=" + enc("환불"))))).containsExactly(paymentId);
+            assertThat(node(get(s, "/api/payments/" + paymentId)).at("/refund/reason").asString()).isEqualTo("고객 요청");
+        }
+    }
+
+    @Test void refundIsRefusedForFailedRefundedUsedAndExpiredPayments() throws Exception {
+        long product = product("환불 거절", 10000, time(120, 30L), timeCategory, first);
+        long customer = customer(first, "거절 고객");
+        try (var s = login(seller)) {
+            var failedSale = sale(customer, first, product);
+            failedSale.put("mockOutcome", "FAILED");
+            long failed = node(pay(s, failedSale, key())).get("id").asLong();
+            var used = node(pay(s, sale(customer, first, product), key()));
+            var expired = node(pay(s, sale(customer, first, product), key()));
+            var almost = node(pay(s, sale(customer, first, product), key()));
+            jdbc.update("INSERT INTO pass_balance_events(pass_id,kind,delta_minutes,event_key) VALUES(?,'USE',-30,?)",
+                    used.get("passId").asLong(), UUID.randomUUID().toString());
+            // Stored status stays ACTIVE on both; only the expiry instant differs (just past, and still ahead).
+            jdbc.update("UPDATE passes SET started_at=?, expires_at=? WHERE id=?", Timestamp.from(Instant.now().minus(Duration.ofDays(30))),
+                    Timestamp.from(Instant.now().minusMillis(1)), expired.get("passId").asLong());
+            jdbc.update("UPDATE passes SET started_at=?, expires_at=? WHERE id=?", Timestamp.from(Instant.now().minus(Duration.ofDays(30))),
+                    Timestamp.from(Instant.now().plusSeconds(60)), almost.get("passId").asLong());
+
+            var notApproved = refund(s, failed, reason("실패 결제"), key());
+            assertThat(notApproved.statusCode()).isEqualTo(409);
+            assertThat(code(notApproved)).isEqualTo("PAYMENT_NOT_REFUNDABLE");
+            var spent = refund(s, used.get("id").asLong(), reason("사용함"), key());
+            assertThat(spent.statusCode()).isEqualTo(409);
+            assertThat(code(spent)).isEqualTo("PASS_ALREADY_USED");
+            var late = refund(s, expired.get("id").asLong(), reason("만료됨"), key());
+            assertThat(late.statusCode()).isEqualTo(409);
+            assertThat(code(late)).isEqualTo("PASS_EXPIRED");
+            assertThat(count("SELECT COUNT(*) FROM refunds r JOIN payments p ON p.id=r.payment_id WHERE p.customer_id=?", customer)).isZero();
+            assertThat(count("SELECT COUNT(*) FROM passes WHERE customer_id=? AND status='REFUNDED'", customer)).isZero();
+
+            assertThat(refund(s, almost.get("id").asLong(), reason("만료 직전"), key()).statusCode()).isEqualTo(200);
+            var again = refund(s, almost.get("id").asLong(), reason("만료 직전"), key());
+            assertThat(again.statusCode()).isEqualTo(409);
+            assertThat(code(again)).isEqualTo("ALREADY_REFUNDED");
+            assertThat(count("SELECT COUNT(*) FROM refunds WHERE payment_id=?", almost.get("id").asLong())).isEqualTo(1);
+        }
+    }
+
+    @Test void onlyPaymentsWriteAtThePaymentBranchMayRefund() throws Exception {
+        long product = product("환불 권한", 10000, time(60, null), timeCategory, first, second);
+        long customer = customer(first, "권한 고객");
+        long cashier = person("EMPLOYEE");
+        member(cashier, first, "payments:write");
+        long elsewhere = person("EMPLOYEE");
+        member(elsewhere, first, "payments:read");
+        member(elsewhere, second, "payments:write");
+        List<Long> sold = new ArrayList<>();
+        try (var s = login(seller)) {
+            for (int i = 0; i < 3; i++) sold.add(node(pay(s, sale(customer, first, product), key())).get("id").asLong());
+        }
+        long paymentId = sold.getFirst();
+        try (var r = login(reader); var v = login(viewer); var e = login(elsewhere); var two = login(secondSeller)) {
+            // payments:read alone, no grant at all, or payments:write only at another branch: 403.
+            assertThat(code(refund(r, paymentId, reason("권한 없음"), key()))).isEqualTo("FORBIDDEN");
+            assertThat(refund(v, paymentId, reason("권한 없음"), key()).statusCode()).isEqualTo(403);
+            assertThat(refund(e, paymentId, reason("다른 지점 권한"), key()).statusCode()).isEqualTo(403);
+            // Not a member of the payment branch at all: the payment is not visible.
+            assertThat(refund(two, paymentId, reason("보이지 않음"), key()).statusCode()).isEqualTo(404);
+            assertThat(refund(two, Long.MAX_VALUE, reason("없음"), key()).statusCode()).isEqualTo(404);
+        }
+        assertThat(count("SELECT COUNT(*) FROM refunds WHERE payment_id=?", paymentId)).isZero();
+        try (var c = login(cashier); var o = login(owner)) {
+            // A cashier refunds without reading the ledger; the owner satisfies every grant.
+            var byCashier = refund(c, paymentId, reason("계산원 환불"), key());
+            assertThat(byCashier.statusCode()).isEqualTo(200);
+            assertThat(node(byCashier).at("/refund/processingBranchId").asString()).isEqualTo(Long.toString(first));
+            assertThat(refund(o, sold.get(1), reason("대표 환불"), key()).statusCode()).isEqualTo(200);
+        }
+        assertThat(count("SELECT COUNT(*) FROM refunds WHERE payment_id IN (?,?) AND processing_branch_id=?", sold.get(0), sold.get(1), first)).isEqualTo(2);
+    }
+
+    @Test void sameRefundKeyReplaysAndConcurrentKeysRefundOnce() throws Exception {
+        long product = product("환불 멱등", 10000, time(60, null), timeCategory, first);
+        long customer = customer(first, "환불 멱등 고객");
+        long once, race;
+        try (var s = login(seller)) {
+            once = node(pay(s, sale(customer, first, product), key())).get("id").asLong();
+            race = node(pay(s, sale(customer, first, product), key())).get("id").asLong();
+            String key = key();
+            var original = refund(s, once, reason("멱등 환불"), key);
+            var replay = refund(s, once, reason("멱등 환불"), key);
+            assertThat(replay.statusCode()).isEqualTo(200);
+            assertThat(node(replay).at("/refund/id").asString()).isEqualTo(node(original).at("/refund/id").asString());
+            var conflict = refund(s, once, reason("다른 사유"), key);
+            assertThat(conflict.statusCode()).isEqualTo(409);
+            assertThat(code(conflict)).isEqualTo("IDEMPOTENCY_CONFLICT");
+            assertThat(count("SELECT COUNT(*) FROM refunds WHERE payment_id=?", once)).isEqualTo(1);
+            assertThat(count("SELECT COUNT(*) FROM refunds WHERE payment_id=? AND idempotency_key=?", once, key)).isZero();
+        }
+        var start = new CountDownLatch(1);
+        List<Future<String>> results = new ArrayList<>();
+        try (var pool = Executors.newFixedThreadPool(4)) {
+            for (int i = 0; i < 4; i++) {
+                String key = key();
+                results.add(pool.submit(() -> {
+                    start.await();
+                    try { payments.refund(seller, race, "all", key, reason("동시 환불"), "race"); return "OK"; }
+                    catch (com.openstudy.common.exception.ApiException refused) { return refused.getMessage(); }
+                }));
+            }
+            start.countDown();
+            List<String> outcomes = new ArrayList<>();
+            for (var result : results) outcomes.add(result.get(30, TimeUnit.SECONDS));
+            assertThat(outcomes.stream().filter("OK"::equals)).hasSize(1);
+        }
+        assertThat(count("SELECT COUNT(*) FROM refunds WHERE payment_id=?", race)).isEqualTo(1);
+        assertThat(count("SELECT COUNT(*) FROM audit_events WHERE entity_type='payments' AND entity_id=? AND action='REFUNDED'", race)).isEqualTo(1);
+    }
+
+    @Test void aFailureDuringRefundLeavesThePaymentAndPassUntouched() throws Exception {
+        long product = product("환불 롤백", 10000, time(60, null), timeCategory, first);
+        long customer = customer(first, "환불 롤백 고객");
+        try (var s = login(seller)) {
+            var made = node(pay(s, sale(customer, first, product), key()));
+            long paymentId = made.get("id").asLong();
+            Mockito.doThrow(new IllegalStateException("refund failed")).when(passes).refund(anyLong(), anyLong(), any(), anyString());
+            String key = key();
+            assertThat(refund(s, paymentId, reason("롤백"), key).statusCode()).isEqualTo(500);
+            assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE id=?", String.class, paymentId)).isEqualTo("APPROVED");
+            assertThat(jdbc.queryForObject("SELECT status FROM passes WHERE id=?", String.class, made.get("passId").asLong())).isEqualTo("ACTIVE");
+            assertThat(count("SELECT COUNT(*) FROM refunds WHERE payment_id=?", paymentId)).isZero();
+            assertThat(count("SELECT COUNT(*) FROM idempotency_records WHERE idempotency_key=?", key)).isZero();
+            Mockito.reset(passes);
+            assertThat(refund(s, paymentId, reason("롤백"), key).statusCode()).isEqualTo(200);
         }
     }
 
