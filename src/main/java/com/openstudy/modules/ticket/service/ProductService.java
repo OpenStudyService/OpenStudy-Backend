@@ -40,6 +40,7 @@ import com.openstudy.modules.ticket.dto.ProductCategory;
 import com.openstudy.modules.ticket.dto.ProductRevision;
 import com.openstudy.modules.ticket.dto.ProductSnapshot;
 import com.openstudy.modules.ticket.dto.ProductTerms;
+import com.openstudy.modules.ticket.dto.SaleTerms;
 import com.openstudy.modules.ticket.entity.RevisionEvent;
 import com.openstudy.modules.ticket.repository.ProductCategoryRepository;
 import com.openstudy.modules.ticket.repository.ProductRepository;
@@ -269,13 +270,21 @@ public class ProductService {
      */
     @Transactional
     public ProductSnapshot requireSellable(long productId, long branchId) {
+        return sellable(productId, branchId).snapshot();
+    }
+
+    /** {@link #requireSellable} plus the revision of the locked version, which the issued pass references (FR-PASS-03). */
+    @Transactional
+    public SaleTerms sellable(long productId, long branchId) {
         repository.lockShared(productId);
         var product = repository.findWithDetailsById(productId).map(ProductViews::record)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!product.onSale()) throw ApiException.conflict("PRODUCT_NOT_ON_SALE", "판매가 중지된 상품입니다.");
         if (!product.branchIds().contains(branchId))
             throw ApiException.conflict("PRODUCT_NOT_AVAILABLE_AT_BRANCH", "이 지점에서 판매하지 않는 상품입니다.");
-        return snapshot(product);
+        long revision = revisions.findFirstByOriginalProductIdAndProductVersionOrderByIdDesc(productId, product.dbVersion())
+                .orElseThrow(() -> new IllegalStateException("Product version has no revision")).getId();
+        return new SaleTerms(productId, revision, snapshot(product));
     }
 
     /**

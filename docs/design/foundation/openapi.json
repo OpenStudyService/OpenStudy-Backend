@@ -4224,7 +4224,7 @@
           "NFR-SEC-06"
         ],
         "x-permission": "OWNER 또는 scope 지점의 payments:read",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
@@ -4366,7 +4366,7 @@
           "NFR-DATA-05"
         ],
         "x-permission": "OWNER 또는 branchId 지점의 payments:write. 고객은 요청자의 고객 조회 범위 안이어야 한다",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
@@ -4470,7 +4470,7 @@
           "FR-PAY-10"
         ],
         "x-permission": "OWNER 또는 결제 지점의 payments:read",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
@@ -4534,6 +4534,7 @@
           }
         ],
         "x-error-codes": [
+          "FORBIDDEN",
           "NOT_FOUND"
         ]
       }
@@ -4664,7 +4665,7 @@
           "NFR-SEC-06"
         ],
         "x-permission": "OWNER 또는 구매 지점의 유효 소속(역할·행위 권한 무관)",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
@@ -4803,7 +4804,7 @@
           "FR-PASS-08"
         ],
         "x-permission": "OWNER 또는 구매 지점의 유효 소속(역할·행위 권한 무관)",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-session-modes": [
           "WORKSPACE"
         ],
