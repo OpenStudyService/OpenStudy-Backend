@@ -4,6 +4,8 @@
 
 2026-10-29 추가: Issue #55의 M4 고객·Mock 결제·발급 이용권·환불 API는 [고객·판매 API 계약](customer-sales-api.md)과 OpenAPI `0.1.5-m4-customer-sales`의 설계 계약(`design-target`)을 따른다. 정책은 [ADR-M4-002](../../db/ADR-M4-002.md)이며 구현은 #56~#58에서 진행한다. 고객 등록 지점·응대 메모 열은 `V2__customer_branch_and_memo.sql`로 추가했다.
 
+2026-10-29 추가: Issue #60의 M5 좌석·입퇴실·이용권 차감·정확 일치 조회·수동 조정 API는 [좌석 이용 API 계약](seat-usage-api.md)과 OpenAPI `0.1.6-m5-seat-usage`의 설계 계약(`design-target`)을 따른다. 정책은 [ADR-M5-001](../../db/ADR-M5-001.md)이며 구현은 #61~#64에서 진행한다. 스키마 변경은 없다.
+
 2026-10-27 추가: Issue #15의 초대 미리보기·신규/기존 계정 수락·최종 승인은 [초대 수락·승인 구현 계약](invitation-acceptance-api.md)을 따른다. 기존 요청·응답 모델과 계약 버전은 유지하고 해당 operation의 구현 상태만 OpenAPI에 표시한다.
 
 2026-10-27 추가: Issue #14의 초대 발송 worker·SMTP·lease·재시도는 [메일 발송·장애 복구 계약](invitation-delivery.md)을 따른다. 기본 비활성이며 실제 운영 SMTP 수신 및 공개 수락·승인(#15)의 검증 범위를 구분한다.
