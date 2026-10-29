@@ -75,4 +75,10 @@ public class Payment {
         if (approved) payment.approvedAt = at; else payment.failedAt = at;
         return payment;
     }
+
+    /** Only the status moves; amount and approval time stay as approved (FR-PAY-10). */
+    public void refund() {
+        if (status != PaymentStatus.APPROVED) throw new IllegalStateException("Only an approved payment can be refunded");
+        status = PaymentStatus.REFUNDED;
+    }
 }

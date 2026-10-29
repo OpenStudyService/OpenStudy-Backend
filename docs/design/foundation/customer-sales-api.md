@@ -2,7 +2,7 @@
 
 Backend [#55](https://github.com/OpenStudyService/OpenStudy-Backend/issues/55)의 M4 계약이다. 구현은 고객(#56), 결제·발급(#57), 환불(#58)에서 이 문서를 기준으로 진행하고, Frontend는 같은 [OpenAPI](openapi.json)(`0.1.5-m4-customer-sales`)로 연동한다. 정책 근거는 [ADR-M4-002](../../db/ADR-M4-002.md)(M4-D01~D08)와 [ADR-M3M4-001](../../db/ADR-M3M4-001.md)의 유지 결정(D01 결제 1건당 이용권 1장, D02 구매 조건 스냅샷)이다. 공통 요청·응답·오류·목록 규칙은 [API 계약](api.md)을 따른다.
 
-고객 operation 5개는 #56, 결제 생성·목록·상세와 이용권 목록·상세는 #57에서 구현했다(`implemented`). 환불 operation은 아직 설계 계약(`design-target`)이며 서버에 구현되어 있지 않다.
+고객 operation 5개는 #56, 결제 생성·목록·상세와 이용권 목록·상세는 #57, 환불은 #58에서 구현했다(`implemented`).
 
 ## 제공 범위
 
@@ -81,7 +81,7 @@ OWNER는 모든 권한 조건을 만족한다. 고객·결제·이용권의 삭�
 
 | 조건(잠금 후 재확인) | 결과 |
 | --- | --- |
-| 원결제 지점의 `payments:write` 없음 | 403 `FORBIDDEN` (결제가 보이지 않으면 404) |
+| 원결제 지점의 `payments:write` 없음 | 403 `FORBIDDEN`. 원결제 지점에 유효 소속이 없으면 결제가 보이지 않으므로 404 |
 | 결제가 실패 상태 | 409 `PAYMENT_NOT_REFUNDABLE` |
 | 이미 환불됨(다른 키) | 409 `ALREADY_REFUNDED` |
 | 이용권에 `seat_sessions` 또는 `pass_balance_events`의 USE 행이 있음 | 409 `PASS_ALREADY_USED` |

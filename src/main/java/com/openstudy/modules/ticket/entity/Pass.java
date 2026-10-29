@@ -103,4 +103,10 @@ public class Pass {
         pass.expiresAt = days == null ? null : issuedAt.plus(java.time.Duration.ofHours(24 * days));
         return pass;
     }
+
+    /** Started and expiry times are kept as issued; only the status moves (contract "환불"). */
+    public void refund() {
+        if (status == PassStatus.REFUNDED) throw new IllegalStateException("Pass already refunded");
+        status = PassStatus.REFUNDED;
+    }
 }

@@ -79,6 +79,29 @@ public class PassService {
         return pass.getId();
     }
 
+    /**
+     * The pass half of a refund, inside the refund transaction after the payment row lock. Usage is judged from
+     * history and expiry from {@code now}, never from the stored status (ADR-M4-002 "미사용·만료 판정"), so a stored
+     * ACTIVE pass past its expiry is refused too. A refusal rolls the whole refund back.
+     */
+    @Transactional
+    public long refund(long actor, long paymentId, Instant now, String requestId) {
+        repository.lockByPayment(paymentId);
+        var pass = repository.findByPurchasePaymentId(paymentId)
+                .orElseThrow(() -> new IllegalStateException("Approved payment " + paymentId + " has no pass"));
+        if (!usedIds(List.of(pass)).isEmpty())
+            throw ApiException.conflict("PASS_ALREADY_USED", "사용 이력이 있는 이용권은 환불할 수 없습니다.");
+        if (expired(pass, now)) throw ApiException.conflict("PASS_EXPIRED", "만료된 이용권은 환불할 수 없습니다.");
+        String before = pass.getStatus().name();
+        pass.refund();
+        repository.saveAndFlush(pass);
+        audit.record(AuditEvent.change(actor, pass.getPurchaseBranchId(), "passes", pass.getId(), "REFUNDED",
+                json.writeValueAsString(Map.of("status", before)),
+                json.writeValueAsString(Map.of("status", pass.getStatus().name())), requestId));
+        outbox.invalidate(pass.getPurchaseBranchId(), "passes", pass.getId());
+        return pass.getId();
+    }
+
     /** Refund state of the passes bought by these payments, keyed by payment id. */
     @Transactional(readOnly = true)
     public Map<Long, PassUsage> byPayments(Collection<Long> paymentIds, Instant now) {
