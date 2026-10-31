@@ -67,6 +67,8 @@ tasks.named('test') {
     systemProperty 'spring.profiles.active', 'test'
     systemProperty 'spring.datasource.url', 'jdbc:mysql://127.0.0.1:1/testcontainers_required'
     systemProperty 'spring.flyway.url', 'jdbc:mysql://127.0.0.1:1/testcontainers_required'
+    // System properties outrank the imported .env, so a developer's real SMTP settings can never send test mail.
+    systemProperty 'openstudy.invitation-mail.enabled', 'false'
     if (providers.gradleProperty('foundationExportDir').isPresent()) {
         systemProperty 'foundation.exportDir', file(providers.gradleProperty('foundationExportDir').get()).absolutePath
     }

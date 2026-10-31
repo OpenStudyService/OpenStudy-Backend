@@ -123,6 +123,15 @@ public class EmployeeAccountService {
                 .map(row -> new EmployeeLookup(row[0].toString(), (String) row[1])).toList();
     }
 
+    /** An OWNER without a membership row is excluded: work_tasks.assignee references branch_memberships. */
+    public List<EmployeeLookup> assignees(long branch) {
+        return repository.assignees(branch).stream().map(row -> new EmployeeLookup(row[0].toString(), (String) row[1])).toList();
+    }
+
+    public boolean assignable(long employee, long branch) {
+        return repository.assignable(employee, branch).intValue() == 1;
+    }
+
     public boolean relatedToBranches(long employee, Set<Long> authorizedBranches) {
         if (authorizedBranches.isEmpty()) return false;
         return repository.relatedToBranches(employee, authorizedBranches).intValue() == 1;

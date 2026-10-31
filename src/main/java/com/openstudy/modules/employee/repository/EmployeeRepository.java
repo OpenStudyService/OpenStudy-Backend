@@ -38,6 +38,15 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
             + "AND m.status='ACTIVE' AND m.branch_id IN (:branches))) ORDER BY e.id", nativeQuery = true)
     List<Object[]> lookup(@Param("branches") Collection<Long> branches);
 
+    /** Branch staff who can hold work there: both the account and this branch's membership must be active. */
+    @Query(value = "SELECT e.id,e.name FROM employees e JOIN branch_memberships m ON m.employee_id=e.id "
+            + "WHERE e.status='ACTIVE' AND m.status='ACTIVE' AND m.branch_id=:branch ORDER BY e.name,e.id", nativeQuery = true)
+    List<Object[]> assignees(@Param("branch") long branch);
+
+    @Query(value = "SELECT EXISTS(SELECT 1 FROM employees e JOIN branch_memberships m ON m.employee_id=e.id "
+            + "WHERE e.id=:employee AND e.status='ACTIVE' AND m.status='ACTIVE' AND m.branch_id=:branch)", nativeQuery = true)
+    Number assignable(@Param("employee") long employee, @Param("branch") long branch);
+
     /** Revoked memberships count here: peers need a scope-free invalidation to remove stale choices. */
     @Query(value = "SELECT EXISTS(SELECT 1 FROM employees e WHERE e.id=:employee "
             + "AND (e.global_role='OWNER' OR EXISTS(SELECT 1 FROM branch_memberships m WHERE m.employee_id=e.id "
