@@ -6,6 +6,8 @@
 
 2026-10-29 추가: Issue #60의 M5 좌석·입퇴실·이용권 차감·정확 일치 조회·수동 조정 API는 [좌석 이용 API 계약](seat-usage-api.md)과 OpenAPI `0.1.6-m5-seat-usage`의 설계 계약(`design-target`)을 따른다. 정책은 [ADR-M5-001](../../db/ADR-M5-001.md)이며 구현은 #61~#64에서 진행한다. 스키마 변경은 없다.
 
+2026-11-01 추가: Issue #74의 M7 업무·채널·메시지·업무 카드·시설·문의·공지 API는 [협업 API 계약](collaboration-api.md)과 OpenAPI `0.1.7-m7-collaboration`의 설계 계약(`design-target`)을 따른다. 정책은 [ADR-M7-001](../../db/ADR-M7-001.md)이며 구현은 #75~#80에서 진행한다. `conversations`의 설명·버전 열은 #76에서 추가한다.
+
 2026-10-27 추가: Issue #15의 초대 미리보기·신규/기존 계정 수락·최종 승인은 [초대 수락·승인 구현 계약](invitation-acceptance-api.md)을 따른다. 기존 요청·응답 모델과 계약 버전은 유지하고 해당 operation의 구현 상태만 OpenAPI에 표시한다.
 
 2026-10-27 추가: Issue #14의 초대 발송 worker·SMTP·lease·재시도는 [메일 발송·장애 복구 계약](invitation-delivery.md)을 따른다. 기본 비활성이며 실제 운영 SMTP 수신 및 공개 수락·승인(#15)의 검증 범위를 구분한다.
