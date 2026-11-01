@@ -63,6 +63,13 @@ public class AuditEvent {
                 AuditResult.SUCCESS);
     }
 
+    /** A successful state change that also records why (the {@code reason} column), e.g. stopping a seat. */
+    public static AuditEvent change(Long actor, Long branch, String entityType, Long entityId, String action,
+            String reason, String beforeJson, String afterJson, String requestId) {
+        return new AuditEvent(actor, branch, entityType, entityId, action, reason, beforeJson, afterJson, requestId,
+                AuditResult.SUCCESS);
+    }
+
     /** An authentication attempt; no snapshots, the outcome is carried by reason and result. */
     public static AuditEvent attempt(Long actor, String entityType, Long entityId, String action, String reason,
             String requestId, AuditResult result) {

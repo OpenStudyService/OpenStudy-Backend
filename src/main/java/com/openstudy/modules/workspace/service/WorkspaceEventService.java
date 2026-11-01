@@ -153,6 +153,7 @@ public class WorkspaceEventService {
             case "payment","payments"->"payments";
             case "pass","passes"->"passes";
             case "task","tasks"->"tasks";
+            case "seat","seats"->"seats";
             case "lookups"->"lookups";
             default->null;
         };
