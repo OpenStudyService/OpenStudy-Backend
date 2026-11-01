@@ -40,6 +40,7 @@ import com.openstudy.modules.seat.dto.response.SeatSessionPass;
 import com.openstudy.modules.seat.dto.response.SeatSessionView;
 import com.openstudy.modules.seat.entity.Seat;
 import com.openstudy.modules.seat.entity.SeatSession;
+import com.openstudy.modules.seat.entity.SeatSessionMove;
 import com.openstudy.modules.seat.entity.SeatState;
 import com.openstudy.modules.seat.repository.SeatRepository;
 import com.openstudy.modules.seat.repository.SeatSessionMoveRepository;
@@ -58,6 +59,7 @@ import com.openstudy.modules.ticket.service.PassService;
 public class SeatSessionService {
     private static final String CHECK_IN = "seat-sessions:check-in";
     private static final String CHECK_OUT = "seat-sessions:check-out";
+    private static final String MOVE = "seat-sessions:move";
     private static final String ENTITY = "seat-sessions";
     private final SeatSessionRepository sessions;
     private final SeatSessionMoveRepository moves;
@@ -150,6 +152,56 @@ public class SeatSessionService {
             outbox.invalidate(branch, ENTITY, id);
             return complete(actor, CHECK_OUT, scopeKey, key, fingerprint, 200, view(session));
         });
+    }
+
+    /**
+     * Moves a running stay to another seat of the same branch (FR-SEAT-17). Lock order follows the contract: the
+     * idempotency record, the session, then the target seat; no second seat is ever locked, so two moves cannot wait on
+     * each other. Only seat_id changes, so the check-in time, the pass and therefore the deduction stay as they were.
+     */
+    public SeatSessionView move(long actor, long id, String key, Map<String, Object> body, String requestId) {
+        var input = new StrictInput(body).only("toSeatId", "reason");
+        long toSeatId = input.id("toSeatId");
+        String reason = SeatInputs.reason(body);
+        validKey(key);
+        String scopeKey = Long.toString(id);
+        byte[] fingerprint = digest(json.writeValueAsString(Arrays.asList(id, toSeatId, reason)));
+        return commands.inRecordBranch(actor, BranchAction.READ, () -> sessions.branchOf(id), (state, branch) -> {
+            // Seeing the session is not enough: moving it needs operations:write there (403, after the 404 above).
+            policy.require(state, Set.of(branch), BranchAction.WRITE_SEATS);
+            var replayed = replay(actor, MOVE, scopeKey, key, fingerprint);
+            if (replayed.isPresent()) return replayed.get();
+            var session = sessions.locked(id).orElseThrow(SeatSessionService::notFound);
+            if (session.getStatus() == SeatSession.Status.CLOSED)
+                throw ApiException.conflict("SESSION_ALREADY_CLOSED", "이미 퇴실 처리된 이용 기록입니다.");
+            if (!"ACTIVE".equals(state.branches().get(branch)))
+                throw ApiException.conflict("BRANCH_NOT_ACTIVE", "운영 중지된 지점에서는 좌석을 이동할 수 없습니다.");
+            long fromSeatId = session.getSeatId();
+            if (toSeatId == fromSeatId) throw wrongSeat();
+            var target = seats.locked(toSeatId).orElseThrow(SeatSessionService::wrongSeat);
+            if (target.getBranchId() != branch) throw wrongSeat();
+            if (target.getStatus() == SeatState.BLOCKED) throw ApiException.conflict("SEAT_BLOCKED", "운영 중단된 좌석입니다.");
+            if (sessions.existsBySeatIdAndStatus(toSeatId, SeatSession.Status.ACTIVE))
+                throw ApiException.conflict("SEAT_OCCUPIED", "이미 사용 중인 좌석입니다.");
+            Instant now = now();
+            String moveKey = storedKey("SMV-", actor, MOVE, scopeKey, key);
+            session.moveTo(toSeatId);
+            SeatSessionConflicts.translating(() -> sessions.saveAndFlush(session));
+            SeatSessionConflicts.translating(() -> moves.saveAndFlush(
+                    SeatSessionMove.of(id, fromSeatId, toSeatId, actor, reason, moveKey, now)));
+            audit.record(AuditEvent.change(actor, branch, ENTITY, id, "SEAT_MOVED", reason,
+                    json.writeValueAsString(Map.of("seatId", Long.toString(fromSeatId))),
+                    json.writeValueAsString(Map.of("seatId", Long.toString(toSeatId))), requestId));
+            outbox.invalidate(branch, "seats", fromSeatId);
+            outbox.invalidate(branch, "seats", toSeatId);
+            outbox.invalidate(branch, ENTITY, id);
+            return complete(actor, MOVE, scopeKey, key, fingerprint, 200, view(session));
+        });
+    }
+
+    /** The target is picked among the branch's own seats: a missing, foreign or current seat is a bad input, not a 404. */
+    private static ApiException wrongSeat() {
+        return ApiException.validation("toSeatId", "이동할 수 있는 같은 지점의 다른 좌석을 선택해 주세요.");
     }
 
     /** 404 hides sessions of branches outside the scope; the customer's lookup scope plays no part (M5-D06). */

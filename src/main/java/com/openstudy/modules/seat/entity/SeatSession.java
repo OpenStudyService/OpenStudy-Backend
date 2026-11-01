@@ -87,6 +87,12 @@ public class SeatSession {
         return session;
     }
 
+    /** Only the seat changes; the stay, the pass and the check-in time go on (#63). */
+    public void moveTo(long seatId) {
+        if (status != Status.ACTIVE) throw new IllegalStateException("Seat session already closed");
+        this.seatId = seatId;
+    }
+
     /** billed_krw holds what was really deducted; a time pass's minutes follow from billed minutes minus overage. */
     public void close(Instant checkedOutAt, long usedMinutes, long deductedKrw, long overageMinutes, long overageKrw,
             String endRequestKey) {
