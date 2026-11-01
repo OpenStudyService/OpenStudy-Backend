@@ -1,6 +1,7 @@
 package com.openstudy.modules.seat.service;
 
 import java.util.Arrays;
+import java.util.Map;
 import java.util.Optional;
 
 import com.openstudy.common.exception.ApiException;
@@ -33,6 +34,14 @@ public final class SeatInputs {
         String zone = value.strip();
         if (zone.isEmpty() || zone.length() > 80) throw ApiException.validation("zone", "구역은 1~80자여야 합니다.");
         return Optional.of(zone);
+    }
+
+    /** The optional 0~500 character reason of check-in and check-out: absent and blank both mean "none". */
+    static String reason(Map<String, Object> body) {
+        if (!body.containsKey("reason")) return null;
+        if (!(body.get("reason") instanceof String value) || value.length() > 500)
+            throw ApiException.validation("reason", "사유는 500자 이내로 입력해 주세요.");
+        return value.isBlank() ? null : value.strip();
     }
 
     static long id(String value, String field) {

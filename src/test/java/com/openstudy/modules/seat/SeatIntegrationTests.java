@@ -6,6 +6,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -16,7 +18,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import tools.jackson.databind.JsonNode;
@@ -24,6 +25,10 @@ import tools.jackson.databind.ObjectMapper;
 import com.openstudy.modules.branch.dto.Branch.WeeklyHours;
 import com.openstudy.modules.branch.dto.BranchRequests;
 import com.openstudy.modules.branch.service.BranchService;
+import com.openstudy.modules.payment.service.PaymentService;
+import com.openstudy.modules.seat.service.SeatSessionService;
+import com.openstudy.modules.ticket.service.ProductCategoryService;
+import com.openstudy.modules.ticket.service.ProductService;
 import com.openstudy.support.database.MySqlIntegrationTest;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -34,9 +39,14 @@ class SeatIntegrationTests {
     @Autowired PasswordEncoder passwords;
     @Autowired ObjectMapper json;
     @Autowired BranchService branchService;
+    @Autowired ProductCategoryService categories;
+    @Autowired ProductService products;
+    @Autowired PaymentService payments;
+    @Autowired SeatSessionService seatSessions;
     @LocalServerPort int port;
 
     long owner, manager, bareManager, writer, reader, outsider, first, second;
+    final Map<Long, String> productByBranch = new HashMap<>();
     final List<Long> people = new ArrayList<>(), branches = new ArrayList<>();
 
     @BeforeEach void setup() {
@@ -52,8 +62,18 @@ class SeatIntegrationTests {
     }
 
     @AfterEach void clean() {
+        String customers = "(SELECT id FROM customers WHERE member_no LIKE 'SEATT-%')";
+        jdbc.update("DELETE FROM pass_balance_events WHERE pass_id IN (SELECT id FROM passes WHERE customer_id IN " + customers + ")");
+        jdbc.update("DELETE FROM seat_sessions WHERE customer_id IN " + customers);
+        jdbc.update("DELETE FROM passes WHERE customer_id IN " + customers);
+        jdbc.update("DELETE FROM payments WHERE customer_id IN " + customers);
+        for (long id : jdbc.queryForList("SELECT id FROM products WHERE created_by=?", Long.class, owner)) {
+            jdbc.update("DELETE FROM product_revisions WHERE original_product_id=?", id);
+            jdbc.update("DELETE FROM product_branches WHERE product_id=?", id);
+            jdbc.update("DELETE FROM products WHERE id=?", id);
+        }
+        jdbc.update("DELETE FROM product_categories WHERE created_by=?", owner);
         for (long id : branches) {
-            jdbc.update("DELETE FROM seat_sessions WHERE branch_id=?", id);
             jdbc.update("DELETE FROM seats WHERE branch_id=?", id);
             jdbc.update("DELETE FROM workspace_event_outbox WHERE branch_id=?", id);
             jdbc.update("DELETE FROM audit_events WHERE branch_id=?", id);
@@ -95,6 +115,19 @@ class SeatIntegrationTests {
                 + "JOIN permission_definitions p ON p.code=? WHERE m.employee_id=?", code, person);
     }
 
+    /** A time-pass product on sale at this branch, so a session can stand on a real sale. */
+    String product(long branch) {
+        var category = categories.create(owner, key(), Map.of("code", "C" + UUID.randomUUID().toString().replace("-", "").toUpperCase(),
+                "name", "좌석 시험 분류", "kind", "시간권"), "seat-fixture");
+        var terms = new HashMap<String, Object>();
+        terms.put("kind", "시간권"); terms.put("includedMinutes", 600L); terms.put("validDays", null);
+        var body = new HashMap<String, Object>();
+        body.put("name", "좌석 시험 상품"); body.put("priceKrw", 10000L); body.put("terms", terms); body.put("status", "판매 중");
+        body.put("categoryId", json.readTree(json.writeValueAsString(category)).get("id").asString());
+        body.put("branchIds", List.of(Long.toString(branch)));
+        return products.create(owner, "all", key(), body, "seat-fixture").id();
+    }
+
     /** Direct ledger row, for fixtures that need many seats or a specific stored state. */
     long seat(long branch, String zone, String no, String kind, String status) {
         jdbc.update("INSERT INTO seats(branch_id,zone,seat_no,kind,status) VALUES(?,?,?,?,?)", branch, zone, no, kind, status);
@@ -107,26 +140,16 @@ class SeatIntegrationTests {
         return jdbc.queryForObject("SELECT id FROM customers WHERE member_no=?", Long.class, memberNo);
     }
 
-    /**
-     * Check-in (#62) does not exist yet, so the session is inserted directly. The pass and payment chain is not what
-     * these tests are about, so foreign keys are switched off on this one connection for the insert only.
-     */
+    /** The real flow: a sale, a check-in and, for a finished stay, a check-out, each as the OWNER. */
     long session(long seat, long customer, boolean active) {
         long branch = jdbc.queryForObject("SELECT branch_id FROM seats WHERE id=?", Long.class, seat);
-        String requestKey = "SEATT-" + UUID.randomUUID();
-        jdbc.execute((ConnectionCallback<Void>) connection -> {
-            try (var statement = connection.createStatement()) {
-                statement.execute("SET FOREIGN_KEY_CHECKS=0");
-                statement.execute("INSERT INTO seat_sessions(customer_id,pass_id,branch_id,seat_id,status,checked_in_at,effective_checked_in_at,"
-                        + "checked_out_at,effective_checked_out_at,start_request_key) VALUES(" + customer + ",1," + branch + "," + seat + ","
-                        + (active ? "'ACTIVE','2026-11-02 01:02:03.456789','2026-11-02 01:02:03.456789',NULL,NULL"
-                                  : "'CLOSED','2026-11-02 01:02:03.456789','2026-11-02 01:02:03.456789','2026-11-02 02:02:03','2026-11-02 02:02:03'")
-                        + ",'" + requestKey + "')");
-                statement.execute("SET FOREIGN_KEY_CHECKS=1");
-            }
-            return null;
-        });
-        return jdbc.queryForObject("SELECT id FROM seat_sessions WHERE start_request_key=?", Long.class, requestKey);
+        var sale = Map.<String, Object>of("customerId", Long.toString(customer), "branchId", Long.toString(branch),
+                "productId", productByBranch.computeIfAbsent(branch, this::product), "method", "카드");
+        String pass = payments.create(owner, "all", key(), sale, "seat-fixture").passId();
+        var entry = Map.<String, Object>of("seatId", Long.toString(seat), "customerId", Long.toString(customer), "passId", pass);
+        long id = Long.parseLong(seatSessions.checkIn(owner, key(), entry, "seat-fixture").id());
+        if (!active) seatSessions.checkOut(owner, id, key(), Map.of(), "seat-fixture");
+        return id;
     }
 
     record Session(HttpClient client, String token) implements AutoCloseable { public void close() { client.close(); } }
@@ -317,7 +340,8 @@ class SeatIntegrationTests {
             assertThat(after.get("seatNo").asString()).isEqualTo("B-07");
             assertThat(before.get("kind").asString()).isEqualTo("일반");
             assertThat(after.get("kind").asString()).isEqualTo("기타");
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type='seats' AND entity_id=?", first, seat)).isEqualTo(1);
+            // One event for the edit, on top of the one from the check-in.
+            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type='seats' AND entity_id=?", first, seat)).isEqualTo(2);
         }
     }
 
@@ -413,7 +437,7 @@ class SeatIntegrationTests {
             assertThat(jdbc.queryForObject("SELECT version FROM seats WHERE id=?", Long.class, seat)).isEqualTo(current.get("version").asLong() - 1);
             assertThat(count("SELECT COUNT(*) FROM audit_events WHERE entity_type='seats' AND entity_id=?", seat)).isZero();
             // Once the session is closed the same request goes through.
-            jdbc.update("UPDATE seat_sessions SET status='CLOSED', checked_out_at='2026-11-02 02:02:03', effective_checked_out_at='2026-11-02 02:02:03' WHERE id=?", sessionId);
+            seatSessions.checkOut(owner, sessionId, key(), Map.of(), "seat-fixture");
             var retried = send(s, "POST", "/api/seats/" + seat + "/status", versioned(current, "status", "운영 중단", "reason", "점검"));
             assertThat(retried.statusCode()).isEqualTo(200);
         }
@@ -457,7 +481,8 @@ class SeatIntegrationTests {
             assertThat(detail.at("/activeSession/customer/id").asString()).isEqualTo(Long.toString(customerId));
             assertThat(detail.at("/activeSession/customer/name").asString()).isEqualTo("홍길동");
             assertThat(detail.at("/activeSession/customer/memberNo").asString()).startsWith("SEATT-");
-            assertThat(detail.at("/activeSession/checkedInAt").asString()).isEqualTo("2026-11-02T01:02:03.456789Z");
+            assertThat(Instant.parse(detail.at("/activeSession/checkedInAt").asString()))
+                    .isEqualTo(jdbc.queryForObject("SELECT checked_in_at FROM seat_sessions WHERE id=?", Timestamp.class, active).toInstant());
             // Only the minimum customer data is exposed (M5-D06).
             assertThat(detail.at("/activeSession/customer").size()).isEqualTo(3);
             var closed = node(get(s, "/api/seats/" + done));

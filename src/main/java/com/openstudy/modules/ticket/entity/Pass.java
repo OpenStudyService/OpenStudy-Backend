@@ -104,6 +104,33 @@ public class Pass {
         return pass;
     }
 
+    /**
+     * Applies a settled seat session. A balance never goes below zero, and a used-up time or stored-value pass becomes
+     * EXHAUSTED; a period pass has no balance and is only ever charged zero.
+     */
+    public void deduct(long minutes, long krw) {
+        if (minutes < 0 || krw < 0) throw new IllegalArgumentException("A deduction is not negative");
+        if (kind == ProductKind.TIME) {
+            if (minutes > remainingMinutes || krw != 0) throw new IllegalArgumentException("Deduction exceeds the balance");
+            remainingMinutes -= minutes;
+        } else if (kind == ProductKind.STORED_VALUE) {
+            if (krw > remainingCreditKrw || minutes != 0) throw new IllegalArgumentException("Deduction exceeds the balance");
+            remainingCreditKrw -= krw;
+        } else if (minutes + krw != 0) {
+            throw new IllegalArgumentException("A period pass has no balance");
+        }
+        if (status == PassStatus.ACTIVE && balanceUsedUp()) status = PassStatus.EXHAUSTED;
+    }
+
+    /** Only time and stored-value passes have a balance; a period pass is never used up. */
+    public boolean balanceUsedUp() {
+        return switch (kind) {
+            case TIME -> remainingMinutes == 0;
+            case STORED_VALUE -> remainingCreditKrw == 0;
+            case PERIOD -> false;
+        };
+    }
+
     /** Started and expiry times are kept as issued; only the status moves (contract "환불"). */
     public void refund() {
         if (status == PassStatus.REFUNDED) throw new IllegalStateException("Pass already refunded");

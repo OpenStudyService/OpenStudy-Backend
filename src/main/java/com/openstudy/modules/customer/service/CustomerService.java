@@ -5,6 +5,7 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -38,11 +39,14 @@ import com.openstudy.modules.authorization.service.AuthorizedCommands;
 import com.openstudy.modules.customer.dto.response.CustomerDetail;
 import com.openstudy.modules.customer.dto.response.CustomerListItem;
 import com.openstudy.modules.customer.dto.response.CustomerSummary;
+import com.openstudy.modules.customer.dto.response.ExactCustomerMatch;
 import com.openstudy.modules.customer.entity.Customer;
+import com.openstudy.modules.customer.entity.CustomerServiceInteraction;
 import com.openstudy.modules.customer.entity.CustomerStatus;
 import com.openstudy.modules.customer.entity.CustomerStatusEvent;
 import com.openstudy.modules.customer.repository.CustomerRepository;
 import com.openstudy.modules.customer.repository.CustomerSearchRepository;
+import com.openstudy.modules.customer.repository.CustomerServiceInteractionRepository;
 import com.openstudy.modules.customer.repository.CustomerStatusEventRepository;
 
 /**
@@ -59,6 +63,7 @@ public class CustomerService {
     private static final SecureRandom RANDOM = new SecureRandom();
     private final CustomerRepository repository;
     private final CustomerStatusEventRepository statusEvents;
+    private final CustomerServiceInteractionRepository interactions;
     private final CustomerSearchRepository search;
     private final AuthorizationService policy;
     private final AuthorizedCommands commands;
@@ -187,6 +192,49 @@ public class CustomerService {
         if (customer.getStatus() != CustomerStatus.NORMAL)
             throw ApiException.conflict("CUSTOMER_NOT_ACTIVE", "정상 상태가 아닌 고객에게는 판매할 수 없습니다.");
         return summary(customer);
+    }
+
+    /**
+     * Check-in, step one, inside its transaction: a shared lock holds the customer's status until commit. The customer
+     * need not be in the actor's lookup scope (M5-D05), and an unknown id locks nothing and fails on the pass check.
+     */
+    @Transactional
+    public void lockForCheckIn(long id) { repository.lockShared(id); }
+
+    /** Check-in, step two, after the pass is confirmed to be this customer's (the contract's check order). */
+    @Transactional(readOnly = true)
+    public void requireCheckInAllowed(long id) {
+        if (lockedCustomer(id).getStatus() != CustomerStatus.NORMAL)
+            throw ApiException.conflict("CUSTOMER_NOT_ACTIVE", "정상 상태가 아닌 고객은 입실할 수 없습니다.");
+    }
+
+    /** The phone form of the exact-match lookup: formatting removed, 9~11 digits (M5-D05). */
+    public String normalizedPhone(Map<String, Object> body) { return CustomerInputs.phone(body); }
+
+    /**
+     * Exact matches only, for the check-in lookup (M5-D05). The database comparison ignores case and accents, so the
+     * value is compared again in full: "m-abc" must not find "M-ABC".
+     */
+    @Transactional(readOnly = true)
+    public List<ExactCustomerMatch> matchMemberNo(String memberNo) {
+        return repository.findByMemberNo(memberNo).filter(customer -> memberNo.equals(customer.getMemberNo()))
+                .map(CustomerService::match).stream().toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ExactCustomerMatch> matchPhone(String digits) {
+        return repository.findTop10ByPhoneOrderByMemberNoAsc(digits).stream().filter(customer -> digits.equals(customer.getPhone()))
+                .map(CustomerService::match).toList();
+    }
+
+    /** The access trail of an exact-match result (M5-D07); needs a membership row of (branch, employee). */
+    @Transactional
+    public void recordLookup(long customerId, long branch, long employee, String reason, Instant at) {
+        interactions.save(new CustomerServiceInteraction(customerId, branch, employee, reason, at));
+    }
+
+    private static ExactCustomerMatch match(Customer customer) {
+        return new ExactCustomerMatch(customer.getId(), summary(customer), CustomerInputs.label(customer.getStatus()));
     }
 
     /** Identification for payment and pass views; the caller has already authorized the rows that name them. */

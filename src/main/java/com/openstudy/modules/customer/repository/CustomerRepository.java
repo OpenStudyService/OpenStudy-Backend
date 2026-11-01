@@ -1,6 +1,7 @@
 package com.openstudy.modules.customer.repository;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -19,6 +20,12 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
     /** Shared lock for a sale: a concurrent status change waits until the payment commits (M4 transaction table). */
     @Query(value = "SELECT id FROM customers WHERE id = :id FOR SHARE", nativeQuery = true)
     List<Long> lockShared(@Param("id") long id);
+
+    /** The column collation ignores case and accents, so callers still compare the exact value (M5-D05). */
+    Optional<Customer> findByMemberNo(String memberNo);
+
+    /** Phone is not unique; the lookup shows at most ten customers in member number order (seat-usage-api.md). */
+    List<Customer> findTop10ByPhoneOrderByMemberNoAsc(String phone);
 
     /**
      * Branches where the customer has paid (any payment status), which widen the lookup scope beyond the registration

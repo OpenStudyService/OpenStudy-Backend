@@ -5,10 +5,13 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +21,7 @@ import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.outbox.WorkspaceOutbox;
+import com.openstudy.common.persistence.DuplicateKeys;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.ListQuery;
 import com.openstudy.common.web.PageResponse;
@@ -27,12 +31,17 @@ import com.openstudy.modules.authorization.service.AuthorizationService;
 import com.openstudy.modules.customer.dto.response.CustomerSummary;
 import com.openstudy.modules.customer.service.CustomerService;
 import com.openstudy.modules.ticket.dto.IssuedPass;
+import com.openstudy.modules.ticket.dto.PassSettlement;
 import com.openstudy.modules.ticket.dto.PassUsage;
 import com.openstudy.modules.ticket.dto.ProductTerms;
 import com.openstudy.modules.ticket.dto.SaleTerms;
+import com.openstudy.modules.ticket.dto.SessionPass;
+import com.openstudy.modules.ticket.dto.UsablePass;
 import com.openstudy.modules.ticket.entity.Pass;
+import com.openstudy.modules.ticket.entity.PassBalanceEvent;
 import com.openstudy.modules.ticket.entity.PassStatus;
 import com.openstudy.modules.ticket.entity.ProductKind;
+import com.openstudy.modules.ticket.repository.PassBalanceEventRepository;
 import com.openstudy.modules.ticket.repository.PassRepository;
 import com.openstudy.modules.ticket.repository.PassSearchRepository;
 
@@ -51,6 +60,7 @@ public class PassService {
     private static final String REFUNDED = "환불";
     private final PassRepository repository;
     private final PassSearchRepository search;
+    private final PassBalanceEventRepository ledger;
     private final CustomerService customers;
     private final AuthorizationService policy;
     private final ObjectMapper json;
@@ -100,6 +110,82 @@ public class PassService {
                 json.writeValueAsString(Map.of("status", pass.getStatus().name())), requestId));
         outbox.invalidate(pass.getPurchaseBranchId(), "passes", pass.getId());
         return pass.getId();
+    }
+
+    /**
+     * Check-in: locks the pass for the rest of the transaction. Passes work at every active branch (M5-D01), so the only
+     * ownership test is the customer; another customer's pass answers the same 404 as a missing one.
+     */
+    @Transactional
+    public void lockOwned(long id, long customerId) {
+        repository.locked(id).filter(pass -> pass.getCustomerId() == customerId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+    }
+
+    /**
+     * Check-in, on a pass held by {@link #lockOwned}. Refunded > expired > exhausted, the contract's order. Expiry is
+     * read from the clock even while the stored status is ACTIVE; a pass without expiry never fails it (FR-PASS-10).
+     */
+    @Transactional
+    public void requireUsable(long id, Instant now) {
+        var pass = repository.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if (pass.getStatus() == PassStatus.REFUNDED) throw ApiException.conflict("PASS_REFUNDED", "환불된 이용권입니다.");
+        if (expired(pass, now)) throw ApiException.conflict("PASS_EXPIRED", "만료된 이용권입니다.");
+        if (pass.getStatus() == PassStatus.EXHAUSTED || pass.balanceUsedUp())
+            throw ApiException.conflict("PASS_EXHAUSTED", "잔량이 소진된 이용권입니다.");
+        // NOT_STARTED survives only in the V1 enum (ADR-M4-002); the contract has no code for it because none is issued.
+        if (pass.getStatus() != PassStatus.ACTIVE) throw new ResponseStatusException(HttpStatus.CONFLICT);
+    }
+
+    /**
+     * Check-out, after the session row lock: locks the pass, computes what the stay cost from the pass as it stands now,
+     * writes the single USE row when something was deducted and lowers the balance. Should a USE row exist already, the
+     * unique key rolls everything back: a session is never charged twice, whatever got past the checks above it.
+     */
+    @Transactional
+    public PassSettlement settle(long actor, long id, long sessionId, Instant in, Instant out, String reason) {
+        var pass = repository.locked(id).orElseThrow(() -> new IllegalStateException("Seat session " + sessionId + " has no pass"));
+        var settled = PassSettlementCalculator.settle(pass.getKind(), in, out, pass.getExpiresAt(), pass.getRemainingMinutes(),
+                pass.getRemainingCreditKrw(), pass.getSnapshotHourlyRateKrw());
+        if (settled.deductedMinutes() + settled.deductedKrw() > 0) recordUse(actor, id, sessionId, settled, reason);
+        pass.deduct(settled.deductedMinutes(), settled.deductedKrw());
+        repository.saveAndFlush(pass);
+        // The purchase branch's screens show this balance, wherever the pass was used (seat-usage-api.md).
+        outbox.invalidate(pass.getPurchaseBranchId(), "passes", id);
+        return settled;
+    }
+
+    private void recordUse(long actor, long id, long sessionId, PassSettlement settled, String reason) {
+        try {
+            DuplicateKeys.translate(() -> ledger.saveAndFlush(PassBalanceEvent.use(id, sessionId, settled.deductedMinutes(),
+                    settled.deductedKrw(), actor, reason)));
+        } catch (DuplicateKeyException exception) {
+            throw ApiException.conflict("SESSION_ALREADY_CLOSED", "이미 차감된 이용 기록입니다.");
+        }
+    }
+
+    /** The pass behind a seat session, for a caller that has already authorized the session (M5-D06). */
+    @Transactional(readOnly = true)
+    public SessionPass sessionPass(long id) {
+        var pass = repository.findById(id).orElseThrow(() -> new IllegalStateException("Pass " + id + " is missing"));
+        return new SessionPass(Long.toString(id), ProductViews.apiKind(pass.getKind()), pass.getSnapshotProductName(),
+                Long.toString(pass.getPurchaseBranchId()), pass.getRemainingMinutes(), pass.getRemainingCreditKrw());
+    }
+
+    /**
+     * Passes that could check in at {@code now}, by customer, for the exact-match lookup. This reaches beyond the purchase
+     * branch scope of {@link #list} on purpose (M5-D01·D05), so it returns only the minimal {@link UsablePass}.
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, List<UsablePass>> usableBy(Collection<Long> customerIds, Instant now) {
+        Map<Long, List<UsablePass>> result = new LinkedHashMap<>();
+        for (var pass : repository.findByCustomerIdInAndStatusOrderByIdAsc(Set.copyOf(customerIds), PassStatus.ACTIVE)) {
+            if (expired(pass, now) || pass.balanceUsedUp()) continue;
+            result.computeIfAbsent(pass.getCustomerId(), customer -> new ArrayList<>()).add(new UsablePass(Long.toString(pass.getId()),
+                    ProductViews.apiKind(pass.getKind()), pass.getSnapshotProductName(), pass.getRemainingMinutes(),
+                    pass.getRemainingCreditKrw(), pass.getExpiresAt(), Long.toString(pass.getPurchaseBranchId())));
+        }
+        return result;
     }
 
     /** Refund state of the passes bought by these payments, keyed by payment id. */

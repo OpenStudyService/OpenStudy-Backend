@@ -154,6 +154,7 @@ public class WorkspaceEventService {
             case "pass","passes"->"passes";
             case "task","tasks"->"tasks";
             case "seat","seats"->"seats";
+            case "seat-session","seat-sessions"->"seat-sessions";
             case "lookups"->"lookups";
             default->null;
         };
