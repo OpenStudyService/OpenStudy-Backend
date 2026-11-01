@@ -20,6 +20,12 @@ public interface PassRepository extends JpaRepository<Pass, Long> {
 
     List<Pass> findByCustomerIdInAndStatusOrderByIdAsc(Collection<Long> customerIds, PassStatus status);
 
+    List<Pass> findByCustomerIdAndPurchaseBranchIdInOrderByIdAsc(long customerId, Collection<Long> purchaseBranchIds);
+
+    /** The branch alone, so the row is first loaded by {@link #locked} and always holds the current values. */
+    @Query("SELECT p.purchaseBranchId FROM Pass p WHERE p.id = :id")
+    Optional<Long> purchaseBranchOf(@Param("id") long id);
+
     /** SELECT ... FOR UPDATE: a locking read returns the latest commit, whatever the transaction's snapshot is. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM Pass p WHERE p.id = :id")

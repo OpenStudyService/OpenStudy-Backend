@@ -122,6 +122,19 @@ public class Pass {
         if (status == PassStatus.ACTIVE && balanceUsedUp()) status = PassStatus.EXHAUSTED;
     }
 
+    /**
+     * A manual correction (M5-D04), already validated against the pass kind. The balance decides ACTIVE or EXHAUSTED, so
+     * an adjustment can revive a used-up pass and can use one up. Expiry itself stays a matter of the clock; only a row
+     * stored as EXPIRED (a V1 enum value nothing writes today) has to leave that state once its expiry is lifted.
+     */
+    public void adjust(Long minutes, Long creditKrw, Instant expiresAt, Instant now) {
+        if (status == PassStatus.REFUNDED || status == PassStatus.NOT_STARTED)
+            throw new IllegalStateException("Pass in status " + status + " cannot be adjusted");
+        remainingMinutes = minutes; remainingCreditKrw = creditKrw; this.expiresAt = expiresAt;
+        boolean storedExpiryStands = status == PassStatus.EXPIRED && expiresAt != null && !now.isBefore(expiresAt);
+        if (!storedExpiryStands) status = balanceUsedUp() ? PassStatus.EXHAUSTED : PassStatus.ACTIVE;
+    }
+
     /** Only time and stored-value passes have a balance; a period pass is never used up. */
     public boolean balanceUsedUp() {
         return switch (kind) {

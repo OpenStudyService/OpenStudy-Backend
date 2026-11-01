@@ -7,6 +7,7 @@ import java.util.Optional;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.modules.seat.entity.SeatDisplayStatus;
 import com.openstudy.modules.seat.entity.SeatKind;
+import com.openstudy.modules.seat.entity.SeatSession;
 import com.openstudy.modules.seat.entity.SeatState;
 
 /** Wire labels of the seat contract. */
@@ -27,6 +28,11 @@ public final class SeatInputs {
     static SeatDisplayStatus display(String value, String field) {
         return Arrays.stream(SeatDisplayStatus.values()).filter(status -> status.label().equals(value)).findFirst()
                 .orElseThrow(() -> ApiException.validation(field, "허용되지 않은 값입니다."));
+    }
+
+    static SeatSession.Status sessionStatus(String value) {
+        return Arrays.stream(SeatSession.Status.values()).filter(status -> status.label().equals(value)).findFirst()
+                .orElseThrow(() -> ApiException.validation("status", "허용되지 않은 값입니다."));
     }
 
     static Optional<String> zone(String value) {

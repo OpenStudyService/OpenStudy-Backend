@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
@@ -31,6 +32,7 @@ import com.openstudy.modules.authorization.service.AuthorizationService;
 import com.openstudy.modules.customer.dto.response.CustomerSummary;
 import com.openstudy.modules.customer.service.CustomerService;
 import com.openstudy.modules.ticket.dto.IssuedPass;
+import com.openstudy.modules.ticket.dto.PassLedger;
 import com.openstudy.modules.ticket.dto.PassSettlement;
 import com.openstudy.modules.ticket.dto.PassUsage;
 import com.openstudy.modules.ticket.dto.ProductTerms;
@@ -147,7 +149,7 @@ public class PassService {
         var pass = repository.locked(id).orElseThrow(() -> new IllegalStateException("Seat session " + sessionId + " has no pass"));
         var settled = PassSettlementCalculator.settle(pass.getKind(), in, out, pass.getExpiresAt(), pass.getRemainingMinutes(),
                 pass.getRemainingCreditKrw(), pass.getSnapshotHourlyRateKrw());
-        if (settled.deductedMinutes() + settled.deductedKrw() > 0) recordUse(actor, id, sessionId, settled, reason);
+        if (settled.deductedMinutes() + settled.deductedKrw() > 0) recordUse(actor, id, sessionId, settled, reason, out);
         pass.deduct(settled.deductedMinutes(), settled.deductedKrw());
         repository.saveAndFlush(pass);
         // The purchase branch's screens show this balance, wherever the pass was used (seat-usage-api.md).
@@ -155,10 +157,10 @@ public class PassService {
         return settled;
     }
 
-    private void recordUse(long actor, long id, long sessionId, PassSettlement settled, String reason) {
+    private void recordUse(long actor, long id, long sessionId, PassSettlement settled, String reason, Instant at) {
         try {
             DuplicateKeys.translate(() -> ledger.saveAndFlush(PassBalanceEvent.use(id, sessionId, settled.deductedMinutes(),
-                    settled.deductedKrw(), actor, reason)));
+                    settled.deductedKrw(), actor, reason, at)));
         } catch (DuplicateKeyException exception) {
             throw ApiException.conflict("SESSION_ALREADY_CLOSED", "이미 차감된 이용 기록입니다.");
         }
@@ -167,9 +169,20 @@ public class PassService {
     /** The pass behind a seat session, for a caller that has already authorized the session (M5-D06). */
     @Transactional(readOnly = true)
     public SessionPass sessionPass(long id) {
-        var pass = repository.findById(id).orElseThrow(() -> new IllegalStateException("Pass " + id + " is missing"));
-        return new SessionPass(Long.toString(id), ProductViews.apiKind(pass.getKind()), pass.getSnapshotProductName(),
+        return sessionPass(repository.findById(id).orElseThrow(() -> new IllegalStateException("Pass " + id + " is missing")));
+    }
+
+    private static SessionPass sessionPass(Pass pass) {
+        return new SessionPass(Long.toString(pass.getId()), ProductViews.apiKind(pass.getKind()), pass.getSnapshotProductName(),
                 Long.toString(pass.getPurchaseBranchId()), pass.getRemainingMinutes(), pass.getRemainingCreditKrw());
+    }
+
+    /** The same for a page of sessions, in one read. */
+    @Transactional(readOnly = true)
+    public Map<Long, SessionPass> sessionPasses(Collection<Long> ids) {
+        Map<Long, SessionPass> result = new HashMap<>();
+        repository.findAllById(Set.copyOf(ids)).forEach(pass -> result.put(pass.getId(), sessionPass(pass)));
+        return result;
     }
 
     /**
@@ -232,6 +245,35 @@ public class PassService {
         var pass = repository.findById(id).filter(found -> selected.contains(found.getPurchaseBranchId()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return views(List.of(pass), state, clock.instant()).getFirst();
+    }
+
+    /**
+     * The customer's passes bought at these branches with their whole ledger, whatever period a history asks for: the
+     * reconciliation issued + ledger = remaining only holds over every row (FR-PASS-09). The rows name who changed the
+     * balance, so the caller must withhold them for branches it may not show.
+     */
+    @Transactional(readOnly = true)
+    public List<PassLedger> ledgers(long customerId, Set<Long> purchaseBranches, Instant now) {
+        if (purchaseBranches.isEmpty()) return List.of();
+        var owned = repository.findByCustomerIdAndPurchaseBranchIdInOrderByIdAsc(customerId, purchaseBranches);
+        if (owned.isEmpty()) return List.of();
+        Map<Long, List<PassBalanceEvent>> rows = ledger.findByPassIdInOrderByIdAsc(owned.stream().map(Pass::getId).toList())
+                .stream().collect(Collectors.groupingBy(PassBalanceEvent::getPassId));
+        return owned.stream().map(pass -> ledger(pass, rows.getOrDefault(pass.getId(), List.of()), now)).toList();
+    }
+
+    private static PassLedger ledger(Pass pass, List<PassBalanceEvent> rows, Instant now) {
+        var entries = rows.stream().map(row -> new PassLedger.Entry(row.getKind() == PassBalanceEvent.Kind.ADJUST, row.getSeatSessionId(),
+                row.getDeltaMinutes(), row.getDeltaKrw(), row.getActorEmployeeId(), row.getReason(), row.getCreatedAt())).toList();
+        return new PassLedger(pass.getId(), ProductViews.apiKind(pass.getKind()), pass.getSnapshotProductName(), status(pass, now),
+                pass.getPurchaseBranchId(), pass.getPurchasePaymentId(), pass.getSnapshotMinutes(), pass.getSnapshotCreditKrw(),
+                rows.stream().mapToLong(PassBalanceEvent::getDeltaMinutes).sum(), rows.stream().mapToLong(PassBalanceEvent::getDeltaKrw).sum(),
+                pass.getRemainingMinutes(), pass.getRemainingCreditKrw(), entries);
+    }
+
+    /** One pass as the API shows it to {@code state}; for a caller that has authorized the pass already. */
+    public IssuedPass view(Pass pass, AuthorizationState state, Instant now) {
+        return views(List.of(pass), state, now).getFirst();
     }
 
     private List<IssuedPass> views(List<Pass> passes, AuthorizationState state, Instant now) {

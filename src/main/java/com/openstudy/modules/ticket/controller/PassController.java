@@ -1,24 +1,32 @@
 package com.openstudy.modules.ticket.controller;
 
+import java.util.Map;
 import java.util.Set;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import com.openstudy.common.web.ApiRequestFilter;
 import com.openstudy.common.web.ListQuery;
 import com.openstudy.common.web.PageResponse;
 import com.openstudy.modules.ticket.dto.IssuedPass;
+import com.openstudy.modules.ticket.service.PassAdjustmentService;
 import com.openstudy.modules.ticket.service.PassService;
 
-/** Read-only: passes are issued by POST /api/payments and changed only by refunds (#58) and usage (M5). */
+/** Passes are issued by POST /api/payments; refunds, usage and the manual adjustment here are the only later changes. */
 @RestController
 @RequestMapping("/api/passes")
 @RequiredArgsConstructor
 public class PassController {
     private final PassService service;
+    private final PassAdjustmentService adjustments;
 
     @GetMapping
     public PageResponse<IssuedPass> list(Authentication actor, @RequestParam(defaultValue = "all") String scope,
@@ -33,6 +41,13 @@ public class PassController {
     @GetMapping("/{id}")
     public IssuedPass get(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope) {
         return service.get(actor(actor), id, scope);
+    }
+
+    @PostMapping("/{id}/adjustments")
+    public IssuedPass adjust(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope,
+            @RequestHeader(name = "Idempotency-Key", required = false) String key, @RequestBody Map<String, Object> body,
+            HttpServletRequest request) {
+        return adjustments.adjust(actor(actor), id, scope, key, body, ApiRequestFilter.requestId(request));
     }
 
     private static long actor(Authentication authentication) { return Long.parseLong(authentication.getName()); }

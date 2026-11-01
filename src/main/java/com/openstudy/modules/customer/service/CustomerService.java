@@ -182,6 +182,15 @@ public class CustomerService {
     }
 
     /**
+     * Gate for another module's view of one customer: the general lookup scope (M4-D05), 404 outside it. An exact-match
+     * lookup or a stay at the branch does not count, so this must stay separate from the check-in entry points.
+     */
+    @Transactional(readOnly = true)
+    public CustomerSummary requireVisible(AuthorizationState state, long id, String scope) {
+        return summary(visibleCustomer(state, id, scope));
+    }
+
+    /**
      * Entry point for the sale flow, inside the payment transaction. The customer must be in the actor's lookup scope
      * (404 otherwise, POL-08 cross-branch sales are M5) and NORMAL; the shared row lock holds the status until commit.
      */
