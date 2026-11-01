@@ -9,6 +9,10 @@ public enum BranchAction {
     MANAGE_PRODUCT("operations:write", true, false),
     /** M7 "MANAGER 이상": the branch role alone, with no separate grant (ADR-M7-001 M7-D01·D02·D04). */
     MANAGE_COLLABORATION(null, true, false),
+    /** M5 seat ledger edits: operations:write at the seat's branch, allowed even while the branch is stopped. */
+    WRITE_SEATS("operations:write", false, false),
+    /** M5 seat stop/resume: MANAGER plus operations:write (seat-usage-api.md). */
+    MANAGE_SEATS("operations:write", true, false),
     WRITE_MEMBERS("members:write", false, false),
     WRITE_FACILITIES("facilities:write", false, false),
     WRITE_NOTICES("notices:write", false, false),
