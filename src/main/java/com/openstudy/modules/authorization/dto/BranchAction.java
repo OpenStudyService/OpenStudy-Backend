@@ -7,6 +7,8 @@ public enum BranchAction {
     MANAGE_PEOPLE("people:manage", true, false),
     EDIT_PRODUCT("operations:write", false, false),
     MANAGE_PRODUCT("operations:write", true, false),
+    /** M7 "MANAGER 이상": the branch role alone, with no separate grant (ADR-M7-001 M7-D01·D02·D04). */
+    MANAGE_COLLABORATION(null, true, false),
     WRITE_MEMBERS("members:write", false, false),
     WRITE_FACILITIES("facilities:write", false, false),
     WRITE_NOTICES("notices:write", false, false),

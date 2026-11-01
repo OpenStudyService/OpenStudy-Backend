@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @MySqlIntegrationTest
 @ActiveProfiles({"test", "local"})
-@TestPropertySource(properties = {"BOOTSTRAP_OWNER_EMAIL=", "BOOTSTRAP_OWNER_PASSWORD="})
+@TestPropertySource(properties = {"BOOTSTRAP_OWNER_EMAIL=", "BOOTSTRAP_OWNER_PASSWORD=", "openstudy.local-preview.enabled=true"})
 class LocalPreviewIntegrationTests {
     @LocalServerPort int port;
     @Autowired JdbcTemplate jdbc;
@@ -65,11 +65,11 @@ class LocalPreviewIntegrationTests {
 
     @Test
     void previewKeepsExistingUiSortOptionsButRejectsPrivateFields() throws Exception {
-        assertThat(get("/api/tasks?sort=status").statusCode()).isEqualTo(200);
-        assertThat(get("/api/tasks?sort=due").statusCode()).isEqualTo(200);
+        // /api/tasks is a real operational endpoint now (#75).
+        assertThat(get("/api/seats?sort=status").statusCode()).isEqualTo(200);
         // /api/products is a real operational endpoint now (#16); members is still preview-only.
         assertThat(get("/api/members?sort=status").statusCode()).isEqualTo(200);
-        assertThat(get("/api/tasks?sort=password_hash").statusCode()).isEqualTo(422);
+        assertThat(get("/api/seats?sort=password_hash").statusCode()).isEqualTo(422);
         assertThat(get("/api/members?sort=due").statusCode()).isEqualTo(422);
     }
 
@@ -104,14 +104,14 @@ class LocalPreviewIntegrationTests {
         assertThat(scoped.get("seats").size()).isEqualTo(12);
         for (var seat : scoped.get("seats")) assertThat(seat.get("branchId").asString()).isEqualTo(branch);
         assertThat(get("/api/home?scope=999999999").statusCode()).isEqualTo(403);
-        var page = json.readTree(get("/api/tasks?scope=" + branch + "&page=2&pageSize=2").body());
-        assertThat(page.at("/meta/total").asInt()).isEqualTo(3);
-        assertThat(page.get("items").size()).isEqualTo(1);
+        var page = json.readTree(get("/api/seats?scope=" + branch + "&page=2&pageSize=5").body());
+        assertThat(page.at("/meta/total").asInt()).isEqualTo(12);
+        assertThat(page.get("items").size()).isEqualTo(5);
         String id = page.at("/items/0/id").asString();
-        assertThat(get("/api/tasks/" + id + "?scope=" + branch).statusCode()).isEqualTo(200);
+        assertThat(get("/api/seats/" + id + "?scope=" + branch).statusCode()).isEqualTo(200);
         String otherBranch = json.readTree(get("/api/me").body()).at("/branches/1/id").asString();
-        assertThat(get("/api/tasks/" + id + "?scope=" + otherBranch).statusCode()).isEqualTo(404);
-        assertThat(get("/api/tasks?page=0").statusCode()).isEqualTo(422);
+        assertThat(get("/api/seats/" + id + "?scope=" + otherBranch).statusCode()).isEqualTo(404);
+        assertThat(get("/api/seats?page=0").statusCode()).isEqualTo(422);
     }
 
     @Test
@@ -137,7 +137,7 @@ class LocalPreviewIntegrationTests {
     @Test
     void rejectsSampleWritesAndDoesNotChangeDatabase() throws Exception {
         String csrf = json.readTree(get("/api/auth/csrf").body()).get("token").asString();
-        var response = client.send(request("/api/tasks").header("X-CSRF-Token", csrf)
+        var response = client.send(request("/api/seats").header("X-CSRF-Token", csrf)
                 .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString("{}"))
                 .build(), HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).isEqualTo(501);
