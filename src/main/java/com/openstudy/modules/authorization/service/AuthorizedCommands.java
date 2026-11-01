@@ -1,11 +1,15 @@
 package com.openstudy.modules.authorization.service;
 
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.function.Function;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.modules.authorization.dto.BranchAction;
 import com.openstudy.modules.authorization.dto.AuthorizationState;
@@ -73,6 +77,24 @@ public class AuthorizedCommands {
         var state = repository.currentLocked(actor);
         authorization.requireAny(state, serverBranchIds.get(), action);
         return command.apply(state);
+    }
+
+    /**
+     * For a record that looks nonexistent outside its own branch, e.g. a seat or a seat session: missing and out of
+     * reach are the same 404, decided under the guard rather than from a snapshot read before it. The record's branch
+     * must be immutable; the callback receives it and takes the row lock itself.
+     */
+    @Transactional
+    public <T> T inRecordBranch(long actor, BranchAction action, Supplier<Optional<Long>> recordBranch,
+            BiFunction<AuthorizationState, Long, T> command) {
+        repository.lockGuard();
+        repository.lockEmployees();
+        repository.lockBranches();
+        var state = repository.currentLocked(actor);
+        if (!"ACTIVE".equals(state.status())) throw AuthorizationService.forbidden();
+        long branch = recordBranch.get().filter(id -> authorization.permits(state, id, action))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        return command.apply(state, branch);
     }
 
     /**
