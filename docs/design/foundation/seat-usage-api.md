@@ -4,7 +4,7 @@ Backend [#60](https://github.com/OpenStudyService/OpenStudy-Backend/issues/60)�
 
 정책 근거는 [ADR-M5-001](../../db/ADR-M5-001.md)(M5-D01~D08)과 [ADR-M4-002](../../db/ADR-M4-002.md)(M4-D05 고객 조회 범위, 미사용·만료 판정)다. 공통 요청·응답·오류·목록 규칙은 [API 계약](api.md)을 따르고, 고객·이용권 응답 모양은 [M4 계약](customer-sales-api.md)과 같다.
 
-2026-11-02: 좌석 목록·상세·등록·수정·운영 중단/재개·배치도·현황 operation은 #61에서, 입실용 정확 일치 조회·입실·이용 기록 상세·퇴실 operation은 #62에서 구현됐다(`implemented`). 나머지 operation은 설계 계약(`design-target`)이며 아직 서버에 구현되어 있지 않다. 스키마는 바꾸지 않는다. V1의 `seats`, `seat_sessions`, `seat_session_moves`, `pass_balance_events`, `customer_service_interactions`를 그대로 쓴다.
+2026-11-02: 좌석 목록·상세·등록·수정·운영 중단/재개·배치도·현황 operation은 #61에서, 입실용 정확 일치 조회·입실·이용 기록 상세·퇴실 operation은 #62에서, 이용 중 좌석 이동 operation은 #63에서 구현됐다(`implemented`). 나머지 operation은 설계 계약(`design-target`)이며 아직 서버에 구현되어 있지 않다. 스키마는 바꾸지 않는다. V1의 `seats`, `seat_sessions`, `seat_session_moves`, `pass_balance_events`, `customer_service_interactions`를 그대로 쓴다.
 
 ## 제공 범위
 

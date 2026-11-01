@@ -45,5 +45,12 @@ public class SeatSessionController {
         return service.checkOut(actor(actor), id, key, body, ApiRequestFilter.requestId(request));
     }
 
+    @PostMapping("/{id}/move")
+    public SeatSessionView move(Authentication actor, @PathVariable long id,
+            @RequestHeader(name = "Idempotency-Key", required = false) String key, @RequestBody Map<String, Object> body,
+            HttpServletRequest request) {
+        return service.move(actor(actor), id, key, body, ApiRequestFilter.requestId(request));
+    }
+
     private static long actor(Authentication authentication) { return Long.parseLong(authentication.getName()); }
 }

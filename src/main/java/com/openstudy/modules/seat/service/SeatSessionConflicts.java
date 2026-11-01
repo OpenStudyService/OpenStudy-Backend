@@ -27,6 +27,7 @@ final class SeatSessionConflicts {
         String message = String.valueOf(exception.getMessage());
         if (message.contains("uk_seat_sessions_1")) return ApiException.conflict("SEAT_OCCUPIED", "이미 사용 중인 좌석입니다.");
         if (message.contains("uk_seat_sessions_2")) return ApiException.conflict("CUSTOMER_ALREADY_CHECKED_IN", "이미 입실 중인 고객입니다.");
+        if (message.contains("uk_seat_session_moves_1")) return ApiException.conflict("IDEMPOTENCY_CONFLICT", "이미 사용한 요청 키입니다.");
         if (message.contains("uk_seat_sessions_3")) return ApiException.conflict("IDEMPOTENCY_CONFLICT", "이미 사용한 요청 키입니다.");
         return exception;
     }
