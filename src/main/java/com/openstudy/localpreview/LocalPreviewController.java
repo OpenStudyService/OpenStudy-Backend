@@ -51,7 +51,7 @@ public class LocalPreviewController {
         return result;
     }
 
-    @GetMapping("/api/{resource:notices|shifts|rooms|products|members|employees|branches|passes|attendance|channels|payments|reservations|usage|lockers|invitations|corrections|leaveGrants|leaveRequests|substitutions|audit}")
+    @GetMapping("/api/{resource:shifts|rooms|products|members|employees|branches|passes|attendance|channels|payments|reservations|usage|lockers|invitations|corrections|leaveGrants|leaveRequests|substitutions|audit}")
     public PageResponse<Map<String, Object>> list(Authentication auth, @PathVariable String resource,
             @RequestParam(defaultValue = "all") String scope, @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "20") int pageSize, @RequestParam(defaultValue = "") String q,
@@ -75,7 +75,7 @@ public class LocalPreviewController {
         return left.compareTo(right); // Preview IDs also contain resource prefixes.
     }
 
-    @GetMapping("/api/{resource:notices|shifts|rooms|products|members|employees|branches}/{id}")
+    @GetMapping("/api/{resource:shifts|rooms|products|members|employees|branches}/{id}")
     public Map<String, Object> detail(Authentication auth, @PathVariable String resource, @PathVariable String id,
             @RequestParam(defaultValue = "all") String scope) {
         return preview.snapshot(Long.parseLong(auth.getName()), scope).get(resource).stream()
@@ -83,8 +83,8 @@ public class LocalPreviewController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "샘플 항목을 찾을 수 없습니다."));
     }
 
-    @RequestMapping(value = {"/api/{resource:notices|shifts|rooms|products|members|employees|branches|payments|reservations|usage|lockers}",
-            "/api/{resource:notices|shifts|rooms|products|members|employees|branches|payments|reservations|usage|lockers}/**"},
+    @RequestMapping(value = {"/api/{resource:shifts|rooms|products|members|employees|branches|payments|reservations|usage|lockers}",
+            "/api/{resource:shifts|rooms|products|members|employees|branches|payments|reservations|usage|lockers}/**"},
             method = {RequestMethod.POST, RequestMethod.PUT, RequestMethod.PATCH, RequestMethod.DELETE})
     public void readOnly() {
         throw new ResponseStatusException(HttpStatus.NOT_IMPLEMENTED, "로컬 샘플은 조회 전용입니다. 저장 기능은 아직 구현되지 않았습니다.");

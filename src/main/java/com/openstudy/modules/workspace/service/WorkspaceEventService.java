@@ -132,7 +132,9 @@ public class WorkspaceEventService {
             // A removed peer is no longer in minimal lookups, even while this branch remains readable.
             // A facility type id is not a facility id, so a new type only tells the facility screens to reload.
             boolean typeEvent=event.entityType().startsWith("facility-type");
-            String entityId="employees".equals(resource) || typeEvent || event.entityId()==null ? null : event.entityId().toString();
+            // A notice that is not published is visible only to its managers, so its ID is never sent to a stream.
+            boolean hidden="employees".equals(resource) || "notices".equals(resource) || typeEvent;
+            String entityId=hidden || event.entityId()==null ? null : event.entityId().toString();
             send(connection,new WorkspaceEvent("invalidate",resource,
                     entityId,event.branchId().toString(),event.occurredAt().toString()));
         } else if("employees".equals(resource)) {
@@ -157,6 +159,7 @@ public class WorkspaceEventService {
             case "task","tasks"->"tasks";
             case "facility","facilities","facility-type","facility-types"->"facilities";
             case "inquiry","inquiries"->"inquiries";
+            case "notice","notices"->"notices";
             case "seat","seats"->"seats";
             case "seat-session","seat-sessions"->"seat-sessions";
             case "lookups"->"lookups";
