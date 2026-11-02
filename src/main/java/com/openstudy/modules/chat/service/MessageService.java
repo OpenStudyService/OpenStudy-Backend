@@ -32,7 +32,9 @@ import com.openstudy.modules.chat.entity.MessageKind;
 import com.openstudy.modules.chat.repository.ConversationMemberRepository;
 import com.openstudy.modules.chat.repository.ConversationRepository;
 import com.openstudy.modules.chat.repository.MessageRepository;
+import com.openstudy.modules.authorization.dto.AuthorizationState;
 import com.openstudy.modules.employee.service.EmployeeAccountService;
+import com.openstudy.modules.task.service.TaskCardService;
 
 /**
  * Messages, threads and the read position (FR-CHAT-02·04~07). Every path first asks {@link ChannelAccess#participation}:
@@ -50,30 +52,34 @@ public class MessageService {
     private final EmployeeAccountService employees;
     private final AuthorizationService policy;
     private final AuthorizedCommands commands;
+    private final TaskCardService taskCards;
     private final Clock clock;
 
     public record Sent(MessageView message, boolean created) {}
 
     @Transactional(readOnly = true)
     public MessageFeed list(long actor, long channel, String before, String limit) {
-        access.participation(policy.current(actor), channel);
+        var state = policy.current(actor);
+        access.participation(state, channel);
         int size = ChannelInputs.limit(limit);
-        return feed(messages.originals(channel, ChannelInputs.before(before), Limit.of(size + 1)), size);
+        return feed(messages.originals(channel, ChannelInputs.before(before), Limit.of(size + 1)), size, state);
     }
 
     @Transactional(readOnly = true)
     public MessageView get(long actor, long channel, long id) {
-        access.participation(policy.current(actor), channel);
-        return view(found(channel, id));
+        var state = policy.current(actor);
+        access.participation(state, channel);
+        return view(found(channel, id), state);
     }
 
     /** The target has to be a message of this channel. Asked of a reply, the answer is an empty feed. */
     @Transactional(readOnly = true)
     public MessageFeed replies(long actor, long channel, long id, String before, String limit) {
-        access.participation(policy.current(actor), channel);
+        var state = policy.current(actor);
+        access.participation(state, channel);
         found(channel, id);
         int size = ChannelInputs.limit(limit);
-        return feed(messages.replies(channel, id, ChannelInputs.before(before), Limit.of(size + 1)), size);
+        return feed(messages.replies(channel, id, ChannelInputs.before(before), Limit.of(size + 1)), size, state);
     }
 
     /**
@@ -81,31 +87,47 @@ public class MessageService {
      * uk_messages_1 and rolls back, and the retry then answers from the row that won, by the same rules.
      */
     public Sent send(long actor, long channel, Map<String, Object> body) {
+        return store(actor, channel, body, false);
+    }
+
+    /**
+     * A card is a message with the same key rules, so it shares this path. The task is checked for the sender after the
+     * input and before the key: a task the sender cannot open is 404 even for a repeat, and it says nothing more.
+     */
+    public Sent shareTaskCard(long actor, long channel, Map<String, Object> body) {
+        return store(actor, channel, body, true);
+    }
+
+    private Sent store(long actor, long channel, Map<String, Object> body, boolean card) {
         try {
-            return attempt(actor, channel, body);
+            return attempt(actor, channel, body, card);
         } catch (DuplicateKeyException exception) {
-            return attempt(actor, channel, body);
+            return attempt(actor, channel, body, card);
         }
     }
 
-    private Sent attempt(long actor, long channel, Map<String, Object> body) {
+    private Sent attempt(long actor, long channel, Map<String, Object> body, boolean card) {
         return commands.activeEmployee(actor, () -> channels.lock(channel), state -> {
             access.participation(state, channel);
-            var input = new StrictInput(body).only("clientMessageKey", "text", "parentId");
+            var input = card ? new StrictInput(body).only("clientMessageKey", "taskId", "text", "parentId")
+                    : new StrictInput(body).only("clientMessageKey", "text", "parentId");
             String key = ChannelInputs.clientKey(body.get("clientMessageKey"));
-            String text = ChannelInputs.messageText(body.get("text"));
+            Long task = card ? input.id("taskId") : null;
+            String text = card && !body.containsKey("text") ? null : ChannelInputs.messageText(body.get("text"));
             Long parent = body.get("parentId") == null ? null : Long.valueOf(input.id("parentId"));
+            if (card && !taskCards.accessible(state, task)) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
             if (parent != null && found(channel, parent).getParentMessageId() != null)
                 throw ApiException.unprocessable("INVALID_PARENT_MESSAGE", "답글에는 다시 답글을 달 수 없습니다.");
             var prior = messages.findByConversationIdAndSenderEmployeeIdAndClientMessageKey(channel, actor, key);
             if (prior.isPresent()) {
-                if (!sameInput(prior.get(), text, parent))
+                if (!sameInput(prior.get(), task, text, parent))
                     throw ApiException.conflict("IDEMPOTENCY_CONFLICT", "같은 키로 다른 입력을 저장할 수 없습니다.");
-                return new Sent(view(prior.get()), false);
+                return new Sent(view(prior.get(), state), false);
             }
             Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
-            var saved = DuplicateKeys.translate(() -> messages.saveAndFlush(Message.text(channel, actor, parent, text, key, now)));
-            return new Sent(view(saved), true);
+            var row = card ? Message.taskCard(channel, actor, parent, task, text, key, now) : Message.text(channel, actor, parent, text, key, now);
+            var saved = DuplicateKeys.translate(() -> messages.saveAndFlush(row));
+            return new Sent(view(saved, state), true);
         });
     }
 
@@ -126,31 +148,35 @@ public class MessageService {
         return messages.findByIdAndConversationId(id, channel).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
     }
 
-    /** A task card never equals a text, whatever its optional text says. */
-    private static boolean sameInput(Message prior, String text, Long parent) {
-        return prior.getKind() == MessageKind.TEXT && text.equals(prior.getBody()) && Objects.equals(prior.getParentMessageId(), parent);
+    /** {@code task} is null for a text. A card never equals a text, whatever its optional text says, and the reverse. */
+    private static boolean sameInput(Message prior, Long task, String text, Long parent) {
+        return prior.getKind() == (task == null ? MessageKind.TEXT : MessageKind.TASK_CARD)
+                && Objects.equals(prior.getRelatedTaskId(), task) && Objects.equals(prior.getBody(), text)
+                && Objects.equals(prior.getParentMessageId(), parent);
     }
 
     /** {@code rows} are newest first with up to one extra row, which only says that more exist. */
-    private MessageFeed feed(List<Message> rows, int size) {
+    private MessageFeed feed(List<Message> rows, int size, AuthorizationState reader) {
         boolean more = rows.size() > size;
         var page = new ArrayList<>(more ? rows.subList(0, size) : rows);
         Collections.reverse(page);
-        var items = views(page);
+        var items = views(page, reader);
         return new MessageFeed(items, more, more ? items.getFirst().id() : null);
     }
 
-    private MessageView view(Message row) { return views(List.of(row)).getFirst(); }
+    private MessageView view(Message row, AuthorizationState reader) { return views(List.of(row), reader).getFirst(); }
 
-    private List<MessageView> views(List<Message> rows) {
+    /** Cards are read from their tasks now, for this reader: the stored row never decides what a card shows. */
+    private List<MessageView> views(List<Message> rows, AuthorizationState reader) {
         if (rows.isEmpty()) return List.of();
         var names = employees.names(rows.stream().map(Message::getSenderEmployeeId).distinct().toList());
         Map<Long, Long> replies = new HashMap<>();
         for (Object[] row : messages.replyCounts(rows.stream().map(Message::getId).toList()))
             replies.put(((Number) row[0]).longValue(), ((Number) row[1]).longValue());
+        var cards = taskCards.cards(reader, rows.stream().map(Message::getRelatedTaskId).filter(Objects::nonNull).distinct().toList());
         return rows.stream().map(row -> new MessageView(row.getId().toString(), Long.toString(row.getConversationId()),
                 new ActorSummary(Long.toString(row.getSenderEmployeeId()), names.getOrDefault(row.getSenderEmployeeId(), "")),
                 row.getParentMessageId() == null ? null : row.getParentMessageId().toString(), ChannelInputs.label(row.getKind()),
-                row.getBody(), null, row.getClientMessageKey(), replies.getOrDefault(row.getId(), 0L), row.getSentAt())).toList();
+                row.getBody(), row.getRelatedTaskId() == null ? null : cards.get(row.getRelatedTaskId()), row.getClientMessageKey(), replies.getOrDefault(row.getId(), 0L), row.getSentAt())).toList();
     }
 }

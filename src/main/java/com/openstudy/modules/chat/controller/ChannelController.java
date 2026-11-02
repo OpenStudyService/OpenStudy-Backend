@@ -106,6 +106,13 @@ public class ChannelController {
         return ResponseEntity.created(URI.create("/api/channels/" + id + "/messages/" + sent.message().id())).body(sent.message());
     }
 
+    @PostMapping("/{id}/task-cards")
+    public ResponseEntity<MessageView> shareTaskCard(Authentication actor, @PathVariable long id, @RequestBody Map<String, Object> body) {
+        var sent = messages.shareTaskCard(actor(actor), id, body);
+        if (!sent.created()) return ResponseEntity.ok(sent.message());
+        return ResponseEntity.created(URI.create("/api/channels/" + id + "/messages/" + sent.message().id())).body(sent.message());
+    }
+
     @GetMapping("/{id}/messages/{messageId}")
     public MessageView message(Authentication actor, @PathVariable long id, @PathVariable long messageId) {
         return messages.get(actor(actor), id, messageId);

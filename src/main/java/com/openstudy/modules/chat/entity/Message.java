@@ -15,8 +15,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * Immutable: there is no edit or delete. The ID is the only order. A task card keeps its own {@code relatedTaskId}, which
- * this module neither writes nor exposes until #77.
+ * Immutable: there is no edit or delete. The ID is the only order. A task card keeps only the task's ID in
+ * {@code relatedTaskId}; what it shows is read from the task when the card is read.
  */
 @Entity
 @Table(name = "messages")
@@ -46,6 +46,14 @@ public class Message {
         var message = new Message();
         message.conversationId = conversation; message.senderEmployeeId = sender; message.parentMessageId = parent;
         message.kind = MessageKind.TEXT; message.body = body; message.clientMessageKey = clientKey; message.sentAt = sentAt;
+        return message;
+    }
+
+    public static Message taskCard(long conversation, long sender, Long parent, long task, String body, String clientKey, Instant sentAt) {
+        var message = new Message();
+        message.conversationId = conversation; message.senderEmployeeId = sender; message.parentMessageId = parent;
+        message.relatedTaskId = task; message.kind = MessageKind.TASK_CARD; message.body = body;
+        message.clientMessageKey = clientKey; message.sentAt = sentAt;
         return message;
     }
 }
