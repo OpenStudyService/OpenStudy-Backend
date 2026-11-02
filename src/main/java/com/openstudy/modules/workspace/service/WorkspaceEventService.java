@@ -164,6 +164,8 @@ public class WorkspaceEventService {
             case "seat-session","seat-sessions"->"seat-sessions";
             case "room","rooms"->"rooms";
             case "room-reservation","room-reservations"->"room-reservations";
+            case "locker","lockers"->"lockers";
+            case "locker-assignment","locker-assignments"->"locker-assignments";
             case "lookups"->"lookups";
             default->null;
         };

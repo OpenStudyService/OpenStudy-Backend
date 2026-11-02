@@ -29,4 +29,17 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
      */
     @Query(value = "SELECT payment_id AS paymentId, id AS reservationId FROM room_reservations WHERE payment_id IN (:ids)", nativeQuery = true)
     List<RoomReservationRef> roomReservations(@Param("ids") Collection<Long> ids);
+
+    /** Which locker assignment a payment bought or extended. */
+    interface LockerAssignmentRef {
+        long getPaymentId();
+        long getAssignmentId();
+    }
+
+    /**
+     * JPA-01 native exception, for the same reason as above. uk_locker_assignment_charges_1 keeps it to one charge per
+     * payment, and an extension names the assignment it extended.
+     */
+    @Query(value = "SELECT payment_id AS paymentId, assignment_id AS assignmentId FROM locker_assignment_charges WHERE payment_id IN (:ids)", nativeQuery = true)
+    List<LockerAssignmentRef> lockerAssignments(@Param("ids") Collection<Long> ids);
 }

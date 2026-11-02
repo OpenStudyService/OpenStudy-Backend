@@ -79,8 +79,19 @@ public class Payment {
     /** A room prepayment decided at {@code at}. It has no product (ck_payments_1) and never issues a pass. */
     public static Payment room(long customerId, long branchId, PaymentMethod method, long amountKrw, boolean approved,
             String idempotencyKey, long actor, Instant at) {
+        return space(PaymentPurpose.ROOM, customerId, branchId, method, amountKrw, approved, idempotencyKey, actor, at);
+    }
+
+    /** A locker assignment or extension decided at {@code at}. Like a room, it has no product and never issues a pass. */
+    public static Payment locker(long customerId, long branchId, PaymentMethod method, long amountKrw, boolean approved,
+            String idempotencyKey, long actor, Instant at) {
+        return space(PaymentPurpose.LOCKER, customerId, branchId, method, amountKrw, approved, idempotencyKey, actor, at);
+    }
+
+    private static Payment space(PaymentPurpose purpose, long customerId, long branchId, PaymentMethod method, long amountKrw,
+            boolean approved, String idempotencyKey, long actor, Instant at) {
         var payment = new Payment();
-        payment.customerId = customerId; payment.branchId = branchId; payment.purpose = PaymentPurpose.ROOM;
+        payment.customerId = customerId; payment.branchId = branchId; payment.purpose = purpose;
         payment.method = method; payment.amountKrw = amountKrw; payment.idempotencyKey = idempotencyKey;
         payment.createdBy = actor; payment.status = approved ? PaymentStatus.APPROVED : PaymentStatus.FAILED;
         if (approved) payment.approvedAt = at; else payment.failedAt = at;

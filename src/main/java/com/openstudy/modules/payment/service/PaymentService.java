@@ -53,7 +53,7 @@ import com.openstudy.modules.ticket.service.PassService;
 import com.openstudy.modules.ticket.service.ProductService;
 
 /**
- * Mock pass payments (FR-PAY-01/02/04/05/06/08) and their full refund (FR-PAY-09/10), and the ledger side of room bookings. The amount is the price of the product as locked for this sale; no
+ * Mock pass payments (FR-PAY-01/02/04/05/06/08) and their full refund (FR-PAY-09/10), and the ledger side of room bookings and locker assignments. The amount is the price of the product as locked for this sale; no
  * request field can set it. An approved payment and its single pass commit together or not at all, and a failed
  * payment is recorded without a pass. Every check runs in the order the contract lists, under AuthorizedCommands.
  */
@@ -132,7 +132,20 @@ public class PaymentService {
      */
     public long chargeRoom(long actor, long customerId, long branch, String methodLabel, long amountKrw, boolean approved,
             String storedKey, Instant at, String requestId) {
-        var payment = repository.saveAndFlush(Payment.room(customerId, branch, method(methodLabel), amountKrw, approved, storedKey, actor, at));
+        return record(actor, branch, repository.saveAndFlush(Payment.room(customerId, branch, method(methodLabel), amountKrw, approved, storedKey, actor, at)), requestId);
+    }
+
+    /**
+     * The payment row of a locker assignment or extension, on the same terms as a room booking: the caller has authorized
+     * the actor, locked the locker and computed the amount from it, and its failure rolls this row back.
+     */
+    public long chargeLocker(long actor, long customerId, long branch, String methodLabel, long amountKrw, boolean approved,
+            String storedKey, Instant at, String requestId) {
+        return record(actor, branch, repository.saveAndFlush(Payment.locker(customerId, branch, method(methodLabel), amountKrw, approved, storedKey, actor, at)), requestId);
+    }
+
+    private long record(long actor, long branch, Payment payment, String requestId) {
+        boolean approved = payment.getStatus() == PaymentStatus.APPROVED;
         var after = new LinkedHashMap<String, Object>();
         after.put("status", payment.getStatus().name());
         after.put("purpose", payment.getPurpose().name());
@@ -284,7 +297,11 @@ public class PaymentService {
         var ids = payments.stream().map(Payment::getId).toList();
         var usage = passes.byPayments(ids, now);
         Map<Long, Long> reservations = new HashMap<>();
-        if (!ids.isEmpty()) repository.roomReservations(ids).forEach(ref -> reservations.put(ref.getPaymentId(), ref.getReservationId()));
+        Map<Long, Long> lockerAssignments = new HashMap<>();
+        if (!ids.isEmpty()) {
+            repository.roomReservations(ids).forEach(ref -> reservations.put(ref.getPaymentId(), ref.getReservationId()));
+            repository.lockerAssignments(ids).forEach(ref -> lockerAssignments.put(ref.getPaymentId(), ref.getAssignmentId()));
+        }
         var names = customers.summaries(payments.stream().map(Payment::getCustomerId).toList());
         Map<Long, Refund> refunded = new HashMap<>();
         refunds.findByPaymentIdIn(ids).forEach(refund -> refunded.put(refund.getPaymentId(), refund));
@@ -302,7 +319,7 @@ public class PaymentService {
                     payment.getCreatedAt(), new ActorSummary(Long.toString(payment.getCreatedBy()),
                             actors.getOrDefault(payment.getCreatedBy(), "")),
                     pass == null ? null : Long.toString(pass.passId()), refund == null ? null : view(refund, actors),
-                    canRefund, id(reservations.get(payment.getId())), null);
+                    canRefund, id(reservations.get(payment.getId())), id(lockerAssignments.get(payment.getId())));
         }).toList();
     }
 
