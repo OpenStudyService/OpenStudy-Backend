@@ -98,6 +98,22 @@ public class AuthorizedCommands {
     }
 
     /**
+     * For a record whose own rule decides between 403 and 404, e.g. a channel that only its participants and managers
+     * may know about: there is no branch to check up front, so the callback rules on the locked parent with the state
+     * read under the guard. Only an account that is not active is refused here.
+     */
+    @Transactional
+    public <T> T activeEmployee(long actor, Runnable lockBusinessParent, Function<AuthorizationState, T> command) {
+        repository.lockGuard();
+        repository.lockEmployees();
+        repository.lockBranches();
+        lockBusinessParent.run();
+        var state = repository.currentLocked(actor);
+        if (!"ACTIVE".equals(state.status())) throw AuthorizationService.forbidden();
+        return command.apply(state);
+    }
+
+    /**
      * Same lock order without an authenticated actor, for a credential-bearing public command such as
      * invitation acceptance. The callback must verify its own credential under the parent lock.
      */

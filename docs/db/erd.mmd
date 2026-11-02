@@ -154,10 +154,12 @@ erDiagram
     enum__GLOBAL_CHANNEL___BRANCH_CHANNEL___DM kind
     bigint_unsigned branch_id FK
     varchar_120 name
+    varchar_500 description
     bigint_unsigned dm_employee_low_id FK
     bigint_unsigned dm_employee_high_id FK
     bigint_unsigned created_by FK
     datetime_6 created_at
+    bigint_unsigned version
   }
   customer_service_interactions {
     bigint_unsigned id PK
