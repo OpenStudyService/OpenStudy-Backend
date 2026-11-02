@@ -191,6 +191,22 @@ public class CustomerService {
     }
 
     /**
+     * Target check for an inquiry registered by proxy (M7-D02). The customer must be in the requester's general lookup
+     * scope (M4-D05), or the requester must have found the customer by exact match at this same branch (the
+     * customer_service_interactions row is the proof; the client's claim is never trusted). Anything else is a 404, so
+     * an ID is not an existence oracle. The check grants nothing: the general scope is unchanged afterwards. An OWNER
+     * without a membership row leaves no interaction row, but every customer is inside the OWNER's scope.
+     */
+    @Transactional(readOnly = true)
+    public CustomerSummary requireInquiryTarget(AuthorizationState state, long id, long branch) {
+        Set<Long> selected = policy.scope(state, "all", BranchAction.READ);
+        boolean inScope = search.visible(id, selected, unassigned(state, "all"));
+        if (!inScope && !interactions.existsByCustomerIdAndBranchIdAndEmployeeId(id, branch, state.employeeId()))
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        return summary(lockedCustomer(id));
+    }
+
+    /**
      * Entry point for the sale flow, inside the payment transaction. The customer must be in the actor's lookup scope
      * (404 otherwise, POL-08 cross-branch sales are M5) and NORMAL; the shared row lock holds the status until commit.
      */

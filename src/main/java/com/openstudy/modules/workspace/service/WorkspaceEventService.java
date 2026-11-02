@@ -156,6 +156,7 @@ public class WorkspaceEventService {
             case "pass","passes"->"passes";
             case "task","tasks"->"tasks";
             case "facility","facilities","facility-type","facility-types"->"facilities";
+            case "inquiry","inquiries"->"inquiries";
             case "seat","seats"->"seats";
             case "seat-session","seat-sessions"->"seat-sessions";
             case "lookups"->"lookups";
