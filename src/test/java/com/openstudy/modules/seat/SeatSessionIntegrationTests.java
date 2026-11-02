@@ -922,7 +922,11 @@ class SeatSessionIntegrationTests {
             assertThat(closed.get("version").asLong()).isEqualTo(2);
             assertThat(closed.get("usedMinutes").asLong()).isEqualTo(30);
             assertThat(closed.at("/checkedInBy/id").asString()).isEqualTo(Long.toString(staff));
-            assertThat(node(get(s, "/api/seat-sessions/" + id))).isEqualTo(closed);
+            // The read agrees with the command except for the balance, which a closed stay no longer shows.
+            var expected = (tools.jackson.databind.node.ObjectNode) closed.deepCopy();
+            expected.putNull("passRemainingMinutes");
+            expected.putNull("passRemainingCreditKrw");
+            assertThat(node(get(s, "/api/seat-sessions/" + id))).isEqualTo(expected);
 
             var row = jdbc.queryForMap("SELECT * FROM seat_sessions WHERE id=?", id);
             assertThat(row.get("checked_out_at")).isEqualTo(row.get("effective_checked_out_at"));

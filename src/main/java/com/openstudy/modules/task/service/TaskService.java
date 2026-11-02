@@ -177,6 +177,7 @@ public class TaskService {
         if (body != null && body.keySet().stream().anyMatch(IMMUTABLE::contains))
             throw ApiException.unprocessable("IMMUTABLE_FIELD", "지점·상태·체크리스트는 이 요청으로 바꿀 수 없습니다.");
         var input = new StrictInput(body).only("version", "title", "body", "assigneeId", "dueAt", "priority", "category");
+        if (body.size() < 2) throw ApiException.validation("body", "변경할 항목이 필요합니다.");
         long version = input.version("version");
         String title = input.has("title") ? input.text("title", 200) : null;
         String content = TaskInputs.body(body);
