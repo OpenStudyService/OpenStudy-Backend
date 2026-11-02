@@ -4,9 +4,11 @@ import java.time.Instant;
 import com.openstudy.modules.customer.dto.response.CustomerSummary;
 
 /**
- * Contract schema {@code Payment}. mock is always true: no money moves (FR-PAY-01). An approved payment has passId and
- * approvedAt, a failed one failedAt and no pass. canRefund is a display hint; the refund command re-checks everything.
+ * Contract schema {@code Payment}. mock is always true: no money moves (FR-PAY-01). An approved pass payment has passId
+ * and approvedAt, a failed one failedAt and no pass. A room payment has no product and names its reservation;
+ * lockerAssignmentId stays null until lockers are sold (#71). canRefund is a display hint; the refund command re-checks.
  */
 public record PaymentDetail(String id, long version, boolean mock, String purpose, String branchId, CustomerSummary customer,
         String productId, String productName, String method, long amountKrw, String status, Instant approvedAt,
-        Instant failedAt, Instant createdAt, ActorSummary createdBy, String passId, RefundView refund, boolean canRefund) {}
+        Instant failedAt, Instant createdAt, ActorSummary createdBy, String passId, RefundView refund, boolean canRefund,
+        String roomReservationId, String lockerAssignmentId) {}

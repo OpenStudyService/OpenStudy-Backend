@@ -162,6 +162,8 @@ public class WorkspaceEventService {
             case "notice","notices"->"notices";
             case "seat","seats"->"seats";
             case "seat-session","seat-sessions"->"seat-sessions";
+            case "room","rooms"->"rooms";
+            case "room-reservation","room-reservations"->"room-reservations";
             case "lookups"->"lookups";
             default->null;
         };

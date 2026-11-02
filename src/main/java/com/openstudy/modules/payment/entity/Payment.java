@@ -76,6 +76,17 @@ public class Payment {
         return payment;
     }
 
+    /** A room prepayment decided at {@code at}. It has no product (ck_payments_1) and never issues a pass. */
+    public static Payment room(long customerId, long branchId, PaymentMethod method, long amountKrw, boolean approved,
+            String idempotencyKey, long actor, Instant at) {
+        var payment = new Payment();
+        payment.customerId = customerId; payment.branchId = branchId; payment.purpose = PaymentPurpose.ROOM;
+        payment.method = method; payment.amountKrw = amountKrw; payment.idempotencyKey = idempotencyKey;
+        payment.createdBy = actor; payment.status = approved ? PaymentStatus.APPROVED : PaymentStatus.FAILED;
+        if (approved) payment.approvedAt = at; else payment.failedAt = at;
+        return payment;
+    }
+
     /** Only the status moves; amount and approval time stay as approved (FR-PAY-10). */
     public void refund() {
         if (status != PaymentStatus.APPROVED) throw new IllegalStateException("Only an approved payment can be refunded");
