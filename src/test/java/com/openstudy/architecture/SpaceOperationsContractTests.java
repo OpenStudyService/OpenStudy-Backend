@@ -95,6 +95,16 @@ class SpaceOperationsContractTests {
         });
     }
 
+    @Test void issue69ImplementedTheRoomAndBookingOperationsAndLeftTheRestAsDesigned() {
+        for (String id : List.of("listRooms", "createRoom", "getRoom", "updateRoom", "changeRoomStatus", "listRoomReservations",
+                "createRoomReservation", "getRoomReservationCalendar", "getRoomReservation")) {
+            assertThat(operation(id).get("x-implementation-status").asString()).as(id).isEqualTo("implemented");
+        }
+        for (String id : List.of("cancelRoomReservation", "startRoomUsage", "completeRoomUsage")) {
+            assertThat(operation(id).get("x-implementation-status").asString()).as(id).isEqualTo("design-target");
+        }
+    }
+
     @Test void paidCommandsRequireARequestKeyAndRejectADifferentInputWith409() {
         for (String id : KEYED) {
             var operation = operation(id);

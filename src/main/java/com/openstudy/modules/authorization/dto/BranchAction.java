@@ -13,6 +13,8 @@ public enum BranchAction {
     WRITE_SEATS("operations:write", false, false),
     /** M5 seat stop/resume: MANAGER plus operations:write (seat-usage-api.md). */
     MANAGE_SEATS("operations:write", true, false),
+    /** M6 room ledger with its stop and resume: operations:write at the room's branch, also while the branch is stopped. */
+    WRITE_ROOMS("operations:write", false, false),
     WRITE_MEMBERS("members:write", false, false),
     WRITE_FACILITIES("facilities:write", false, false),
     WRITE_NOTICES("notices:write", false, false),

@@ -43,6 +43,7 @@ import com.openstudy.modules.payment.dto.response.PaymentTrail;
 import com.openstudy.modules.payment.dto.response.RefundView;
 import com.openstudy.modules.payment.entity.Payment;
 import com.openstudy.modules.payment.entity.PaymentMethod;
+import com.openstudy.modules.payment.entity.PaymentPurpose;
 import com.openstudy.modules.payment.entity.PaymentStatus;
 import com.openstudy.modules.payment.entity.Refund;
 import com.openstudy.modules.payment.repository.PaymentRepository;
@@ -125,10 +126,38 @@ public class PaymentService {
     }
 
     /**
+     * The payment row of a room booking, inside the booking's transaction: the caller has authorized the actor, locked
+     * the room and computed the amount, and its failure rolls this row back. The key is the caller's server-made value.
+     * A failed Mock payment is recorded as well; what it means for the booking is the caller's decision.
+     */
+    public long chargeRoom(long actor, long customerId, long branch, String methodLabel, long amountKrw, boolean approved,
+            String storedKey, Instant at, String requestId) {
+        var payment = repository.saveAndFlush(Payment.room(customerId, branch, method(methodLabel), amountKrw, approved, storedKey, actor, at));
+        var after = new LinkedHashMap<String, Object>();
+        after.put("status", payment.getStatus().name());
+        after.put("purpose", payment.getPurpose().name());
+        after.put("amountKrw", payment.getAmountKrw());
+        audit.record(AuditEvent.change(actor, branch, "payments", payment.getId(), approved ? "APPROVED" : "FAILED", null,
+                json.writeValueAsString(after), requestId));
+        outbox.invalidate(branch, "payments", payment.getId());
+        return payment.getId();
+    }
+
+    /** Wire status of these payments, for a caller that has already decided the reader may see them. */
+    @Transactional(readOnly = true)
+    public Map<Long, String> statusLabels(Collection<Long> ids) {
+        if (ids.isEmpty()) return Map.of();
+        Map<Long, String> result = new HashMap<>();
+        repository.findAllById(ids).forEach(payment -> result.put(payment.getId(), label(payment.getStatus())));
+        return result;
+    }
+
+    /**
      * Full refund of an approved pass payment whose pass is unused and unexpired at the processing instant (M4-D04).
      * Only payments:write at the payment branch may refund, and that branch is the processing branch (M4-D08). The
      * refund event, both REFUNDED transitions, audit, events and the idempotent result commit together; amount and
-     * approval time of the original payment are never touched (FR-PAY-10).
+     * approval time of the original payment are never touched (FR-PAY-10). Only pass payments come here: a room is
+     * refunded by cancelling its reservation and a locker is not refunded (space-operations-api.md).
      */
     public PaymentDetail refund(long actor, long id, String scope, String key, Map<String, Object> body, String requestId) {
         String reason = new StrictInput(body).only("reason").text("reason", 500);
@@ -149,6 +178,8 @@ public class PaymentService {
             // Payment, then pass: every check below is repeated under these locks (contract transaction table).
             repository.lock(id);
             var payment = repository.findById(id).orElseThrow();
+            if (payment.getPurpose() != PaymentPurpose.PASS)
+                throw ApiException.conflict("PAYMENT_NOT_REFUNDABLE", "이용권 결제만 이 요청으로 환불할 수 있습니다.");
             if (payment.getStatus() == PaymentStatus.REFUNDED)
                 throw ApiException.conflict("ALREADY_REFUNDED", "이미 환불된 결제입니다.");
             if (payment.getStatus() != PaymentStatus.APPROVED)
@@ -230,6 +261,8 @@ public class PaymentService {
     private List<PaymentDetail> views(List<Payment> payments, AuthorizationState state, Instant now) {
         var ids = payments.stream().map(Payment::getId).toList();
         var usage = passes.byPayments(ids, now);
+        Map<Long, Long> reservations = new HashMap<>();
+        if (!ids.isEmpty()) repository.roomReservations(ids).forEach(ref -> reservations.put(ref.getPaymentId(), ref.getReservationId()));
         var names = customers.summaries(payments.stream().map(Payment::getCustomerId).toList());
         Map<Long, Refund> refunded = new HashMap<>();
         refunds.findByPaymentIdIn(ids).forEach(refund -> refunded.put(refund.getPaymentId(), refund));
@@ -241,15 +274,17 @@ public class PaymentService {
                     && policy.permits(state, payment.getBranchId(), BranchAction.WRITE_PAYMENT_HISTORY);
             var refund = refunded.get(payment.getId());
             return new PaymentDetail(Long.toString(payment.getId()), ApiVersion.fromDatabase(payment.getVersion()), true,
-                    "이용권", Long.toString(payment.getBranchId()), names.get(payment.getCustomerId()),
-                    Long.toString(payment.getProductId()), payment.getProductNameSnapshot(), label(payment.getMethod()),
+                    label(payment.getPurpose()), Long.toString(payment.getBranchId()), names.get(payment.getCustomerId()),
+                    id(payment.getProductId()), payment.getProductNameSnapshot(), label(payment.getMethod()),
                     payment.getAmountKrw(), label(payment.getStatus()), payment.getApprovedAt(), payment.getFailedAt(),
                     payment.getCreatedAt(), new ActorSummary(Long.toString(payment.getCreatedBy()),
                             actors.getOrDefault(payment.getCreatedBy(), "")),
                     pass == null ? null : Long.toString(pass.passId()), refund == null ? null : view(refund, actors),
-                    canRefund);
+                    canRefund, id(reservations.get(payment.getId())), null);
         }).toList();
     }
+
+    private static String id(Long value) { return value == null ? null : value.toString(); }
 
     private static RefundView view(Refund refund, Map<Long, String> actors) {
         return new RefundView(Long.toString(refund.getId()), refund.getAmountKrw(), refund.getReason(),
@@ -278,6 +313,14 @@ public class PaymentService {
             case "카드" -> PaymentMethod.CARD;
             case "계좌이체" -> PaymentMethod.TRANSFER;
             default -> PaymentMethod.OTHER;
+        };
+    }
+
+    private static String label(PaymentPurpose purpose) {
+        return switch (purpose) {
+            case PASS -> "이용권";
+            case ROOM -> "스터디룸";
+            case LOCKER -> "사물함";
         };
     }
 

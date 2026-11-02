@@ -1,5 +1,6 @@
 package com.openstudy.modules.payment.repository;
 
+import java.util.Collection;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -15,4 +16,17 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
      */
     @Query(value = "SELECT id FROM payments WHERE id = :id FOR UPDATE", nativeQuery = true)
     List<Long> lock(@Param("id") long id);
+
+    /** Which reservation paid with which payment. */
+    interface RoomReservationRef {
+        long getPaymentId();
+        long getReservationId();
+    }
+
+    /**
+     * JPA-01 native exception: the reservation module depends on this one, so its entity cannot be named here and the
+     * dependency stays one way. uk_room_reservations_2 keeps it to one reservation per payment.
+     */
+    @Query(value = "SELECT payment_id AS paymentId, id AS reservationId FROM room_reservations WHERE payment_id IN (:ids)", nativeQuery = true)
+    List<RoomReservationRef> roomReservations(@Param("ids") Collection<Long> ids);
 }

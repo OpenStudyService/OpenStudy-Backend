@@ -15,7 +15,7 @@ import com.openstudy.modules.payment.entity.Payment;
 import com.openstudy.modules.payment.entity.PaymentStatus;
 
 /**
- * Pass payments of the branches the reader may read payments for. from/to bound created_at as [from, to) in UTC.
+ * Payments of every purpose in the branches the reader may read payments for. from/to bound created_at as [from, to) in UTC.
  * Filtering and paging run in SQL; only fixed fragments are concatenated and every value is bound.
  */
 @Repository
@@ -32,7 +32,7 @@ public class PaymentSearchRepository {
     @SuppressWarnings("unchecked")
     public Page find(Filter filter, Sort sort, boolean descending, long offset, int limit) {
         if (filter.branches().isEmpty()) return new Page(List.of(), 0);
-        var where = new StringBuilder("x.purpose = 'PASS' AND x.branch_id IN (")
+        var where = new StringBuilder("x.branch_id IN (")
                 .append(String.join(",", Collections.nCopies(filter.branches().size(), "?"))).append(")");
         var binds = new ArrayList<Object>(filter.branches().stream().sorted().toList());
         if (filter.status() != null) { where.append(" AND x.status = ?"); binds.add(filter.status().name()); }
