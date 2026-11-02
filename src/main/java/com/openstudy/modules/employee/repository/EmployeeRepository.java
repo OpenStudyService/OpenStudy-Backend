@@ -47,6 +47,21 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
             + "WHERE e.id=:employee AND e.status='ACTIVE' AND m.status='ACTIVE' AND m.branch_id=:branch)", nativeQuery = true)
     Number assignable(@Param("employee") long employee, @Param("branch") long branch);
 
+    /**
+     * Who may take part in a channel (M7-D07): an active OWNER, or an active employee with an active membership at the
+     * channel's branch; for a channel addressed to everyone (null branch) at any branch.
+     */
+    @Query(value = "SELECT e.id,e.name FROM employees e WHERE e.status='ACTIVE' AND (e.global_role='OWNER' OR EXISTS "
+            + "(SELECT 1 FROM branch_memberships m WHERE m.employee_id=e.id AND m.status='ACTIVE' "
+            + "AND (:branch IS NULL OR m.branch_id=:branch))) ORDER BY e.name,e.id", nativeQuery = true)
+    List<Object[]> channelCandidates(@Param("branch") Long branch);
+
+    /** The same rule as {@link #channelCandidates(Long)} for one employee. */
+    @Query(value = "SELECT EXISTS(SELECT 1 FROM employees e WHERE e.id=:employee AND e.status='ACTIVE' AND (e.global_role='OWNER' OR EXISTS "
+            + "(SELECT 1 FROM branch_memberships m WHERE m.employee_id=e.id AND m.status='ACTIVE' "
+            + "AND (:branch IS NULL OR m.branch_id=:branch))))", nativeQuery = true)
+    Number channelEligible(@Param("employee") long employee, @Param("branch") Long branch);
+
     /** Revoked memberships count here: peers need a scope-free invalidation to remove stale choices. */
     @Query(value = "SELECT EXISTS(SELECT 1 FROM employees e WHERE e.id=:employee "
             + "AND (e.global_role='OWNER' OR EXISTS(SELECT 1 FROM branch_memberships m WHERE m.employee_id=e.id "

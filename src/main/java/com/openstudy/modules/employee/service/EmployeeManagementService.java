@@ -1,6 +1,7 @@
 package com.openstudy.modules.employee.service;
 
 import java.util.*;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -9,6 +10,7 @@ import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.web.*;
 import com.openstudy.modules.authorization.dto.BranchAction;
 import com.openstudy.modules.authorization.service.*;
+import com.openstudy.modules.employee.dto.EmployeeAccessReduced;
 import com.openstudy.modules.employee.dto.ManagedEmployee;
 import com.openstudy.modules.employee.dto.ManagedEmployee.Membership;
 import com.openstudy.modules.employee.dto.ManagedEmployee.MembershipResult;
@@ -24,9 +26,10 @@ public class EmployeeManagementService {
     private final AuthorizedCommands commands;
     private final PermissionPresetService presets;
     private final MembershipService memberships;
+    private final ApplicationEventPublisher events;
     public EmployeeManagementService(EmployeeRepository repository, EmployeeChanges changes, AuthorizationService authorization,
-            AuthorizedCommands commands, PermissionPresetService presets, MembershipService memberships) {
-        this.repository=repository; this.changes=changes; this.authorization=authorization; this.commands=commands; this.presets=presets; this.memberships=memberships;
+            AuthorizedCommands commands, PermissionPresetService presets, MembershipService memberships, ApplicationEventPublisher events) {
+        this.repository=repository; this.changes=changes; this.authorization=authorization; this.commands=commands; this.presets=presets; this.memberships=memberships; this.events=events;
     }
     /** The former single read: the account row (FOR UPDATE when locking), then its memberships and grants. */
     private Optional<ManagedEmployee> find(long id, Set<Long> visible, boolean all, boolean lock) {
@@ -79,7 +82,10 @@ public class EmployeeManagementService {
             account.changeAccount(name,EmployeeStatus.valueOf(db),actor);
             changes.saved(account,before.version()-1);
             // Every session of a disabled account ends now; requests are independently guarded against current status too.
-            if(!"ACTIVE".equals(db)) repository.deleteSessions(Long.toString(target));
+            if(!"ACTIVE".equals(db)) {
+                repository.deleteSessions(Long.toString(target));
+                events.publishEvent(new EmployeeAccessReduced(target));
+            }
             var result=find(target,Set.of(),true,true).orElseThrow();
             changes.changed(actor,null,target,"UPDATE_ACCOUNT",before,result,requestId); return result;
         });
@@ -102,6 +108,7 @@ public class EmployeeManagementService {
             var account=repository.findForUpdateById(target).orElseThrow();
             account.touch(actor);
             changes.saved(account,before.version()-1);
+            if("REVOKED".equals(dbStatus)) events.publishEvent(new EmployeeAccessReduced(target));
             var after=find(target,Set.of(branch),false,true).orElseThrow();
             var result=new MembershipResult(after.version(),after.memberships().getFirst());
             changes.changed(actor,branch,target,"UPDATE_MEMBERSHIP",new MembershipResult(before.version(),old),result,requestId); return result;

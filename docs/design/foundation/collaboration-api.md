@@ -4,7 +4,7 @@ Backend [#74](https://github.com/OpenStudyService/OpenStudy-Backend/issues/74)�
 
 정책 근거는 [ADR-M7-001](../../db/ADR-M7-001.md)(M7-D01~D07)이다. 공통 요청·응답·오류·목록 규칙은 [API 계약](api.md)을 따르고, 고객 조회 범위는 [M4 계약](customer-sales-api.md), 정확 일치 조회는 [M5 계약](seat-usage-api.md)을 따른다.
 
-2026-11-01: 업무 operation과 `GET /assignee-candidates`는 #75에서 구현됐다(`implemented`). 2026-11-03: 시설 유형·시설 operation 8개는 #78에서, 고객 문의 operation 8개는 #79에서, 공지 operation 5개는 #80에서 구현됐다(`implemented`). 나머지 operation은 설계 계약(`design-target`)이며 아직 서버에 구현되어 있지 않다. DM과 채팅 실시간 전송은 M14 범위다.
+2026-11-01: 업무 operation과 `GET /assignee-candidates`는 #75에서 구현됐다(`implemented`). 2026-11-03: 시설 유형·시설 operation 8개는 #78에서, 고객 문의 operation 8개는 #79에서, 공지 operation 5개는 #80에서, 채널·메시지 operation 13개는 #76에서 구현됐다(`implemented`). 나머지 operation은 설계 계약(`design-target`)이며 아직 서버에 구현되어 있지 않다. DM과 채팅 실시간 전송은 M14 범위다.
 
 ## 제공 범위
 

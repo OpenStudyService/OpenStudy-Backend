@@ -132,6 +132,15 @@ public class EmployeeAccountService {
         return repository.assignable(employee, branch).intValue() == 1;
     }
 
+    /** Employees a channel of the branch (null: a channel addressed to everyone) may have as members. */
+    public List<EmployeeLookup> channelCandidates(Long branch) {
+        return repository.channelCandidates(branch).stream().map(row -> new EmployeeLookup(row[0].toString(), (String) row[1])).toList();
+    }
+
+    public boolean channelEligible(long employee, Long branch) {
+        return repository.channelEligible(employee, branch).intValue() == 1;
+    }
+
     public boolean relatedToBranches(long employee, Set<Long> authorizedBranches) {
         if (authorizedBranches.isEmpty()) return false;
         return repository.relatedToBranches(employee, authorizedBranches).intValue() == 1;

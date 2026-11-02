@@ -55,9 +55,9 @@ class FoundationMigrationTests {
     }
     long count(String sql) { return jdbc.queryForObject(sql, Long.class); }
     @Test void createsTheConsolidatedBaselineWithIncrementalMigrationsAndPreservesDataOnRestart() {
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(2);
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(3);
         assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank", String.class))
-                .containsExactly("1", "2");
+                .containsExactly("1", "2", "3");
         assertThat(count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name <> 'flyway_schema_history'"))
                 .isEqualTo(65);
         assertThat(count("SELECT COUNT(*) FROM employees")).isZero();
@@ -160,8 +160,8 @@ class FoundationMigrationTests {
                 + "(60,50,20,30,'PASS','CASH',1000,'FAILED','late',10,'2026-03-01 00:00:00'),"
                 + "(61,50,21,30,'PASS','CASH',1000,'FAILED','early',10,'2026-02-01 00:00:00')");
 
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(1);
-        assertThat(flyway(null).validateWithResult().validationSuccessful).isTrue();
+        assertThat(flyway("2").migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(flyway("2").validateWithResult().validationSuccessful).isTrue();
         var paid = jdbc.queryForMap("SELECT registered_branch_id,memo,updated_at,version FROM customers WHERE id=50");
         assertThat(((Number) paid.get("registered_branch_id")).longValue()).isEqualTo(21);
         assertThat(paid.get("memo")).isNull();
@@ -179,6 +179,23 @@ class FoundationMigrationTests {
         assertThatThrownBy(() -> jdbc.update("INSERT INTO customers(member_no,name,registered_branch_id) VALUES('BAD','Bad',999)"))
                 .hasStackTraceContaining("fk_customers_registered_branch");
         assertThatThrownBy(() -> jdbc.update("DELETE FROM branches WHERE id=22"))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+    }
+
+    @Test void v3AddsChannelDescriptionAndVersionToExistingConversations() {
+        assertThat(flyway("2").migrate().migrationsExecuted).isEqualTo(2);
+        jdbc.update("INSERT INTO branches(id,code,name,address) VALUES(20,'A','A','Test')");
+        jdbc.update("INSERT INTO conversations(id,kind,branch_id,name) VALUES(40,'GLOBAL_CHANNEL',NULL,'All'),(41,'BRANCH_CHANNEL',20,'Branch')");
+
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(flyway(null).validateWithResult().validationSuccessful).isTrue();
+        assertThat(jdbc.queryForList("SELECT description FROM conversations WHERE id IN (40,41)", String.class)).containsOnlyNulls();
+        assertThat(jdbc.queryForList("SELECT version FROM conversations WHERE id IN (40,41)", Long.class)).containsExactly(0L, 0L);
+        var columns = jdbc.queryForList("SELECT COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,COLUMN_DEFAULT FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='conversations' AND COLUMN_NAME IN ('description','version') ORDER BY COLUMN_NAME");
+        assertThat(columns.get(0)).containsEntry("COLUMN_TYPE", "varchar(500)").containsEntry("IS_NULLABLE", "YES");
+        assertThat(columns.get(1)).containsEntry("COLUMN_TYPE", "bigint unsigned").containsEntry("IS_NULLABLE", "NO").containsEntry("COLUMN_DEFAULT", "0");
+        jdbc.update("UPDATE conversations SET description=? WHERE id=40", "가".repeat(500));
+        assertThatThrownBy(() -> jdbc.update("UPDATE conversations SET description=? WHERE id=40", "가".repeat(501)))
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }
 
