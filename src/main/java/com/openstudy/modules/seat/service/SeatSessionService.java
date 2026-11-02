@@ -220,7 +220,7 @@ public class SeatSessionService {
     @Transactional(readOnly = true)
     public SeatSessionView get(long actor, long id, String scope) {
         Set<Long> selected = policy.scope(policy.current(actor), scope, BranchAction.READ);
-        return sessions.findById(id).filter(session -> selected.contains(session.getBranchId())).map(this::view)
+        return sessions.findById(id).filter(session -> selected.contains(session.getBranchId())).map(this::stored)
                 .orElseThrow(SeatSessionService::notFound);
     }
 
@@ -280,7 +280,18 @@ public class SeatSessionService {
         return result;
     }
 
-    private SeatSessionView view(SeatSession session) {
+    /** A command's own result, which reports the balance it left behind. */
+    private SeatSessionView view(SeatSession session) { return view(session, true); }
+
+    /**
+     * A read of the record. The pass may belong to another branch (M5-D01), and that branch's balance is shown only
+     * while the stay runs: a closed stay must not stay a way to follow the customer's current balance.
+     */
+    private SeatSessionView stored(SeatSession session) { return view(session, balanceVisible(session)); }
+
+    private static boolean balanceVisible(SeatSession session) { return session.getStatus() == SeatSession.Status.ACTIVE; }
+
+    private SeatSessionView view(SeatSession session, boolean balance) {
         long id = session.getId();
         var history = moves.findBySeatSessionIdOrderByMovedAtAscIdAsc(id);
         Set<Long> seatIds = new HashSet<>(Set.of(session.getSeatId()));
@@ -298,7 +309,7 @@ public class SeatSessionService {
                 move.getMovedAt(), actor(move.getActorEmployeeId(), names), move.getReason())).toList();
         long customerId = session.getCustomerId();
         return view(session, passes.sessionPass(session.getPassId()), refs, customers.summaries(List.of(customerId)).get(customerId),
-                names, moveViews);
+                names, moveViews, balance);
     }
 
     /** A list item is a detail without its moves (the contract's empty array); the page is read in batches. */
@@ -311,18 +322,19 @@ public class SeatSessionService {
                 .forEach(seat -> refs.put(seat.getId(), ref(seat)));
         Map<Long, String> names = employees.names(rows.stream().map(SeatSession::getExceptionActorId).filter(Objects::nonNull).toList());
         return rows.stream().map(session -> view(session, ownedPasses.get(session.getPassId()), refs,
-                summaries.get(session.getCustomerId()), names, List.of())).toList();
+                summaries.get(session.getCustomerId()), names, List.of(), balanceVisible(session))).toList();
     }
 
     private static SeatSessionView view(SeatSession session, SessionPass pass, Map<Long, SeatRef> refs, CustomerSummary customer,
-            Map<Long, String> names, List<SeatMove> moveViews) {
+            Map<Long, String> names, List<SeatMove> moveViews, boolean balance) {
         // Minutes are not stored on their own: on a time pass every used minute is either deducted or overage.
         long deductedMinutes = pass.deductsMinutes() ? session.getBilledMinutes() - session.getOverageMinutes() : 0;
         return new SeatSessionView(Long.toString(session.getId()), ApiVersion.fromDatabase(session.getVersion()), session.getStatus().label(),
                 Long.toString(session.getBranchId()), refs.get(session.getSeatId()), customer,
                 new SeatSessionPass(pass.id(), pass.kind(), pass.productName(), pass.purchaseBranchId()), session.getCheckedInAt(),
                 session.getCheckedOutAt(), session.getBilledMinutes(), deductedMinutes, session.getBilledKrw(),
-                session.getOverageMinutes(), session.getOverageKrw(), pass.remainingMinutes(), pass.remainingCreditKrw(),
+                session.getOverageMinutes(), session.getOverageKrw(), balance ? pass.remainingMinutes() : null,
+                balance ? pass.remainingCreditKrw() : null,
                 actor(session.getExceptionActorId(), names), session.getExceptionReason(), moveViews);
     }
 

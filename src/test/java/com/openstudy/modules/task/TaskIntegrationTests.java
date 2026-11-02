@@ -243,6 +243,7 @@ class TaskIntegrationTests {
         }
         // The stored assignee stays; only a new assignee is validated, so other edits keep working.
         try (var s = login(creator)) {
+            assertThat(send(s, "PATCH", path, versioned(task)).statusCode()).isEqualTo(422);
             var changed = send(s, "PATCH", path, versioned(task, "title", "제목만 수정"));
             assertThat(changed.statusCode()).isEqualTo(200);
             assertThat(node(changed).at("/assignee/id").asString()).isEqualTo(Long.toString(assignee));

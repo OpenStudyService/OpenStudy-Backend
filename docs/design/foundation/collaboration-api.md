@@ -103,7 +103,7 @@ Backend [#74](https://github.com/OpenStudyService/OpenStudy-Backend/issues/74)�
 
 - **등록**: 지점 직원 누구나 등록한다. 등록자는 세션 사용자이며 입력으로 받지 않는다. 분류(`category`)는 1~60자 자유 입력이다.
 - **수정자**: 업무 지점의 유효 소속이면서 등록자·담당자·해당 지점 MANAGER 중 하나다. 소속이 회수되면 등록자나 담당자여도 수정할 수 없다. 조회는 가능한데 수정자가 아니면 403이다.
-- **수정**: `PATCH`는 제목·내용·담당자·기한·우선순위·분류를 받는다. `branchId`·`status`·`checklist`를 보내면 422 `IMMUTABLE_FIELD`다. 담당자를 실제로 바꿀 때만 새 담당자의 자격을 검사한다.
+- **수정**: `PATCH`는 제목·내용·담당자·기한·우선순위·분류를 받는다. `version` 외 항목이 없으면 422다. `branchId`·`status`·`checklist`를 보내면 422 `IMMUTABLE_FIELD`다. 담당자를 실제로 바꿀 때만 새 담당자의 자격을 검사한다.
 - **삭제 API는 없다.** SRS에 업무 삭제 요구사항이 없고, `task_events`와 `messages.related_task_id`가 업무를 `RESTRICT`로 참조해 처리 이력·공유 카드를 보존한다. 잘못 등록한 업무는 완료 처리한다. 삭제는 체크 항목에만 있다.
 
 ### 상태 전이

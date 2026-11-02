@@ -46,6 +46,9 @@ class PassHistoryIntegrationTests extends PassUsageFixture {
         long seat = seat(first);
         try (var s = login(clerk)) {
             long session = entered(s, seat, customer, pass);
+            // Another branch's balance shows while the stay runs, in both reads, and not after it closed.
+            assertThat(ok(s, "/api/seat-sessions/" + session).get("passRemainingMinutes").asLong()).isEqualTo(100);
+            assertThat(ok(s, "/api/seat-sessions").get("items").get(0).get("passRemainingMinutes").asLong()).isEqualTo(100);
             clock.fixed = TEN.plusSeconds(50 * 60 + 20);
             left(s, session, null);
             var response = get(s, "/api/seat-sessions");
@@ -71,7 +74,10 @@ class PassHistoryIntegrationTests extends PassUsageFixture {
             // The list and the detail agree apart from the moves.
             var detail = ok(s, "/api/seat-sessions/" + session);
             assertThat(detail.get("usedMinutes")).isEqualTo(item.get("usedMinutes"));
-            assertThat(detail.get("passRemainingMinutes")).isEqualTo(item.get("passRemainingMinutes"));
+            assertThat(item.get("passRemainingMinutes").isNull()).isTrue();
+            assertThat(item.get("passRemainingCreditKrw").isNull()).isTrue();
+            assertThat(detail.get("passRemainingMinutes").isNull()).isTrue();
+            assertThat(detail.get("passRemainingCreditKrw").isNull()).isTrue();
         }
     }
 
