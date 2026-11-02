@@ -78,6 +78,7 @@ class InquiryIntegrationTests {
         }
         jdbc.update("DELETE FROM customer_service_interactions WHERE customer_id IN (SELECT id FROM customers WHERE member_no LIKE ?)", token + "%");
         for (long id : branches) {
+            jdbc.update("DELETE g FROM membership_permission_grants g JOIN branch_memberships m ON m.id=g.membership_id WHERE m.branch_id=?", id);
             jdbc.update("DELETE FROM branch_memberships WHERE branch_id=?", id);
             jdbc.update("DELETE FROM branch_weekly_hours WHERE branch_id=?", id);
         }
@@ -188,6 +189,10 @@ class InquiryIntegrationTests {
     void lookup(Session session, long branch, long customer) throws Exception {
         var response = send(session, "/api/customer-lookups/check-in", Map.of("branchId", Long.toString(branch), "memberNo", memberNo(customer)));
         assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+    }
+
+    HttpResponse<String> summary(Session session, long branch, long customer) throws Exception {
+        return send(session, "/api/customers/" + customer + "/cross-branch-summary", Map.of("branchId", Long.toString(branch), "reason", "현장 응대"));
     }
 
     static String key() { return UUID.randomUUID().toString(); }
@@ -334,6 +339,32 @@ class InquiryIntegrationTests {
             assertThat(node(get(s, "/api/customers?q=" + enc(token + "조회 고객"))).at("/meta/total").asLong()).isZero();
             assertThat(get(s, "/api/customers/" + other).statusCode()).isEqualTo(404);
         }
+    }
+
+    /** The summary's own trail shares the lookup's table, but it withheld the name on purpose: it must not vouch for one. */
+    @Test void aCrossBranchSummaryDoesNotQualifyTheRequesterWhateverMadeThemEligible() throws Exception {
+        jdbc.update("INSERT INTO membership_permission_grants(membership_id,permission_id) SELECT m.id,p.id FROM branch_memberships m "
+                + "JOIN permission_definitions p ON p.code='customers:cross-branch-read' WHERE m.employee_id=? AND m.branch_id=?", staff, first);
+        for (long employee : List.of(manager, staff)) {
+            try (var s = login(employee)) {
+                assertThat(summary(s, first, other).statusCode()).isEqualTo(200);
+                var response = createRaw(s, draft(first, other, "요약 뒤 문의"), key());
+                assertThat(response.statusCode()).as(response.body()).isEqualTo(404);
+                assertThat(response.body()).doesNotContain(token, memberNo(other));
+            }
+        }
+        assertThat(count("SELECT COUNT(*) FROM customer_service_interactions WHERE customer_id=? AND source='CROSS_BRANCH_SUMMARY'", other)).isEqualTo(2);
+        assertThat(count("SELECT COUNT(*) FROM customer_service_interactions WHERE customer_id=? AND source='CHECK_IN_LOOKUP'", other)).isZero();
+        assertThat(count("SELECT COUNT(*) FROM inquiries WHERE branch_id=?", first)).isZero();
+    }
+
+    @Test void anExactLookupStillQualifiesTheRequesterAfterASummaryOfTheSameCustomer() throws Exception {
+        try (var s = login(manager)) {
+            assertThat(summary(s, first, lookedUp).statusCode()).isEqualTo(200);
+            lookup(s, first, lookedUp);
+            assertThat(create(s, first, lookedUp, "조회 후").at("/customer/name").asString()).isEqualTo(token + "조회 고객");
+        }
+        assertThat(count("SELECT COUNT(*) FROM customer_service_interactions WHERE customer_id=? AND source='CHECK_IN_LOOKUP'", lookedUp)).isEqualTo(1);
     }
 
     @Test void customerWithNeitherScopeNorLookupRecordIsNotFoundAndNothingIsSaved() throws Exception {

@@ -291,7 +291,7 @@ amountKrw = terms × 결제 당시 사물함의 4주 요금
 
 **기록(NFR-SEC-09)**
 
-- 성공: `customer_service_interactions`에 고객·응대 지점·조회자·사유·시각을 남긴다. 이 표는 소속을 참조하므로, 응대 지점에 소속 행이 없는 OWNER는 `audit_events`(`CROSS_BRANCH_SUMMARY`)에 남긴다.
+- 성공: `customer_service_interactions`에 고객·응대 지점·조회자·사유·시각을 남긴다. 기록 출처는 `CROSS_BRANCH_SUMMARY`이며, 정확 일치 조회 기록과 달리 문의 대상 판정의 근거가 되지 않는다. 이 표는 소속을 참조하므로, 응대 지점에 소속 행이 없는 OWNER는 `audit_events`(`CROSS_BRANCH_SUMMARY`)에 남긴다.
 - 거부: `audit_events`(`CROSS_BRANCH_SUMMARY_DENIED`)에 조회자·대상 고객 ID·응대 지점을 남긴다. 거부 응답이 롤백해도 남도록 별도 트랜잭션으로 기록한다. 사유 원문은 남기지 않는다.
 - 없는 고객은 404다.
 

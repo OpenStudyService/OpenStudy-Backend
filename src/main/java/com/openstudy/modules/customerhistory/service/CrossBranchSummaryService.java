@@ -79,7 +79,7 @@ public class CrossBranchSummaryService {
     }
 
     private void record(AuthorizationState state, long actor, long id, long branch, String reason, Instant now, String requestId) {
-        if (state.memberships().containsKey(branch)) customers.recordLookup(id, branch, actor, reason, now);
+        if (state.memberships().containsKey(branch)) customers.recordCrossBranchSummary(id, branch, actor, reason, now);
         // The table references branch_memberships, which an OWNER may not have at this branch.
         else audit.record(AuditEvent.change(actor, branch, ENTITY, id, "CROSS_BRANCH_SUMMARY", reason, null, null, requestId));
     }

@@ -55,9 +55,9 @@ class FoundationMigrationTests {
     }
     long count(String sql) { return jdbc.queryForObject(sql, Long.class); }
     @Test void createsTheConsolidatedBaselineWithIncrementalMigrationsAndPreservesDataOnRestart() {
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(4);
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(5);
         assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank", String.class))
-                .containsExactly("1", "2", "3", "4");
+                .containsExactly("1", "2", "3", "4", "5");
         assertThat(count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name <> 'flyway_schema_history'"))
                 .isEqualTo(65);
         assertThat(count("SELECT COUNT(*) FROM employees")).isZero();
@@ -230,8 +230,8 @@ class FoundationMigrationTests {
         for (String slot : List.of("14:00", "14:30", "15:00", "15:30"))
             jdbc.update("INSERT INTO room_reservation_slots(reservation_id,room_id,slot_start_at) VALUES(90,30,?)", "2026-12-01 " + slot + ":00");
 
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(1);
-        assertThat(flyway(null).validateWithResult().validationSuccessful).isTrue();
+        assertThat(flyway("4").migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(flyway("4").validateWithResult().validationSuccessful).isTrue();
 
         var room = jdbc.queryForMap("SELECT rate_per_hour_krw,updated_at,version FROM rooms WHERE id=30");
         assertThat(((Number) room.get("rate_per_hour_krw")).longValue()).isEqualTo(8000);
@@ -245,6 +245,23 @@ class FoundationMigrationTests {
         assertThat(jdbc.queryForList("SELECT DATE_FORMAT(slot_start_at,'%H:%i') FROM room_reservation_slots WHERE reservation_id=90 ORDER BY slot_start_at", String.class))
                 .containsExactly("14:00", "15:00");
         assertThat(columnsNamed("'rate_per_30min_krw','rate_per_30min_snapshot_krw','slot_count'")).isZero();
+    }
+
+    @Test void v5MarksEveryExistingInteractionAsAnExactLookupAndAcceptsOnlyTheTwoSources() {
+        flyway("4").migrate();
+        jdbc.update("INSERT INTO employees(id,email,password_hash,name,nickname,global_role,status) VALUES(10,'staff@example.com','hash','Staff','Staff','EMPLOYEE','ACTIVE')");
+        jdbc.update("INSERT INTO branches(id,code,name,address) VALUES(20,'B','B','Seoul')");
+        jdbc.update("INSERT INTO branch_memberships(employee_id,branch_id,role,status) VALUES(10,20,'STAFF','ACTIVE')");
+        jdbc.update("INSERT INTO customers(id,member_no,name,phone) VALUES(40,'M-1','Customer','01012345678')");
+        jdbc.update("INSERT INTO customer_service_interactions(id,customer_id,branch_id,employee_id,reason) VALUES(50,40,20,10,'lookup')");
+
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(flyway(null).validateWithResult().validationSuccessful).isTrue();
+
+        assertThat(jdbc.queryForObject("SELECT source FROM customer_service_interactions WHERE id=50", String.class)).isEqualTo("CHECK_IN_LOOKUP");
+        jdbc.update("INSERT INTO customer_service_interactions(customer_id,branch_id,employee_id,reason,source) VALUES(40,20,10,'summary','CROSS_BRANCH_SUMMARY')");
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO customer_service_interactions(customer_id,branch_id,employee_id,reason,source) VALUES(40,20,10,'x','OTHER')"))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
     }
 
     @Test void v4RefusesAV3DatabaseWithNonHourReservationsWithoutChangingAnything() {

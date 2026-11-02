@@ -316,6 +316,7 @@ class CustomerHistoryIntegrationTests extends PassUsageFixture {
         assertThat(((Number) row.get("branch_id")).longValue()).isEqualTo(first);
         assertThat(((Number) row.get("employee_id")).longValue()).isEqualTo(granted);
         assertThat(row.get("reason")).isEqualTo(REASON);
+        assertThat(row.get("source")).isEqualTo("CROSS_BRANCH_SUMMARY");
         assertThat(jdbc.queryForObject("SELECT MAX(verified_at) FROM customer_service_interactions WHERE customer_id=?", java.sql.Timestamp.class, customer).toInstant())
                 .isEqualTo(TEN.plusSeconds(60));
         assertThat(audits("CROSS_BRANCH_SUMMARY", granted)).as("the table is the record").isZero();

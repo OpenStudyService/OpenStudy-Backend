@@ -68,3 +68,45 @@
 - 이 조회의 횟수 제한은 없다. M5-D08과 같이 후속 과제다. 거부 감사도 호출마다 쌓인다.
 - `getCustomerSpaceHistory`의 `x-error-codes`에 `VALIDATION_FAILED`가 없지만 형식이 틀린 `scope`는 기존 공통 동작대로 422다. 응답 목록에는 422가 있어 계약을 고치지 않고 이 기록에만 남긴다.
 - 고객 상세 화면과 응대 이력 조회 화면은 Frontend와 후속 이슈의 범위다.
+
+## 후속 수정(2026-11-03): 요약 기록이 문의 대상 판정을 통과시키던 문제
+
+위 기록의 "마이그레이션은 없다"는 이 수정으로 바뀌었다. 당시 판단의 기록으로 그대로 두고 변경 이유를 여기에 남긴다.
+
+### 1. 배경 / 문제
+
+#72 검증에서 발견됐다. 요약의 성공 기록이 정확 일치 조회와 같은 `customer_service_interactions`에 들어가는데, `requireInquiryTarget`은 이 표의 (고객, 지점, 직원) 행이 있으면 "정확 일치 조회로 찾은 고객"으로 판정했다. 그래서 MANAGER나 `customers:cross-branch-read` 보유자가 조회 범위 밖 고객의 임의 ID로 요약을 호출하면, 이어지는 `POST /inquiries`가 그 고객을 받아 응답의 `CustomerSummary`로 회원번호와 이름을 돌려줬다. 요약이 일부러 뺀 신원 정보를 얻는 경로다. `collaboration-api.md`의 대상 규칙("임의의 고객 ID로 이름을 알아내는 것을 막기 위해서다")과 `space-operations-api.md`의 "이 요약으로 일반 고객 조회 범위가 넓어지지 않는다"를 어긴다.
+
+최초 구현 때 이 표를 읽는 쪽을 확인하지 않고 정확 일치 조회의 기록 분기만 따라 쓴 것이 원인이다.
+
+### 2. 검토한 선택지
+
+- **성공 기록을 `audit_events`로만 남기기**: 스키마가 그대로이지만 계약이 성공 기록 위치를 이 표로 정했으므로 쓰지 않았다.
+- **`reason` 문자열로 구분**: 정확 일치 조회의 사유는 서버가 정한 문자열이다. 그러나 요약의 사유는 직원이 입력하므로 같은 문구를 쓰면 판정을 속일 수 있다. 쓰지 않았다.
+- **기록 출처 열 추가**: 판정을 입력값이 닿지 않는 서버 값으로 할 수 있고 기존 행은 기본값으로 맞다. 이 방안을 택했다.
+- **출처를 넘기는 방식**: `recordLookup`에 enum 인자를 더하면 좌석·`customerhistory` 모듈이 고객 모듈의 entity를 가져와야 해서 `ModuleBoundaryTests`가 막는다. 고객 서비스에 진입점을 하나 더 뒀다.
+
+### 3. 결정 및 이유
+
+- `V5__customer_interaction_source.sql`로 `source` ENUM(`CHECK_IN_LOOKUP`, `CROSS_BRANCH_SUMMARY`, 기본값 `CHECK_IN_LOOKUP`)을 더했다. V5 이전에 이 표를 쓴 것은 정확 일치 조회뿐이고 #72는 아직 병합되지 않았으므로 기존 행은 기본값이 맞다.
+- `requireInquiryTarget`은 `CHECK_IN_LOOKUP` 행만 인정한다. 요약을 먼저 하고 실제 정확 일치 조회도 한 직원은 조회 기록으로 통과한다.
+- 공개 API는 계약대로 돌아갔으므로 계약 내용은 바꾸지 않았다. `space-operations-api.md`에 기록 출처 한 문장만 더했고 `collaboration-api.md`는 그대로다.
+- **이 표의 다른 판정 경로**: `src/main/java`에서 이 표를 읽는 코드는 위 판정 하나뿐이다. 다른 곳은 쓰기(`recordLookup`, `recordCrossBranchSummary`)이고, 문의 등록의 호출도 `InquiryService` 한 곳이다. 저장소 메서드 이름에 출처를 넣어 앞으로 읽는 쪽이 출처를 고르게 했다.
+
+### 4. 구현 내용
+
+- `CustomerInteractionSource`, `CustomerServiceInteraction.source`, `CustomerService.recordCrossBranchSummary`, `existsByCustomerIdAndBranchIdAndEmployeeIdAndSource`
+- `FoundationMigrationTests`·`OwnerBootstrapTests`·`DatabaseInitializationTests`의 버전 기대값, V4 전환 시험의 목표 버전 고정
+- `docs/db/schema-full.sql`을 `-PfoundationExportDir`로 V5 기준 재추출(열 1줄과 Flyway 이력 외에는 추출 시각 차이), `docs/db/README.md`, `docs/db/erd.mmd`
+
+### 5. 검증 결과
+
+- **수정 전 실패 확인**: `InquiryIntegrationTests.aCrossBranchSummaryDoesNotQualifyTheRequesterWhateverMadeThemEligible`이 404 대신 문의 생성 응답(201)을 받아 실패했고, 본문에 회원번호와 이름이 있었다. 같은 실행에서 정확 일치 조회 회귀 시험은 `source` 열이 없어 SQL 오류로 실패했는데, 이것은 문제의 재현이 아니라 열이 아직 없어서다.
+- 수정 후: 위 시험이 MANAGER와 권한 보유 STAFF 모두 404, 응답에 신원 없음, 문의 행 없음, 출처 행 2건을 확인한다. `customerFoundByTheRequestersOwnExactLookup...`(기존)과 `anExactLookupStillQualifiesTheRequesterAfterASummaryOfTheSameCustomer`(신규)가 정확 일치 조회 뒤 문의 등록을 확인한다.
+- `v5MarksEveryExistingInteractionAsAnExactLookupAndAcceptsOnlyTheTwoSources`: V4 DB의 기존 행이 `CHECK_IN_LOOKUP`이 되고 다른 값은 거부된다. 재추출한 SQL의 복원 검증도 `FoundationMigrationTests` 안에서 통과했다.
+- `./gradlew cleanTest test` 전체(37분 50초): 65개 suite, 821개 테스트, 실패·오류·건너뜀 0. 수정 후 첫 전체 실행에서 통과했고, 그 뒤에는 이 기록만 바꿨다.
+- 미검증: 이미 V4가 적용된 실제 운영 DB에 대한 V5 적용. 시험은 Testcontainers MySQL에서만 수행했다.
+
+### 6. 남은 작업 / 보류 사항
+
+- 병합 시점에 main의 가장 큰 버전이 올라가 있으면 V5 번호를 다시 맞춘다(`db/migration/README.md`).
