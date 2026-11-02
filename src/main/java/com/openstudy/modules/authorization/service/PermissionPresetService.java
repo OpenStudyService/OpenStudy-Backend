@@ -26,7 +26,8 @@ import com.openstudy.modules.authorization.repository.PermissionPresetRepository
 @Service
 public class PermissionPresetService {
     private static final Set<String> CODES = Set.of("members:write", "operations:write", "payments:read",
-            "payments:write", "sales:read", "facilities:write", "notices:write", "people:manage", "ai:read");
+            "payments:write", "sales:read", "facilities:write", "notices:write", "people:manage", "ai:read",
+            "customers:cross-branch-read");
     private static final String CREATE = "createPermissionPreset";
     private final PermissionPresetRepository repository;
     private final PermissionDefinitionRepository definitions;
