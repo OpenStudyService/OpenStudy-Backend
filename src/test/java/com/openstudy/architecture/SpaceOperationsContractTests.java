@@ -95,14 +95,18 @@ class SpaceOperationsContractTests {
         });
     }
 
-    @Test void issue69ImplementedTheRoomAndBookingOperationsAndLeftTheRestAsDesigned() {
+    @Test void issues69And70ImplementedTheRoomAndBookingOperations() {
         for (String id : List.of("listRooms", "createRoom", "getRoom", "updateRoom", "changeRoomStatus", "listRoomReservations",
-                "createRoomReservation", "getRoomReservationCalendar", "getRoomReservation")) {
+                "createRoomReservation", "getRoomReservationCalendar", "getRoomReservation", "cancelRoomReservation",
+                "startRoomUsage", "completeRoomUsage")) {
             assertThat(operation(id).get("x-implementation-status").asString()).as(id).isEqualTo("implemented");
         }
-        for (String id : List.of("cancelRoomReservation", "startRoomUsage", "completeRoomUsage")) {
-            assertThat(operation(id).get("x-implementation-status").asString()).as(id).isEqualTo("design-target");
-        }
+    }
+
+    @Test void completingEarlyReleasesTheHoursNotStartedYet() throws Exception {
+        assertThat(operation("completeRoomUsage").get("description").asString()).contains("아직 시작하지 않은 시간의 슬롯을 삭제");
+        assertThat(Files.readString(DESIGN.resolve("space-operations-api.md")))
+                .contains("14:00~17:00 예약을 15:30에 완료하면 16:00 슬롯만 삭제하고 14:00·15:00 슬롯은 유지한다", "| 이용 완료 | 예약 행 잠금·검증");
     }
 
     @Test void paidCommandsRequireARequestKeyAndRejectADifferentInputWith409() {

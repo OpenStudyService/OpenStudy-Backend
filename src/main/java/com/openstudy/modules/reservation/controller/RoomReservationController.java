@@ -60,5 +60,24 @@ public class RoomReservationController {
         return ResponseEntity.created(URI.create("/api/room-reservations/" + result.id())).body(result);
     }
 
+    @PostMapping("/{id}/cancel")
+    public RoomReservationView cancel(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope,
+            @RequestHeader(name = "Idempotency-Key", required = false) String key, @RequestBody Map<String, Object> body,
+            HttpServletRequest request) {
+        return service.cancel(actor(actor), id, scope, key, body, ApiRequestFilter.requestId(request));
+    }
+
+    @PostMapping("/{id}/start")
+    public RoomReservationView start(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope,
+            @RequestBody Map<String, Object> body, HttpServletRequest request) {
+        return service.start(actor(actor), id, scope, body, ApiRequestFilter.requestId(request));
+    }
+
+    @PostMapping("/{id}/complete")
+    public RoomReservationView complete(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope,
+            @RequestBody Map<String, Object> body, HttpServletRequest request) {
+        return service.complete(actor(actor), id, scope, body, ApiRequestFilter.requestId(request));
+    }
+
     private static long actor(Authentication authentication) { return Long.parseLong(authentication.getName()); }
 }

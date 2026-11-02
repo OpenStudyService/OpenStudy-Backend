@@ -53,7 +53,7 @@ import com.openstudy.modules.ticket.service.PassService;
 import com.openstudy.modules.ticket.service.ProductService;
 
 /**
- * Mock pass payments (FR-PAY-01/02/04/05/06/08) and their full refund (FR-PAY-09/10). The amount is the price of the product as locked for this sale; no
+ * Mock pass payments (FR-PAY-01/02/04/05/06/08) and their full refund (FR-PAY-09/10), and the ledger side of room bookings. The amount is the price of the product as locked for this sale; no
  * request field can set it. An approved payment and its single pass commit together or not at all, and a failed
  * payment is recorded without a pass. Every check runs in the order the contract lists, under AuthorizedCommands.
  */
@@ -204,6 +204,28 @@ public class PaymentService {
                     clock.instant().plus(Duration.ofHours(24)));
             return result;
         });
+    }
+
+    /**
+     * The full refund of a room payment, inside the cancellation's transaction: the caller has authorized the actor,
+     * replayed any stored result and locked the reservation, and its failure rolls this back. The key is the caller's
+     * server-made value and the processing branch is the payment's own (M4-D08). uk_refunds_1 stays the last guard.
+     */
+    public long refundRoom(long actor, long paymentId, String reason, String storedKey, Instant at, String requestId) {
+        repository.lock(paymentId);
+        var payment = repository.findById(paymentId).orElseThrow();
+        if (payment.getPurpose() != PaymentPurpose.ROOM) throw new IllegalStateException("A reservation holds a room payment");
+        var refund = refunds.saveAndFlush(Refund.full(payment, actor, reason, storedKey, at));
+        payment.refund();
+        repository.saveAndFlush(payment);
+        var after = new LinkedHashMap<String, Object>();
+        after.put("status", payment.getStatus().name());
+        after.put("refundId", Long.toString(refund.getId()));
+        after.put("amountKrw", refund.getAmountKrw());
+        audit.record(AuditEvent.change(actor, payment.getBranchId(), "payments", paymentId, "REFUNDED",
+                json.writeValueAsString(Map.of("status", PaymentStatus.APPROVED.name())), json.writeValueAsString(after), requestId));
+        outbox.invalidate(payment.getBranchId(), "payments", paymentId);
+        return refund.getId();
     }
 
     /**
