@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
@@ -38,6 +39,7 @@ import com.openstudy.modules.customer.service.CustomerService;
 import com.openstudy.modules.employee.service.EmployeeAccountService;
 import com.openstudy.modules.payment.dto.response.ActorSummary;
 import com.openstudy.modules.payment.dto.response.PaymentDetail;
+import com.openstudy.modules.payment.dto.response.PaymentTrail;
 import com.openstudy.modules.payment.dto.response.RefundView;
 import com.openstudy.modules.payment.entity.Payment;
 import com.openstudy.modules.payment.entity.PaymentMethod;
@@ -171,6 +173,24 @@ public class PaymentService {
                     clock.instant().plus(Duration.ofHours(24)));
             return result;
         });
+    }
+
+    /**
+     * Who sold and who refunded these payments, for a customer's pass history. No amounts leave here (NFR-SEC-06), which
+     * is why this needs no payments:read; the caller has authorized the passes that name the payments.
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, PaymentTrail> trails(Collection<Long> ids) {
+        if (ids.isEmpty()) return Map.of();
+        Map<Long, Refund> refunded = new HashMap<>();
+        refunds.findByPaymentIdIn(ids).forEach(refund -> refunded.put(refund.getPaymentId(), refund));
+        Map<Long, PaymentTrail> result = new HashMap<>();
+        for (var payment : repository.findAllById(ids)) {
+            var refund = refunded.get(payment.getId());
+            result.put(payment.getId(), new PaymentTrail(payment.getApprovedAt(), payment.getCreatedBy(), refund == null ? null
+                    : new PaymentTrail.RefundTrail(refund.getRefundedAt(), refund.getProcessedBy(), refund.getProcessingBranchId(), refund.getReason())));
+        }
+        return result;
     }
 
     @Transactional(readOnly = true)

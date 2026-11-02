@@ -7,14 +7,17 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -27,10 +30,14 @@ import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyStore;
 import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.ApiVersion;
+import com.openstudy.common.web.ListQuery;
+import com.openstudy.common.web.PageResponse;
 import com.openstudy.common.web.StrictInput;
+import com.openstudy.common.web.TimeRange;
 import com.openstudy.modules.authorization.dto.BranchAction;
 import com.openstudy.modules.authorization.service.AuthorizationService;
 import com.openstudy.modules.authorization.service.AuthorizedCommands;
+import com.openstudy.modules.customer.dto.response.CustomerSummary;
 import com.openstudy.modules.customer.service.CustomerService;
 import com.openstudy.modules.employee.service.EmployeeAccountService;
 import com.openstudy.modules.seat.dto.response.ActorSummary;
@@ -38,6 +45,7 @@ import com.openstudy.modules.seat.dto.response.SeatMove;
 import com.openstudy.modules.seat.dto.response.SeatRef;
 import com.openstudy.modules.seat.dto.response.SeatSessionPass;
 import com.openstudy.modules.seat.dto.response.SeatSessionView;
+import com.openstudy.modules.seat.dto.response.SeatUsage;
 import com.openstudy.modules.seat.entity.Seat;
 import com.openstudy.modules.seat.entity.SeatSession;
 import com.openstudy.modules.seat.entity.SeatSessionMove;
@@ -45,7 +53,9 @@ import com.openstudy.modules.seat.entity.SeatState;
 import com.openstudy.modules.seat.repository.SeatRepository;
 import com.openstudy.modules.seat.repository.SeatSessionMoveRepository;
 import com.openstudy.modules.seat.repository.SeatSessionRepository;
+import com.openstudy.modules.seat.repository.SeatSessionSearchRepository;
 import com.openstudy.modules.ticket.dto.PassSettlement;
+import com.openstudy.modules.ticket.dto.SessionPass;
 import com.openstudy.modules.ticket.service.PassService;
 
 /**
@@ -61,7 +71,9 @@ public class SeatSessionService {
     private static final String CHECK_OUT = "seat-sessions:check-out";
     private static final String MOVE = "seat-sessions:move";
     private static final String ENTITY = "seat-sessions";
+    private static final String CHECKED_OUT = "CHECKED_OUT";
     private final SeatSessionRepository sessions;
+    private final SeatSessionSearchRepository search;
     private final SeatSessionMoveRepository moves;
     private final SeatRepository seats;
     private final CustomerService customers;
@@ -146,7 +158,7 @@ public class SeatSessionService {
             after.put("deductedKrw", settled.deductedKrw());
             after.put("overageMinutes", settled.overageMinutes());
             after.put("overageKrw", settled.overageKrw());
-            audit.record(AuditEvent.change(actor, branch, ENTITY, id, "CHECKED_OUT", reason,
+            audit.record(AuditEvent.change(actor, branch, ENTITY, id, CHECKED_OUT, reason,
                     json.writeValueAsString(Map.of("status", SeatSession.Status.ACTIVE.name())), json.writeValueAsString(after), requestId));
             outbox.invalidate(branch, "seats", session.getSeatId());
             outbox.invalidate(branch, ENTITY, id);
@@ -212,6 +224,42 @@ public class SeatSessionService {
                 .orElseThrow(SeatSessionService::notFound);
     }
 
+    /**
+     * The stays of the branches in scope (FR-SEAT-18). The filters only narrow those rows: a customerId outside the
+     * reader's customer lookup scope is not an error and reveals nothing beyond the branch's own stays (M5-D06).
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<SeatSessionView> list(long actor, String scope, ListQuery query, String status, String from, String to,
+            String seatId, String customerId) {
+        var filterStatus = status == null ? null : SeatInputs.sessionStatus(status);
+        var range = TimeRange.parse(from, to);
+        Long seat = seatId == null ? null : Long.valueOf(SeatInputs.id(seatId, "seatId"));
+        Long customer = customerId == null ? null : Long.valueOf(SeatInputs.id(customerId, "customerId"));
+        Set<Long> selected = policy.scope(policy.current(actor), scope, BranchAction.READ);
+        var page = search.find(new SeatSessionSearchRepository.Filter(selected, filterStatus, range, seat, customer),
+                query.direction() == ListQuery.Direction.DESC, query.offset(), query.pageSize());
+        return new PageResponse<>(items(page.rows()), new PageResponse.Meta(query.page(), query.pageSize(), page.total()));
+    }
+
+    /**
+     * The closed stays of these passes, wherever they happened (M5-D01). Handler and reason live only in the check-out
+     * audit row; the caller has authorized the passes, not the branches, and must withhold them for branches it may not show.
+     */
+    @Transactional(readOnly = true)
+    public List<SeatUsage> usage(Collection<Long> passIds) {
+        if (passIds.isEmpty()) return List.of();
+        var closed = sessions.findByPassIdInAndStatusOrderByIdAsc(passIds, SeatSession.Status.CLOSED);
+        Map<Long, AuditEvent> checkOuts = new HashMap<>();
+        audit.recorded(ENTITY, CHECKED_OUT, closed.stream().map(SeatSession::getId).toList())
+                .forEach(event -> checkOuts.put(event.getEntityId(), event));
+        return closed.stream().map(session -> {
+            var checkOut = checkOuts.get(session.getId());
+            return new SeatUsage(session.getId(), session.getPassId(), session.getBranchId(), session.getCheckedOutAt(),
+                    session.getBilledMinutes(), checkOut == null ? null : checkOut.getActorEmployeeId(),
+                    checkOut == null ? null : checkOut.getReason());
+        }).toList();
+    }
+
     /** A live record answers the first result or, for another input, a conflict; an expired one is forgotten. */
     private Optional<SeatSessionView> replay(long actor, String operation, String scopeKey, String key, byte[] fingerprint) {
         var prior = requests.lock(actor, operation, scopeKey, key);
@@ -234,7 +282,6 @@ public class SeatSessionService {
 
     private SeatSessionView view(SeatSession session) {
         long id = session.getId();
-        var pass = passes.sessionPass(session.getPassId());
         var history = moves.findBySeatSessionIdOrderByMovedAtAscIdAsc(id);
         Set<Long> seatIds = new HashSet<>(Set.of(session.getSeatId()));
         Set<Long> actors = new HashSet<>();
@@ -250,10 +297,29 @@ public class SeatSessionService {
         var moveViews = history.stream().map(move -> new SeatMove(refs.get(move.getFromSeatId()), refs.get(move.getToSeatId()),
                 move.getMovedAt(), actor(move.getActorEmployeeId(), names), move.getReason())).toList();
         long customerId = session.getCustomerId();
+        return view(session, passes.sessionPass(session.getPassId()), refs, customers.summaries(List.of(customerId)).get(customerId),
+                names, moveViews);
+    }
+
+    /** A list item is a detail without its moves (the contract's empty array); the page is read in batches. */
+    private List<SeatSessionView> items(List<SeatSession> rows) {
+        if (rows.isEmpty()) return List.of();
+        var ownedPasses = passes.sessionPasses(rows.stream().map(SeatSession::getPassId).toList());
+        var summaries = customers.summaries(rows.stream().map(SeatSession::getCustomerId).toList());
+        Map<Long, SeatRef> refs = new HashMap<>();
+        seats.findAllById(rows.stream().map(SeatSession::getSeatId).collect(Collectors.toSet()))
+                .forEach(seat -> refs.put(seat.getId(), ref(seat)));
+        Map<Long, String> names = employees.names(rows.stream().map(SeatSession::getExceptionActorId).filter(Objects::nonNull).toList());
+        return rows.stream().map(session -> view(session, ownedPasses.get(session.getPassId()), refs,
+                summaries.get(session.getCustomerId()), names, List.of())).toList();
+    }
+
+    private static SeatSessionView view(SeatSession session, SessionPass pass, Map<Long, SeatRef> refs, CustomerSummary customer,
+            Map<Long, String> names, List<SeatMove> moveViews) {
         // Minutes are not stored on their own: on a time pass every used minute is either deducted or overage.
         long deductedMinutes = pass.deductsMinutes() ? session.getBilledMinutes() - session.getOverageMinutes() : 0;
-        return new SeatSessionView(Long.toString(id), ApiVersion.fromDatabase(session.getVersion()), session.getStatus().label(),
-                Long.toString(session.getBranchId()), refs.get(session.getSeatId()), customers.summaries(List.of(customerId)).get(customerId),
+        return new SeatSessionView(Long.toString(session.getId()), ApiVersion.fromDatabase(session.getVersion()), session.getStatus().label(),
+                Long.toString(session.getBranchId()), refs.get(session.getSeatId()), customer,
                 new SeatSessionPass(pass.id(), pass.kind(), pass.productName(), pass.purchaseBranchId()), session.getCheckedInAt(),
                 session.getCheckedOutAt(), session.getBilledMinutes(), deductedMinutes, session.getBilledKrw(),
                 session.getOverageMinutes(), session.getOverageKrw(), pass.remainingMinutes(), pass.remainingCreditKrw(),

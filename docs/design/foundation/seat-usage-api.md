@@ -4,7 +4,7 @@ Backend [#60](https://github.com/OpenStudyService/OpenStudy-Backend/issues/60)�
 
 정책 근거는 [ADR-M5-001](../../db/ADR-M5-001.md)(M5-D01~D08)과 [ADR-M4-002](../../db/ADR-M4-002.md)(M4-D05 고객 조회 범위, 미사용·만료 판정)다. 공통 요청·응답·오류·목록 규칙은 [API 계약](api.md)을 따르고, 고객·이용권 응답 모양은 [M4 계약](customer-sales-api.md)과 같다.
 
-2026-11-02: 좌석 목록·상세·등록·수정·운영 중단/재개·배치도·현황 operation은 #61에서, 입실용 정확 일치 조회·입실·이용 기록 상세·퇴실 operation은 #62에서, 이용 중 좌석 이동 operation은 #63에서 구현됐다(`implemented`). 나머지 operation은 설계 계약(`design-target`)이며 아직 서버에 구현되어 있지 않다. 스키마는 바꾸지 않는다. V1의 `seats`, `seat_sessions`, `seat_session_moves`, `pass_balance_events`, `customer_service_interactions`를 그대로 쓴다.
+2026-11-02: 좌석 목록·상세·등록·수정·운영 중단/재개·배치도·현황 operation은 #61에서, 입실용 정확 일치 조회·입실·이용 기록 상세·퇴실 operation은 #62에서, 이용 중 좌석 이동 operation은 #63에서, 입퇴실 이력·이용권 수동 조정·고객 구매·사용 내역 operation은 #64에서 구현됐다(`implemented`). 이 문서의 모든 operation이 구현됐다. 스키마는 바꾸지 않는다. V1의 `seats`, `seat_sessions`, `seat_session_moves`, `pass_balance_events`, `customer_service_interactions`를 그대로 쓴다.
 
 ## 제공 범위
 
@@ -109,6 +109,7 @@ Backend [#60](https://github.com/OpenStudyService/OpenStudy-Backend/issues/60)�
 | 이용권 환불 | 409 `PASS_REFUNDED` |
 | `expiresAt`이 있고 처리 시각 ≥ `expiresAt` | 409 `PASS_EXPIRED` (저장 상태가 ACTIVE여도 시각으로 판정) |
 | 저장 상태 `EXHAUSTED`이거나, 시간권·정액권의 잔량이 0 | 409 `PASS_EXHAUSTED` |
+| 저장 상태 `NOT_STARTED` | 409 `INVALID_STATE` (V1에 남은 값이며 신규 발급에서는 만들지 않는다) |
 | 성공 | 201, 활성 이용 기록 |
 
 - 유효기간이 없는 시간권·정액권은 만료를 이유로 거절하지 않는다(FR-PASS-10).
@@ -141,6 +142,7 @@ Backend [#60](https://github.com/OpenStudyService/OpenStudy-Backend/issues/60)�
    - 만료 전 분 `C = min(U, ceil((E − in) ÷ 1분))`
    - 만료 후 분 `A = U − C`
    - 걸친 1분 미만은 만료 전으로 센다. 입실 때 유효했던 이용권이므로 고객에게 불리하지 않은 쪽을 택했다.
+   - 수동 조정으로 만료가 입실 시각 이전이 되면(`E ≤ in`) `C = 0`, `A = U`다. 이용 시간 전부를 만료 후 분으로 기록한다.
 3. **유형별 차감과 초과량**
 
    | 유형 | 차감 | `overage_minutes` | `overage_krw` |
@@ -322,6 +324,7 @@ Backend [#60](https://github.com/OpenStudyService/OpenStudy-Backend/issues/60)�
 | 409 | `PASS_REFUNDED`, `PASS_EXPIRED`, `PASS_EXHAUSTED` | 사용할 수 없는 이용권의 입실, 환불 이용권 조정 |
 | 409 | `SESSION_ALREADY_CLOSED` | 종료된 이용의 퇴실(다른 키)·이동 |
 | 409 | `BRANCH_NOT_ACTIVE` | 운영 중지 지점의 입실·이동 |
+| 409 | `INVALID_STATE` | `NOT_STARTED` 이용권의 입실 |
 | 409 | `VERSION_CONFLICT`, `IDEMPOTENCY_CONFLICT`, `REQUEST_IN_PROGRESS` | 공통 |
 | 422 | `VALIDATION_FAILED`, `IMMUTABLE_FIELD` | 형식·범위·허용 외 필드, 좌석 수정의 `status` |
 

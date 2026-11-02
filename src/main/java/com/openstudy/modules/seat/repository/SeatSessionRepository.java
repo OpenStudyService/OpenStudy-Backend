@@ -17,6 +17,8 @@ public interface SeatSessionRepository extends JpaRepository<SeatSession, Long> 
 
     List<SeatSession> findByStatusAndCustomerIdIn(SeatSession.Status status, Collection<Long> customerIds);
 
+    List<SeatSession> findByPassIdInAndStatusOrderByIdAsc(Collection<Long> passIds, SeatSession.Status status);
+
     boolean existsBySeatIdAndStatus(long seatId, SeatSession.Status status);
 
     boolean existsByCustomerIdAndStatus(long customerId, SeatSession.Status status);

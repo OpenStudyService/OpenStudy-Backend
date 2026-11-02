@@ -1,5 +1,7 @@
 package com.openstudy.modules.ticket.entity;
 
+import java.time.Instant;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -41,14 +43,25 @@ public class PassBalanceEvent {
     private String reason;
     @Column(name = "event_key", nullable = false, length = 120, updatable = false)
     private String eventKey;
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
 
     /** One USE row per seat session: the amounts are what was actually deducted, stored as negative deltas. */
-    public static PassBalanceEvent use(long passId, long seatSessionId, long minutes, long krw, long actor, String reason) {
+    public static PassBalanceEvent use(long passId, long seatSessionId, long minutes, long krw, long actor, String reason, Instant at) {
         if (minutes < 0 || krw < 0 || minutes + krw == 0) throw new IllegalArgumentException("A USE row records a deduction");
         var event = new PassBalanceEvent();
         event.passId = passId; event.seatSessionId = seatSessionId; event.kind = Kind.USE;
         event.deltaMinutes = -minutes; event.deltaKrw = -krw; event.actorEmployeeId = actor; event.reason = reason;
-        event.eventKey = "USE-" + seatSessionId;
+        event.eventKey = "USE-" + seatSessionId; event.createdAt = at;
+        return event;
+    }
+
+    /** One ADJUST row per effective correction: after minus before, so a validity-only change has both deltas at zero. */
+    public static PassBalanceEvent adjust(long passId, long deltaMinutes, long deltaKrw, long actor, String reason, String eventKey,
+            Instant at) {
+        var event = new PassBalanceEvent();
+        event.passId = passId; event.kind = Kind.ADJUST; event.deltaMinutes = deltaMinutes; event.deltaKrw = deltaKrw;
+        event.actorEmployeeId = actor; event.reason = reason; event.eventKey = eventKey; event.createdAt = at;
         return event;
     }
 }

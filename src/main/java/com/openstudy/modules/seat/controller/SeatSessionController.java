@@ -2,6 +2,7 @@ package com.openstudy.modules.seat.controller;
 
 import java.net.URI;
 import java.util.Map;
+import java.util.Set;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -15,10 +16,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import com.openstudy.common.web.ApiRequestFilter;
+import com.openstudy.common.web.ListQuery;
+import com.openstudy.common.web.PageResponse;
 import com.openstudy.modules.seat.dto.response.SeatSessionView;
 import com.openstudy.modules.seat.service.SeatSessionService;
 
-/** Staff check-in and check-out. There is no DELETE: a session stays as history (seat-usage-api.md). */
+/** Staff check-in, check-out, moves and the branch's stay history. There is no DELETE: a session stays as history (seat-usage-api.md). */
 @RestController
 @RequestMapping("/api/seat-sessions")
 @RequiredArgsConstructor
@@ -31,6 +34,17 @@ public class SeatSessionController {
             HttpServletRequest request) {
         var result = service.checkIn(actor(actor), key, body, ApiRequestFilter.requestId(request));
         return ResponseEntity.created(URI.create("/api/seat-sessions/" + result.id())).body(result);
+    }
+
+    @GetMapping
+    public PageResponse<SeatSessionView> list(Authentication actor, @RequestParam(defaultValue = "all") String scope,
+            @RequestParam(defaultValue = "1") long page, @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String sort, @RequestParam(required = false) String direction,
+            @RequestParam(required = false) String status, @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to, @RequestParam(required = false) String seatId,
+            @RequestParam(required = false) String customerId) {
+        return service.list(actor(actor), scope, ListQuery.parse(page, pageSize, null, sort, direction, Set.of("checkedInAt"), "checkedInAt"),
+                status, from, to, seatId, customerId);
     }
 
     @GetMapping("/{id}")
