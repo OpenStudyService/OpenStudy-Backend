@@ -51,7 +51,7 @@ public class LocalPreviewController {
         return result;
     }
 
-    @GetMapping("/api/{resource:shifts|products|members|employees|branches|passes|attendance|payments|reservations|usage|lockers|invitations|corrections|leaveGrants|leaveRequests|substitutions|audit}")
+    @GetMapping("/api/{resource:shifts|products|members|employees|branches|passes|attendance|payments|reservations|usage|invitations|corrections|leaveGrants|leaveRequests|substitutions|audit}")
     public PageResponse<Map<String, Object>> list(Authentication auth, @PathVariable String resource,
             @RequestParam(defaultValue = "all") String scope, @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "20") int pageSize, @RequestParam(defaultValue = "") String q,
@@ -83,8 +83,8 @@ public class LocalPreviewController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "샘플 항목을 찾을 수 없습니다."));
     }
 
-    @RequestMapping(value = {"/api/{resource:shifts|products|members|employees|branches|payments|reservations|usage|lockers}",
-            "/api/{resource:shifts|products|members|employees|branches|payments|reservations|usage|lockers}/**"},
+    @RequestMapping(value = {"/api/{resource:shifts|products|members|employees|branches|payments|reservations|usage}",
+            "/api/{resource:shifts|products|members|employees|branches|payments|reservations|usage}/**"},
             method = {RequestMethod.POST, RequestMethod.PUT, RequestMethod.PATCH, RequestMethod.DELETE})
     public void readOnly() {
         throw new ResponseStatusException(HttpStatus.NOT_IMPLEMENTED, "로컬 샘플은 조회 전용입니다. 저장 기능은 아직 구현되지 않았습니다.");

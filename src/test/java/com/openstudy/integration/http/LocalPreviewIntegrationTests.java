@@ -65,7 +65,7 @@ class LocalPreviewIntegrationTests {
 
     @Test
     void previewKeepsExistingUiSortOptionsButRejectsPrivateFields() throws Exception {
-        // /api/tasks (#75), /api/seats (#61), /api/facilities (#78) and /api/rooms (#69) are real operational endpoints now.
+        // /api/tasks (#75), /api/seats (#61), /api/facilities (#78), /api/rooms (#69) and /api/lockers (#71) are real operational endpoints now.
         assertThat(get("/api/shifts?sort=status").statusCode()).isEqualTo(200);
         // /api/products is a real operational endpoint now (#16); members is still preview-only.
         assertThat(get("/api/members?sort=status").statusCode()).isEqualTo(200);

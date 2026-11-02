@@ -15,6 +15,8 @@ public enum BranchAction {
     MANAGE_SEATS("operations:write", true, false),
     /** M6 room ledger with its stop and resume: operations:write at the room's branch, also while the branch is stopped. */
     WRITE_ROOMS("operations:write", false, false),
+    /** M6 locker ledger with its stop, resume and branch rate: operations:write at the locker's branch, also while the branch is stopped. */
+    WRITE_LOCKERS("operations:write", false, false),
     WRITE_MEMBERS("members:write", false, false),
     WRITE_FACILITIES("facilities:write", false, false),
     WRITE_NOTICES("notices:write", false, false),
