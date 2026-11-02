@@ -1,4 +1,4 @@
-# 2026-11-03 스터디룸 원장과 예약·선결제·일정 조회 API
+# 2026-11-02 스터디룸 원장과 예약·선결제·일정 조회 API
 
 관련: Issue [#69](https://github.com/OpenStudyService/OpenStudy-Backend/issues/69), [계약 문서](../design/foundation/space-operations-api.md), [ADR-M6-001](../db/ADR-M6-001.md), [M4 계약](../design/foundation/customer-sales-api.md), [입퇴실 기록](2026-11-02-seat-check-in-out.md).
 

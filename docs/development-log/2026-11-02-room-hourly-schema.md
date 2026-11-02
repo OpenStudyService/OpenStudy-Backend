@@ -1,4 +1,4 @@
-# 2026-11-03 룸 시간 단위 스키마 변경과 타 지점 응대 권한 정의
+# 2026-11-02 룸 시간 단위 스키마 변경과 타 지점 응대 권한 정의
 
 관련: Issue [#68](https://github.com/OpenStudyService/OpenStudy-Backend/issues/68), [ADR-M6-001](../db/ADR-M6-001.md) M6-D01·M6-D06, [계약 문서](../design/foundation/space-operations-api.md), 선행 계약 PR #149(#67)
 

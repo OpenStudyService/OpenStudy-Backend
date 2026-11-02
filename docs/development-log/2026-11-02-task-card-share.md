@@ -1,6 +1,6 @@
-# 2026-11-03 업무 카드 채널 공유 API
+# 2026-11-02 업무 카드 채널 공유 API
 
-관련: Issue [#77](https://github.com/OpenStudyService/OpenStudy-Backend/issues/77), [계약 문서](../design/foundation/collaboration-api.md)의 메시지·업무 카드 절, [ADR-M7-001](../db/ADR-M7-001.md) M7-D07, [채널·메시지 API 기록](2026-11-03-channel-message-api.md).
+관련: Issue [#77](https://github.com/OpenStudyService/OpenStudy-Backend/issues/77), [계약 문서](../design/foundation/collaboration-api.md)의 메시지·업무 카드 절, [ADR-M7-001](../db/ADR-M7-001.md) M7-D07, [채널·메시지 API 기록](2026-11-02-channel-message-api.md).
 
 ## 1. 배경 / 문제
 
