@@ -394,21 +394,19 @@ class MessageIntegrationTests extends ChannelTestSupport {
 
     // ---- task cards stay unbroken ---------------------------------------------------------------------------
 
-    @Test void aTaskCardRowReadsWithoutExposingTheTask() throws Exception {
+    @Test void aTaskCardRowReadsAsACardAndTakesRepliesAndKeys() throws Exception {
         long channel = channelId(owner, a, "카드", staffA);
-        jdbc.update("INSERT INTO work_tasks(branch_id,title,created_by,assignee_employee_id,category) VALUES(?,'비공개 업무',?,?,'일반')", a, staffA, staffA);
-        long task = count("SELECT id FROM work_tasks WHERE branch_id=? AND title='비공개 업무'", a);
+        jdbc.update("INSERT INTO work_tasks(branch_id,title,created_by,assignee_employee_id,category) VALUES(?,'지점 업무',?,?,'일반')", a, staffA, staffA);
+        long task = count("SELECT id FROM work_tasks WHERE branch_id=? AND title='지점 업무'", a);
         tasks.add(task);
         jdbc.update("INSERT INTO messages(conversation_id,sender_employee_id,related_task_id,kind,client_message_key) VALUES(?,?,?,'TASK_CARD','card-key')", channel, owner, task);
         long card = count("SELECT id FROM messages WHERE conversation_id=?", channel);
 
-        var feed = get(staffA, "/api/channels/" + channel + "/messages");
-        assertThat(feed.statusCode()).isEqualTo(200);
-        var item = node(feed).get("items").get(0);
+        var item = ok(get(staffA, "/api/channels/" + channel + "/messages")).get("items").get(0);
         assertThat(item.get("kind").asString()).isEqualTo("업무 카드");
         assertThat(item.get("body").isNull()).isTrue();
-        assertThat(item.get("task").isNull()).isTrue();
-        assertThat(feed.body()).doesNotContain("비공개 업무");
+        assertThat(item.get("task").get("accessible").asBoolean()).isTrue();
+        assertThat(item.get("task").get("title").asString()).isEqualTo("지점 업무");
         assertThat(ok(get(staffA, "/api/channels/" + channel + "/messages/" + card)).get("kind").asString()).isEqualTo("업무 카드");
         assertThat(detail(staffA, channel).get("unreadCount").asLong()).isEqualTo(1);
         assertThat(reply(staffA, channel, "카드에 단 답글", card)).isPositive();

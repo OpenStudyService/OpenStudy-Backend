@@ -71,7 +71,11 @@ abstract class ChannelTestSupport {
             jdbc.update("DELETE FROM audit_events WHERE entity_type='channels' AND entity_id=?", id);
         }
         jdbc.update("DELETE FROM conversations WHERE created_by IN (" + marks(people) + ")", people.toArray());
-        for (long id : tasks) jdbc.update("DELETE FROM work_tasks WHERE id=?", id);
+        for (long id : tasks) {
+            jdbc.update("DELETE FROM task_events WHERE task_id=?", id);
+            jdbc.update("DELETE FROM task_checklist_items WHERE task_id=?", id);
+            jdbc.update("DELETE FROM work_tasks WHERE id=?", id);
+        }
         for (long id : people) {
             jdbc.update("DELETE FROM SPRING_SESSION WHERE PRINCIPAL_NAME=?", Long.toString(id));
             jdbc.update("DELETE FROM audit_events WHERE actor_employee_id=? OR (entity_type='employee' AND entity_id=?)", id, id);
