@@ -94,7 +94,7 @@ erDiagram
 ### permission_definitions / permission_presets / grants — 권한(기존 확장)
 
 - `permission_definitions`: `id BIGINT! PK`, `code VARCHAR(80)! UQ`, `description VARCHAR(255)!`, `is_admin_only BOOLEAN!`. 코드 사전은 버전 관리 seed로 제공하고 임의 코드 입력을 422로 거절한다.
-- 1차 코드: `members:write`, `operations:write`, `payments:read`, `payments:write`, `sales:read`, `facilities:write`, `notices:write`, `people:manage`, `ai:read`. 후속 업무의 권한 정의를 미리 저장하되 해당 API 구현을 뜻하지 않는다.
+- 1차 코드: `members:write`, `operations:write`, `payments:read`, `payments:write`, `sales:read`, `facilities:write`, `notices:write`, `people:manage`, `ai:read`에 M6의 `customers:cross-branch-read`(타 지점 고객 최소 요약 조회, 관리자 전용 아님, V4)를 더한 10종이다. 새 권한은 기본 프리셋에 넣지 않고 관리자가 지정 직원에게 부여한다. 후속 업무의 권한 정의를 미리 저장하되 해당 API 구현을 뜻하지 않는다.
 - `permission_presets`: `id BIGINT! PK`, `name VARCHAR(100)!`, `role ENUM MANAGER,STAFF!`, `is_system BOOLEAN!`, 추적 필드. `UNIQUE(name,role)` 유지. 기본값 변경은 seed migration, 사용자 정의 생성·수정은 OWNER만 가능하다. 시스템 프리셋은 일반 HTTP로 수정하지 않는다.
 - `permission_preset_grants`: PK `(preset_id,permission_id)`, FK preset CASCADE, permission RESTRICT. 부모 version으로 집합 수정.
 - `membership_permission_grants`: PK `(membership_id,permission_id)`, FK membership CASCADE, permission RESTRICT. 프리셋을 복사한 최종 실효 권한이다. 프리셋 원본 수정은 이 행들을 바꾸지 않는다.

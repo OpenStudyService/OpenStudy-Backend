@@ -104,6 +104,7 @@ class EmployeeManagementIntegrationTests {
         assertThatThrownBy(()->employees.membership(owner,staff,first,"all",membershipBody(staff,first,"staff","활성",List.of("people:manage")),"invalid-grant")).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->employees.membership(owner,staff,first,"all",membershipBody(staff,first,"staff","활성",List.of("unknown:write")),"unknown-grant")).isInstanceOf(ApiException.class);
         assertThat(employees.membership(manager,staff,first,"all",membershipBody(staff,first,"staff","활성",List.of("operations:write")),"staff-edit").membership().permissions()).containsExactly("operations:write");
+        assertThat(employees.membership(manager,staff,first,"all",membershipBody(staff,first,"staff","활성",List.of("operations:write","customers:cross-branch-read")),"cross-branch-grant").membership().permissions()).containsExactlyInAnyOrder("operations:write","customers:cross-branch-read");
         assertThat(employees.membership(owner,staff,first,"all",membershipBody(staff,first,"admin","활성",List.of("people:manage")),"owner-promote").membership().role()).isEqualTo("admin");
     }
     @Test void pendingOrRevokedMembershipCannotBypassInvitationAndFailedWritesLeaveNoOutbox() {
@@ -195,7 +196,8 @@ class EmployeeManagementIntegrationTests {
             assertThat(staffSession.call("GET","/api/employees",null).statusCode()).isEqualTo(403);
             var definitions=staffSession.call("GET","/api/permissions",null);
             assertThat(definitions.statusCode()).isEqualTo(200);
-            assertThat(json.readTree(definitions.body()).size()).isEqualTo(9);
+            assertThat(json.readTree(definitions.body()).size()).isEqualTo(10);
+            assertThat(json.readTree(definitions.body()).toString()).contains("customers:cross-branch-read");
             var presetBody=Map.of("name","HTTP-"+UUID.randomUUID(),"role","staff","permissions",List.of());
             assertThat(ownerSession.call("POST","/api/permission-presets",presetBody).statusCode()).isEqualTo(422);
             ownerSession.idempotencyKey=UUID.randomUUID().toString();

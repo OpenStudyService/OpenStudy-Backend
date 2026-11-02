@@ -37,7 +37,7 @@ class SchemaConstraintsTests {
         }
         jdbc.update("INSERT INTO branches (code,name,address) VALUES ('SCHEMA_TEST','Test','Test address')");
         branchId = jdbc.queryForObject("SELECT id FROM branches WHERE code='SCHEMA_TEST'", Long.class);
-        jdbc.update("INSERT INTO rooms (branch_id,room_no,name,capacity,rate_per_30min_krw) "
+        jdbc.update("INSERT INTO rooms (branch_id,room_no,name,capacity,rate_per_hour_krw) "
                 + "VALUES (?,'R1','Test room',4,1000)", branchId);
         roomId = jdbc.queryForObject("SELECT id FROM rooms WHERE branch_id=?", Long.class, branchId);
     }
@@ -99,9 +99,9 @@ class SchemaConstraintsTests {
         jdbc.update("INSERT INTO customers (member_no,name) VALUES ('SCHEMA_CUSTOMER','Test customer')");
         long customer = jdbc.queryForObject("SELECT id FROM customers WHERE member_no='SCHEMA_CUSTOMER'", Long.class);
         jdbc.update("INSERT INTO room_reservations (room_id,branch_id,customer_id,start_at,end_at,"
-                + "rate_per_30min_snapshot_krw,slot_count,amount_krw,status,cancelled_at,cancelled_by,"
+                + "rate_per_hour_snapshot_krw,hours,amount_krw,status,cancelled_at,cancelled_by,"
                 + "cancel_reason,request_key,created_by) VALUES (?,?,?,'2026-10-19 09:00:00',"
-                + "'2026-10-19 09:30:00',1000,1,1000,'CANCELLED','2026-10-19 08:00:00',?,"
+                + "'2026-10-19 10:00:00',1000,1,1000,'CANCELLED','2026-10-19 08:00:00',?,"
                 + "'Test cancellation','SCHEMA_REQUEST',?)", roomId, branchId, customer, canceller, creator);
         assertSqlError(() -> jdbc.update("DELETE FROM employees WHERE id=?", canceller), 1451, "fk_room_reservations_5");
         jdbc.update("UPDATE employees SET status='LEFT' WHERE id=?", canceller);

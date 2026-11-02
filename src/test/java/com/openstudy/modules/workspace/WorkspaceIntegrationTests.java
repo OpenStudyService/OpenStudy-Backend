@@ -159,7 +159,7 @@ class WorkspaceIntegrationTests {
         assertThat(data.get("employees")).hasSize(3);
         for(var employee:data.get("employees")){assertThat(employee.size()).isEqualTo(2);assertThat(employee.has("id")).isTrue();assertThat(employee.has("name")).isTrue();}
         assertThat(response.body()).doesNotContain("@workspace.test",passwordHash,"password_hash","avatar","nickname");
-        assertThat(data.get("permissionDefinitions").size()).isEqualTo(9);assertThat(data.get("permissionPresets").size()).isEqualTo(2);
+        assertThat(data.get("permissionDefinitions").size()).isEqualTo(10);assertThat(data.get("permissionPresets").size()).isEqualTo(2);
         var staffData=json.readTree(staffClient.call("GET","/api/lookups?scope=all",null).body());
         assertThat(staffData.get("permissionPresets").isEmpty()).isTrue();assertThat(staffData.get("branches").size()).isEqualTo(2);
         assertThat(staffData.get("products").isEmpty()).isTrue();assertThat(staffData.get("productCategories").isEmpty()).isTrue();

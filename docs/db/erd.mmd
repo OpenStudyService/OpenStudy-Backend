@@ -576,8 +576,8 @@ erDiagram
     bigint_unsigned payment_id UK,FK
     datetime_6 start_at
     datetime_6 end_at
-    bigint_unsigned rate_per_30min_snapshot_krw
-    int_unsigned slot_count
+    bigint_unsigned rate_per_hour_snapshot_krw
+    int_unsigned hours
     bigint_unsigned amount_krw
     enum__PAYMENT_PENDING___CONFIRMED___PAYMENT_FAILED___IN_USE___COMPLETED___CANCELLED status
     datetime_6 cancelled_at
@@ -611,7 +611,7 @@ erDiagram
     varchar_40 room_no
     varchar_120 name
     smallint_unsigned capacity
-    bigint_unsigned rate_per_30min_krw
+    bigint_unsigned rate_per_hour_krw
     enum__AVAILABLE___BLOCKED status
     datetime_6 created_at
     datetime_6 updated_at

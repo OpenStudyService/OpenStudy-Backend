@@ -31,24 +31,6 @@ CREATE TABLE `administration_guard` (
   CONSTRAINT `ck_administration_guard_singleton` CHECK ((`id` = 1))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE `customers` (
-  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
-  `member_no` varchar(40) NOT NULL,
-  `name` varchar(100) NOT NULL,
-  `phone` varchar(30) DEFAULT NULL,
-  `email` varchar(254) DEFAULT NULL,
-  `status` enum('NORMAL','RESTRICTED','INACTIVE') NOT NULL DEFAULT 'NORMAL',
-  `status_reason` varchar(500) DEFAULT NULL,
-  `registered_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-  `version` bigint unsigned NOT NULL DEFAULT '0',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_customers_1` (`member_no`),
-  KEY `ix_customers_1` (`name`),
-  KEY `ix_customers_2` (`phone`),
-  KEY `ix_customers_3` (`status`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='전사 공통 고객 원장; 직원 로그인과 무관';
-
 CREATE TABLE `employees` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `email` varchar(254) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_as_ci NOT NULL,
@@ -150,7 +132,7 @@ CREATE TABLE `permission_definitions` (
   `is_admin_only` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_permission_definitions_1` (`code`)
-) ENGINE=InnoDB AUTO_INCREMENT=16 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='행동 권한 코드 사전';
+) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='행동 권한 코드 사전';
 
 CREATE TABLE `permission_presets` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
@@ -277,10 +259,12 @@ CREATE TABLE `conversations` (
   `kind` enum('GLOBAL_CHANNEL','BRANCH_CHANNEL','DM') NOT NULL,
   `branch_id` bigint unsigned DEFAULT NULL,
   `name` varchar(120) DEFAULT NULL,
+  `description` varchar(500) DEFAULT NULL,
   `dm_employee_low_id` bigint unsigned DEFAULT NULL,
   `dm_employee_high_id` bigint unsigned DEFAULT NULL,
   `created_by` bigint unsigned DEFAULT NULL,
   `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `version` bigint unsigned NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_conversations_1` (`dm_employee_low_id`,`dm_employee_high_id`),
   KEY `ix_conversations_1` (`branch_id`,`kind`),
@@ -293,20 +277,27 @@ CREATE TABLE `conversations` (
   CONSTRAINT `ck_conversations_1` CHECK ((((`kind` = _utf8mb4'DM') and (`branch_id` is null) and (`dm_employee_low_id` is not null) and (`dm_employee_high_id` is not null) and (`dm_employee_low_id` < `dm_employee_high_id`)) or ((`kind` = _utf8mb4'GLOBAL_CHANNEL') and (`branch_id` is null) and (`name` is not null) and (`dm_employee_low_id` is null) and (`dm_employee_high_id` is null)) or ((`kind` = _utf8mb4'BRANCH_CHANNEL') and (`branch_id` is not null) and (`name` is not null) and (`dm_employee_low_id` is null) and (`dm_employee_high_id` is null))))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='전체/지점 채널 또는 1대1 DM';
 
-CREATE TABLE `customer_status_events` (
+CREATE TABLE `customers` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
-  `customer_id` bigint unsigned NOT NULL,
-  `previous_status` varchar(30) NOT NULL,
-  `new_status` varchar(30) NOT NULL,
-  `reason` varchar(500) NOT NULL,
-  `actor_employee_id` bigint unsigned NOT NULL,
-  `changed_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `member_no` varchar(40) NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `phone` varchar(30) DEFAULT NULL,
+  `email` varchar(254) DEFAULT NULL,
+  `registered_branch_id` bigint unsigned DEFAULT NULL,
+  `status` enum('NORMAL','RESTRICTED','INACTIVE') NOT NULL DEFAULT 'NORMAL',
+  `status_reason` varchar(500) DEFAULT NULL,
+  `memo` varchar(1000) DEFAULT NULL,
+  `registered_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  `version` bigint unsigned NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
-  KEY `ix_customer_status_events_1` (`customer_id`,`changed_at`),
-  KEY `fk_customer_status_events_2` (`actor_employee_id`),
-  CONSTRAINT `fk_customer_status_events_1` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE RESTRICT,
-  CONSTRAINT `fk_customer_status_events_2` FOREIGN KEY (`actor_employee_id`) REFERENCES `employees` (`id`) ON DELETE RESTRICT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='고객 상태/제한 변경 이력';
+  UNIQUE KEY `uk_customers_1` (`member_no`),
+  KEY `ix_customers_1` (`name`),
+  KEY `ix_customers_2` (`phone`),
+  KEY `ix_customers_3` (`status`),
+  KEY `ix_customers_registered_branch` (`registered_branch_id`),
+  CONSTRAINT `fk_customers_registered_branch` FOREIGN KEY (`registered_branch_id`) REFERENCES `branches` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='전사 공통 고객 원장; 직원 로그인과 무관';
 
 CREATE TABLE `employee_invitations` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
@@ -621,7 +612,7 @@ CREATE TABLE `rooms` (
   `room_no` varchar(40) NOT NULL,
   `name` varchar(120) NOT NULL,
   `capacity` smallint unsigned NOT NULL,
-  `rate_per_30min_krw` bigint unsigned NOT NULL,
+  `rate_per_hour_krw` bigint unsigned NOT NULL,
   `status` enum('AVAILABLE','BLOCKED') NOT NULL DEFAULT 'AVAILABLE',
   `created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   `updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
@@ -631,8 +622,8 @@ CREATE TABLE `rooms` (
   UNIQUE KEY `uk_rooms_2` (`id`,`branch_id`),
   CONSTRAINT `fk_rooms_1` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `ck_rooms_1` CHECK ((`capacity` > 0)),
-  CONSTRAINT `ck_rooms_2` CHECK ((`rate_per_30min_krw` > 0))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='스터디룸/정원/30분당 요금';
+  CONSTRAINT `ck_rooms_2` CHECK ((`rate_per_hour_krw` > 0))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='스터디룸/정원/시간당 요금';
 
 CREATE TABLE `seats` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
@@ -786,6 +777,21 @@ CREATE TABLE `customer_service_interactions` (
   CONSTRAINT `fk_customer_service_interactions_2` FOREIGN KEY (`branch_id`, `employee_id`) REFERENCES `branch_memberships` (`branch_id`, `employee_id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='응대 중인 특정 고객의 전 지점 이용 조회 근거와 접근 감사';
 
+CREATE TABLE `customer_status_events` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `customer_id` bigint unsigned NOT NULL,
+  `previous_status` varchar(30) NOT NULL,
+  `new_status` varchar(30) NOT NULL,
+  `reason` varchar(500) NOT NULL,
+  `actor_employee_id` bigint unsigned NOT NULL,
+  `changed_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  KEY `ix_customer_status_events_1` (`customer_id`,`changed_at`),
+  KEY `fk_customer_status_events_2` (`actor_employee_id`),
+  CONSTRAINT `fk_customer_status_events_1` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_customer_status_events_2` FOREIGN KEY (`actor_employee_id`) REFERENCES `employees` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='고객 상태/제한 변경 이력';
+
 CREATE TABLE `leave_allocations` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `leave_request_id` bigint unsigned NOT NULL,
@@ -908,8 +914,8 @@ CREATE TABLE `room_reservations` (
   `payment_id` bigint unsigned DEFAULT NULL,
   `start_at` datetime(6) NOT NULL,
   `end_at` datetime(6) NOT NULL,
-  `rate_per_30min_snapshot_krw` bigint unsigned NOT NULL,
-  `slot_count` int unsigned NOT NULL,
+  `rate_per_hour_snapshot_krw` bigint unsigned NOT NULL,
+  `hours` int unsigned NOT NULL,
   `amount_krw` bigint unsigned NOT NULL,
   `status` enum('PAYMENT_PENDING','CONFIRMED','PAYMENT_FAILED','IN_USE','COMPLETED','CANCELLED') NOT NULL DEFAULT 'PAYMENT_PENDING',
   `cancelled_at` datetime(6) DEFAULT NULL,
@@ -937,18 +943,18 @@ CREATE TABLE `room_reservations` (
   CONSTRAINT `fk_room_reservations_4` FOREIGN KEY (`created_by`) REFERENCES `employees` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_room_reservations_5` FOREIGN KEY (`cancelled_by`) REFERENCES `employees` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `ck_room_reservations_1` CHECK ((`end_at` > `start_at`)),
-  CONSTRAINT `ck_room_reservations_10` CHECK ((`amount_krw` = (`rate_per_30min_snapshot_krw` * `slot_count`))),
+  CONSTRAINT `ck_room_reservations_10` CHECK ((`amount_krw` = (`rate_per_hour_snapshot_krw` * `hours`))),
   CONSTRAINT `ck_room_reservations_11` CHECK ((((`status` = _utf8mb4'CANCELLED') and (`cancelled_at` is not null) and (`cancel_reason` is not null)) or ((`status` <> _utf8mb4'CANCELLED') and (`cancelled_at` is null) and (`cancelled_by` is null) and (`cancel_reason` is null)))),
   CONSTRAINT `ck_room_reservations_12` CHECK (((`status` not in (_utf8mb4'CONFIRMED',_utf8mb4'IN_USE',_utf8mb4'COMPLETED')) or (`payment_id` is not null))),
+  CONSTRAINT `ck_room_reservations_13` CHECK ((minute(`start_at`) = 0)),
+  CONSTRAINT `ck_room_reservations_14` CHECK ((minute(`end_at`) = 0)),
+  CONSTRAINT `ck_room_reservations_15` CHECK (((timestampdiff(SECOND,`start_at`,`end_at`) % 3600) = 0)),
   CONSTRAINT `ck_room_reservations_2` CHECK (((second(`start_at`) = 0) and (microsecond(`start_at`) = 0))),
-  CONSTRAINT `ck_room_reservations_3` CHECK ((minute(`start_at`) in (0,30))),
   CONSTRAINT `ck_room_reservations_4` CHECK (((second(`end_at`) = 0) and (microsecond(`end_at`) = 0))),
-  CONSTRAINT `ck_room_reservations_5` CHECK ((minute(`end_at`) in (0,30))),
-  CONSTRAINT `ck_room_reservations_6` CHECK (((timestampdiff(SECOND,`start_at`,`end_at`) % 1800) = 0)),
-  CONSTRAINT `ck_room_reservations_7` CHECK ((timestampdiff(SECOND,`start_at`,`end_at`) = (`slot_count` * 1800))),
-  CONSTRAINT `ck_room_reservations_8` CHECK ((`slot_count` > 0)),
-  CONSTRAINT `ck_room_reservations_9` CHECK ((`rate_per_30min_snapshot_krw` > 0))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='룸 30분 단위 정수 요금 선결제, start 포함/end 제외';
+  CONSTRAINT `ck_room_reservations_7` CHECK ((timestampdiff(SECOND,`start_at`,`end_at`) = (`hours` * 3600))),
+  CONSTRAINT `ck_room_reservations_8` CHECK ((`hours` > 0)),
+  CONSTRAINT `ck_room_reservations_9` CHECK ((`rate_per_hour_snapshot_krw` > 0))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='룸 1시간 단위 정수 요금 선결제, start 포함/end 제외';
 
 CREATE TABLE `room_usages` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
@@ -1159,8 +1165,8 @@ CREATE TABLE `room_reservation_slots` (
   KEY `fk_room_reservation_slots_1` (`reservation_id`,`room_id`),
   CONSTRAINT `fk_room_reservation_slots_1` FOREIGN KEY (`reservation_id`, `room_id`) REFERENCES `room_reservations` (`id`, `room_id`) ON DELETE CASCADE,
   CONSTRAINT `ck_room_reservation_slots_1` CHECK (((second(`slot_start_at`) = 0) and (microsecond(`slot_start_at`) = 0))),
-  CONSTRAINT `ck_room_reservation_slots_2` CHECK ((minute(`slot_start_at`) in (0,30)))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='확정 예약의 30분 점유 슬롯. 취소 시 슬롯 삭제, 예약/감사는 유지';
+  CONSTRAINT `ck_room_reservation_slots_2` CHECK ((minute(`slot_start_at`) = 0))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='확정 예약의 1시간 점유 슬롯. 취소 시 슬롯 삭제, 예약/감사는 유지';
 
 CREATE TABLE `seat_session_corrections` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
@@ -1359,8 +1365,9 @@ INSERT INTO `permission_definitions` (`id`,`code`,`description`,`is_admin_only`)
 INSERT INTO `permission_definitions` (`id`,`code`,`description`,`is_admin_only`) VALUES (7,'notices:write','공지 관리',0);
 INSERT INTO `permission_definitions` (`id`,`code`,`description`,`is_admin_only`) VALUES (8,'people:manage','직원 및 권한 관리',1);
 INSERT INTO `permission_definitions` (`id`,`code`,`description`,`is_admin_only`) VALUES (9,'ai:read','AI 분석 조회',0);
-INSERT INTO `permission_presets` (`id`,`name`,`role`,`is_system`,`created_by`,`created_at`,`updated_at`,`version`,`updated_by`) VALUES (1,'일반 직원 기본','STAFF',1,NULL,'2026-10-27T10:04:47.308400','2026-10-27T10:04:47.308400',0,NULL);
-INSERT INTO `permission_presets` (`id`,`name`,`role`,`is_system`,`created_by`,`created_at`,`updated_at`,`version`,`updated_by`) VALUES (2,'지점 관리자 기본','MANAGER',1,NULL,'2026-10-27T10:04:47.311410','2026-10-27T10:04:47.311410',0,NULL);
+INSERT INTO `permission_definitions` (`id`,`code`,`description`,`is_admin_only`) VALUES (16,'customers:cross-branch-read','타 지점 고객 최소 요약 조회',0);
+INSERT INTO `permission_presets` (`id`,`name`,`role`,`is_system`,`created_by`,`created_at`,`updated_at`,`version`,`updated_by`) VALUES (1,'일반 직원 기본','STAFF',1,NULL,'2026-11-02T07:58:49.903617','2026-11-02T07:58:49.903617',0,NULL);
+INSERT INTO `permission_presets` (`id`,`name`,`role`,`is_system`,`created_by`,`created_at`,`updated_at`,`version`,`updated_by`) VALUES (2,'지점 관리자 기본','MANAGER',1,NULL,'2026-11-02T07:58:49.905109','2026-11-02T07:58:49.905109',0,NULL);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,1);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,2);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,3);
@@ -1370,5 +1377,8 @@ INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,6
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,7);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,8);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,9);
-INSERT INTO `administration_guard` (`id`,`updated_at`) VALUES (1,'2026-10-27T10:04:47.331611');
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (1,'1','init schema','SQL','V1__init_schema.sql',-747993029,'foundation_test','2026-10-27 19:04:47.0',4852,1);
+INSERT INTO `administration_guard` (`id`,`updated_at`) VALUES (1,'2026-11-02T07:58:49.915156');
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (1,'1','init schema','SQL','V1__init_schema.sql',-747993029,'foundation_test','2026-11-02 16:58:49.0',4817,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (2,'2','customer branch and memo','SQL','V2__customer_branch_and_memo.sql',191084984,'foundation_test','2026-11-02 16:58:50.0',250,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (3,'3','channel description and version','SQL','V3__channel_description_and_version.sql',-552623542,'foundation_test','2026-11-02 16:58:50.0',187,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (4,'4','room hourly and cross branch permission','SQL','V4__room_hourly_and_cross_branch_permission.sql',-1250266497,'foundation_test','2026-11-02 16:58:52.0',1638,1);

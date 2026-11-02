@@ -55,9 +55,9 @@ class FoundationMigrationTests {
     }
     long count(String sql) { return jdbc.queryForObject(sql, Long.class); }
     @Test void createsTheConsolidatedBaselineWithIncrementalMigrationsAndPreservesDataOnRestart() {
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(3);
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(4);
         assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank", String.class))
-                .containsExactly("1", "2", "3");
+                .containsExactly("1", "2", "3", "4");
         assertThat(count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name <> 'flyway_schema_history'"))
                 .isEqualTo(65);
         assertThat(count("SELECT COUNT(*) FROM employees")).isZero();
@@ -112,7 +112,7 @@ class FoundationMigrationTests {
                 .hasStackTraceContaining("Check constraint");
         jdbc.update("INSERT INTO idempotency_records(actor_employee_id,operation,scope_key,idempotency_key,request_hash,state,expires_at) VALUES(10,'create','global','Key',UNHEX(SHA2('a',256)),'PROCESSING','2099-01-01'),(10,'create','global','key',UNHEX(SHA2('a',256)),'PROCESSING','2099-01-01')");
         assertThatThrownBy(() -> jdbc.update("INSERT INTO idempotency_records(actor_employee_id,operation,scope_key,idempotency_key,request_hash,state,expires_at) VALUES(10,'create','global','Key',UNHEX(SHA2('a',256)),'PROCESSING','2099-01-01')")).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
-        assertThat(count("SELECT COUNT(*) FROM permission_definitions")).isEqualTo(9);
+        assertThat(count("SELECT COUNT(*) FROM permission_definitions")).isEqualTo(10);
         assertThat(count("SELECT COUNT(*) FROM permission_preset_grants g JOIN permission_presets p ON p.id=g.preset_id WHERE p.role='STAFF'")).isZero();
         assertThat(count("SELECT COUNT(*) FROM permission_preset_grants g JOIN permission_presets p ON p.id=g.preset_id WHERE p.role='MANAGER'")).isEqualTo(9);
     }
@@ -187,8 +187,8 @@ class FoundationMigrationTests {
         jdbc.update("INSERT INTO branches(id,code,name,address) VALUES(20,'A','A','Test')");
         jdbc.update("INSERT INTO conversations(id,kind,branch_id,name) VALUES(40,'GLOBAL_CHANNEL',NULL,'All'),(41,'BRANCH_CHANNEL',20,'Branch')");
 
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(1);
-        assertThat(flyway(null).validateWithResult().validationSuccessful).isTrue();
+        assertThat(flyway("3").migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(flyway("3").validateWithResult().validationSuccessful).isTrue();
         assertThat(jdbc.queryForList("SELECT description FROM conversations WHERE id IN (40,41)", String.class)).containsOnlyNulls();
         assertThat(jdbc.queryForList("SELECT version FROM conversations WHERE id IN (40,41)", Long.class)).containsExactly(0L, 0L);
         var columns = jdbc.queryForList("SELECT COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,COLUMN_DEFAULT FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='conversations' AND COLUMN_NAME IN ('description','version') ORDER BY COLUMN_NAME");
@@ -197,6 +197,133 @@ class FoundationMigrationTests {
         jdbc.update("UPDATE conversations SET description=? WHERE id=40", "가".repeat(500));
         assertThatThrownBy(() -> jdbc.update("UPDATE conversations SET description=? WHERE id=40", "가".repeat(501)))
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+    }
+
+    private void seedRoomPrerequisites() {
+        jdbc.update("INSERT INTO employees(id,email,password_hash,name,nickname,global_role,status) VALUES(10,'owner@example.com','hash','Owner','Owner','OWNER','ACTIVE')");
+        jdbc.update("INSERT INTO branches(id,code,name,address) VALUES(20,'A','A','Test')");
+        jdbc.update("INSERT INTO customers(id,member_no,name) VALUES(50,'C','Customer')");
+    }
+    private void v3Reservation(long id, String start, String end, int rate, int slots, long amount, String key) {
+        jdbc.update("INSERT INTO room_reservations(id,room_id,branch_id,customer_id,start_at,end_at,rate_per_30min_snapshot_krw,slot_count,amount_krw,status,request_key,created_by,updated_at) "
+                + "VALUES(?,30,20,50,?,?,?,?,?,'PAYMENT_PENDING',?,10,'2026-01-01 00:00:00')", id, start, end, rate, slots, amount, key);
+    }
+    private void reservation(String start, String end, long rate, long hours, long amount, String key) {
+        jdbc.update("INSERT INTO room_reservations(room_id,branch_id,customer_id,start_at,end_at,rate_per_hour_snapshot_krw,hours,amount_krw,status,request_key,created_by) "
+                + "VALUES(30,20,50,?,?,?,?,?,'PAYMENT_PENDING',?,10)", start, end, rate, hours, amount, key);
+    }
+    private void migratedRoomFixture() {
+        flyway(null).migrate();
+        seedRoomPrerequisites();
+        jdbc.update("INSERT INTO rooms(id,branch_id,room_no,name,capacity,rate_per_hour_krw) VALUES(30,20,'R1','Room',4,8000)");
+    }
+    private long columnsNamed(String names) {
+        return count("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND column_name IN (" + names + ")");
+    }
+
+    @Test void v4ConvertsRoomRatesReservationsAndSlotsOfAHourAlignedV3Database() {
+        flyway("3").migrate();
+        seedRoomPrerequisites();
+        jdbc.update("INSERT INTO rooms(id,branch_id,room_no,name,capacity,rate_per_30min_krw,updated_at,version) VALUES(30,20,'R1','Room',4,4000,'2026-01-01 00:00:00',5)");
+        // 14:00-16:00 is four 30-minute slots in V3 (rate 4,000 per slot, amount 16,000).
+        v3Reservation(90, "2026-12-01 14:00:00", "2026-12-01 16:00:00", 4000, 4, 16000, "OLD");
+        for (String slot : List.of("14:00", "14:30", "15:00", "15:30"))
+            jdbc.update("INSERT INTO room_reservation_slots(reservation_id,room_id,slot_start_at) VALUES(90,30,?)", "2026-12-01 " + slot + ":00");
+
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(flyway(null).validateWithResult().validationSuccessful).isTrue();
+
+        var room = jdbc.queryForMap("SELECT rate_per_hour_krw,updated_at,version FROM rooms WHERE id=30");
+        assertThat(((Number) room.get("rate_per_hour_krw")).longValue()).isEqualTo(8000);
+        assertThat(room.get("updated_at").toString()).startsWith("2026-01-01");
+        assertThat(((Number) room.get("version")).longValue()).isEqualTo(5);
+        var old = jdbc.queryForMap("SELECT rate_per_hour_snapshot_krw,hours,amount_krw,updated_at FROM room_reservations WHERE id=90");
+        assertThat(((Number) old.get("rate_per_hour_snapshot_krw")).longValue()).isEqualTo(8000);
+        assertThat(((Number) old.get("hours")).longValue()).isEqualTo(2);
+        assertThat(((Number) old.get("amount_krw")).longValue()).isEqualTo(16000);
+        assertThat(old.get("updated_at").toString()).startsWith("2026-01-01");
+        assertThat(jdbc.queryForList("SELECT DATE_FORMAT(slot_start_at,'%H:%i') FROM room_reservation_slots WHERE reservation_id=90 ORDER BY slot_start_at", String.class))
+                .containsExactly("14:00", "15:00");
+        assertThat(columnsNamed("'rate_per_30min_krw','rate_per_30min_snapshot_krw','slot_count'")).isZero();
+    }
+
+    @Test void v4RefusesAV3DatabaseWithNonHourReservationsWithoutChangingAnything() {
+        flyway("3").migrate();
+        seedRoomPrerequisites();
+        jdbc.update("INSERT INTO rooms(id,branch_id,room_no,name,capacity,rate_per_30min_krw) VALUES(30,20,'R1','Room',4,4000)");
+        v3Reservation(91, "2026-12-01 14:30:00", "2026-12-01 15:30:00", 4000, 2, 8000, "HALF");
+
+        assertThatThrownBy(() -> flyway(null).migrate()).hasStackTraceContaining("ck_room_reservations_13");
+        assertThat(columnsNamed("'rate_per_30min_krw','rate_per_30min_snapshot_krw','slot_count'")).isEqualTo(3);
+        assertThat(count("SELECT rate_per_30min_krw FROM rooms WHERE id=30")).isEqualTo(4000);
+        assertThat(count("SELECT slot_count FROM room_reservations WHERE id=91")).isEqualTo(2);
+        assertThat(count("SELECT COUNT(*) FROM permission_definitions WHERE code='customers:cross-branch-read'")).isZero();
+    }
+
+    @Test void v4RefusesA90MinuteV3ReservationThatStartsOnTheHour() {
+        flyway("3").migrate();
+        seedRoomPrerequisites();
+        jdbc.update("INSERT INTO rooms(id,branch_id,room_no,name,capacity,rate_per_30min_krw) VALUES(30,20,'R1','Room',4,4000)");
+        v3Reservation(92, "2026-12-01 14:00:00", "2026-12-01 15:30:00", 4000, 3, 12000, "NINETY");
+
+        assertThatThrownBy(() -> flyway(null).migrate()).hasStackTraceContaining("ck_room_reservations_14");
+        assertThat(columnsNamed("'rate_per_30min_krw','rate_per_30min_snapshot_krw','slot_count'")).isEqualTo(3);
+    }
+
+    @Test void v4RejectsReservationsThatAreNotWholeHoursOnTheHourOrPricedByTheHour() {
+        migratedRoomFixture();
+        reservation("2026-12-01 14:00:00", "2026-12-01 15:00:00", 8000, 1, 8000, "OK1");
+        reservation("2026-12-01 16:00:00", "2026-12-01 19:00:00", 8000, 3, 24000, "OK3");
+        assertThat(count("SELECT COUNT(*) FROM room_reservations")).isEqualTo(2);
+        assertThatThrownBy(() -> reservation("2026-12-02 14:30:00", "2026-12-02 15:30:00", 8000, 1, 8000, "HALF-START"))
+                .hasStackTraceContaining("ck_room_reservations_13");
+        assertThatThrownBy(() -> reservation("2026-12-02 14:00:00", "2026-12-02 14:30:00", 8000, 1, 8000, "HALF-LONG"))
+                .hasStackTraceContaining("ck_room_reservations_14");
+        assertThatThrownBy(() -> reservation("2026-12-02 14:00:00", "2026-12-02 15:30:00", 8000, 1, 8000, "NINETY"))
+                .hasStackTraceContaining("ck_room_reservations_14");
+        assertThatThrownBy(() -> reservation("2026-12-02 14:00:00", "2026-12-02 16:00:00", 8000, 1, 8000, "HOURS-MISMATCH"))
+                .hasStackTraceContaining("ck_room_reservations_7");
+        assertThatThrownBy(() -> reservation("2026-12-02 14:00:00", "2026-12-02 14:00:00", 8000, 0, 0, "EMPTY"))
+                .hasStackTraceContaining("Check constraint");
+        assertThatThrownBy(() -> reservation("2026-12-02 14:00:00", "2026-12-02 16:00:00", 8000, 2, 8000, "AMOUNT-LOW"))
+                .hasStackTraceContaining("ck_room_reservations_10");
+        assertThatThrownBy(() -> reservation("2026-12-02 14:00:00", "2026-12-02 16:00:00", 8000, 2, 32000, "AMOUNT-HIGH"))
+                .hasStackTraceContaining("ck_room_reservations_10");
+        assertThatThrownBy(() -> reservation("2026-12-02 14:00:00", "2026-12-02 15:00:00", 0, 1, 0, "FREE"))
+                .hasStackTraceContaining("ck_room_reservations_9");
+        assertThatThrownBy(() -> jdbc.update("UPDATE room_reservations SET amount_krw=1 WHERE request_key='OK1'"))
+                .hasStackTraceContaining("ck_room_reservations_10");
+        assertThatThrownBy(() -> jdbc.update("UPDATE rooms SET rate_per_hour_krw=0 WHERE id=30"))
+                .hasStackTraceContaining("ck_rooms_2");
+        assertThat(count("SELECT COUNT(*) FROM room_reservations")).isEqualTo(2);
+    }
+
+    @Test void v4AllowsOnlyOnTheHourSlotsAndKeepsTheRoomSlotUniqueKey() {
+        migratedRoomFixture();
+        reservation("2026-12-01 14:00:00", "2026-12-01 16:00:00", 8000, 2, 16000, "SLOTS");
+        reservation("2026-12-01 18:00:00", "2026-12-01 19:00:00", 8000, 1, 8000, "OTHER");
+        long reservation = jdbc.queryForObject("SELECT id FROM room_reservations WHERE request_key='SLOTS'", Long.class);
+        long other = jdbc.queryForObject("SELECT id FROM room_reservations WHERE request_key='OTHER'", Long.class);
+        String insert = "INSERT INTO room_reservation_slots(reservation_id,room_id,slot_start_at) VALUES(?,30,?)";
+        jdbc.update(insert, reservation, "2026-12-01 14:00:00");
+        jdbc.update(insert, reservation, "2026-12-01 15:00:00");
+        assertThatThrownBy(() -> jdbc.update(insert, reservation, "2026-12-01 15:30:00"))
+                .hasStackTraceContaining("ck_room_reservation_slots_2");
+        assertThatThrownBy(() -> jdbc.update(insert, reservation, "2026-12-01 16:00:30"))
+                .hasStackTraceContaining("ck_room_reservation_slots_1");
+        assertThatThrownBy(() -> jdbc.update(insert, other, "2026-12-01 15:00:00"))
+                .hasStackTraceContaining("uk_room_reservation_slots_1");
+        assertThat(jdbc.queryForList("SELECT COLUMN_NAME FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='room_reservation_slots' AND INDEX_NAME='uk_room_reservation_slots_1' AND NON_UNIQUE=0 ORDER BY SEQ_IN_INDEX", String.class))
+                .containsExactly("room_id", "slot_start_at");
+    }
+
+    @Test void v4AddsTheGrantableCrossBranchPermissionWithoutPuttingItInAnyPreset() {
+        flyway(null).migrate();
+        var permission = jdbc.queryForMap("SELECT code,is_admin_only FROM permission_definitions WHERE code='customers:cross-branch-read'");
+        assertThat(permission.get("is_admin_only")).isIn(false, 0);
+        assertThat(count("SELECT COUNT(*) FROM permission_definitions")).isEqualTo(10);
+        assertThat(count("SELECT COUNT(*) FROM permission_preset_grants g JOIN permission_definitions d ON d.id=g.permission_id WHERE d.code='customers:cross-branch-read'")).isZero();
+        assertThat(count("SELECT COUNT(*) FROM permission_preset_grants")).isEqualTo(9);
     }
 
     @Test void exportsPristineSchemaAndRestoresItWithMatchingFlywayHistoryAndMetadata() throws Exception {
@@ -228,7 +355,7 @@ class FoundationMigrationTests {
         assertThat(jdbc.queryForList("SELECT TABLE_NAME,COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,COLUMN_KEY,COLUMN_DEFAULT,EXTRA,COLUMN_COMMENT FROM information_schema.columns WHERE table_schema=DATABASE() ORDER BY TABLE_NAME,ORDINAL_POSITION")).isEqualTo(columns);
         assertThat(jdbc.queryForList("SELECT k.TABLE_NAME,k.COLUMN_NAME,k.REFERENCED_TABLE_NAME,k.REFERENCED_COLUMN_NAME,k.CONSTRAINT_NAME,r.DELETE_RULE FROM information_schema.key_column_usage k JOIN information_schema.referential_constraints r ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME WHERE k.TABLE_SCHEMA=DATABASE() ORDER BY k.TABLE_NAME,k.CONSTRAINT_NAME,k.ORDINAL_POSITION")).isEqualTo(keys);
         assertThat(count("SELECT COUNT(*) FROM employees")).isZero();
-        assertThat(count("SELECT COUNT(*) FROM permission_definitions")).isEqualTo(9);
+        assertThat(count("SELECT COUNT(*) FROM permission_definitions")).isEqualTo(10);
         if(System.getProperty("foundation.exportDir")!=null) {
             Path out=Path.of(System.getProperty("foundation.exportDir")); Files.createDirectories(out);
             Files.copy(temp,out.resolve("schema-full.sql"),java.nio.file.StandardCopyOption.REPLACE_EXISTING);
