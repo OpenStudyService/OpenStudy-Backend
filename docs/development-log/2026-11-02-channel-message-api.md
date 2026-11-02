@@ -1,6 +1,6 @@
-# 2026-11-03 채널·참여자 관리와 메시지·스레드·과거 조회·읽음·재전송 API
+# 2026-11-02 채널·참여자 관리와 메시지·스레드·과거 조회·읽음·재전송 API
 
-관련: Issue [#76](https://github.com/OpenStudyService/OpenStudy-Backend/issues/76), [계약 문서](../design/foundation/collaboration-api.md), [ADR-M7-001](../db/ADR-M7-001.md) M7-D04·D07과 변경 이력(2026-11-01), [공지 API 기록](2026-11-03-notice-api.md).
+관련: Issue [#76](https://github.com/OpenStudyService/OpenStudy-Backend/issues/76), [계약 문서](../design/foundation/collaboration-api.md), [ADR-M7-001](../db/ADR-M7-001.md) M7-D04·D07과 변경 이력(2026-11-01), [공지 API 기록](2026-11-02-notice-api.md).
 
 ## 1. 배경 / 문제
 

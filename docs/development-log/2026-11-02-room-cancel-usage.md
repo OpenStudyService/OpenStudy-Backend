@@ -1,6 +1,6 @@
-# 2026-11-04 룸 예약 취소·재예약과 이용 시작·완료 API
+# 2026-11-02 룸 예약 취소·재예약과 이용 시작·완료 API
 
-관련: Issue [#70](https://github.com/OpenStudyService/OpenStudy-Backend/issues/70), [계약 문서](../design/foundation/space-operations-api.md), [ADR-M6-001](../db/ADR-M6-001.md) M6-D04·D05, [M4 계약](../design/foundation/customer-sales-api.md), [예약 기록](2026-11-03-room-reservation-api.md).
+관련: Issue [#70](https://github.com/OpenStudyService/OpenStudy-Backend/issues/70), [계약 문서](../design/foundation/space-operations-api.md), [ADR-M6-001](../db/ADR-M6-001.md) M6-D04·D05, [M4 계약](../design/foundation/customer-sales-api.md), [예약 기록](2026-11-02-room-reservation-api.md).
 
 ## 1. 배경 / 문제
 

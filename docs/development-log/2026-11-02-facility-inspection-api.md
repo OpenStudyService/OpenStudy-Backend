@@ -1,4 +1,4 @@
-# 2026-11-03 시설 점검 항목·점검 완료·다음 점검일 API
+# 2026-11-02 시설 점검 항목·점검 완료·다음 점검일 API
 
 관련: Issue [#78](https://github.com/OpenStudyService/OpenStudy-Backend/issues/78), [계약 문서](../design/foundation/collaboration-api.md), [ADR-M7-001](../db/ADR-M7-001.md) M7-D03·D05·D06, [업무 API 기록](2026-11-01-task-management-api.md).
 

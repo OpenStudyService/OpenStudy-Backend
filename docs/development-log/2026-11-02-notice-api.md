@@ -1,6 +1,6 @@
-# 2026-11-03 공지 등록·수정·게시 종료와 대상 지점 노출 API
+# 2026-11-02 공지 등록·수정·게시 종료와 대상 지점 노출 API
 
-관련: Issue [#80](https://github.com/OpenStudyService/OpenStudy-Backend/issues/80), [계약 문서](../design/foundation/collaboration-api.md), [ADR-M7-001](../db/ADR-M7-001.md) M7-D04, [문의 API 기록](2026-11-03-inquiry-api.md).
+관련: Issue [#80](https://github.com/OpenStudyService/OpenStudy-Backend/issues/80), [계약 문서](../design/foundation/collaboration-api.md), [ADR-M7-001](../db/ADR-M7-001.md) M7-D04, [문의 API 기록](2026-11-02-inquiry-api.md).
 
 ## 1. 배경 / 문제
 

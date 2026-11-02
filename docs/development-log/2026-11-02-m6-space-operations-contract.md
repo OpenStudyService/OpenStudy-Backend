@@ -1,4 +1,4 @@
-# 2026-11-03 M6 스터디룸·사물함·타 지점 요약 API 계약
+# 2026-11-02 M6 스터디룸·사물함·타 지점 요약 API 계약
 
 관련: Issue [#67](https://github.com/OpenStudyService/OpenStudy-Backend/issues/67), [계약 문서](../design/foundation/space-operations-api.md), [ADR-M6-001](../db/ADR-M6-001.md), [M4 계약](../design/foundation/customer-sales-api.md).
 

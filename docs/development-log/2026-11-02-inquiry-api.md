@@ -1,6 +1,6 @@
-# 2026-11-03 고객 문의 대리 등록·담당자·답변·미처리 수치 API
+# 2026-11-02 고객 문의 대리 등록·담당자·답변·미처리 수치 API
 
-관련: Issue [#79](https://github.com/OpenStudyService/OpenStudy-Backend/issues/79), [계약 문서](../design/foundation/collaboration-api.md), [ADR-M7-001](../db/ADR-M7-001.md) M7-D02, [ADR-M4-002](../db/ADR-M4-002.md) M4-D05, [정확 일치 조회 계약](../design/foundation/seat-usage-api.md), [시설 API 기록](2026-11-03-facility-inspection-api.md).
+관련: Issue [#79](https://github.com/OpenStudyService/OpenStudy-Backend/issues/79), [계약 문서](../design/foundation/collaboration-api.md), [ADR-M7-001](../db/ADR-M7-001.md) M7-D02, [ADR-M4-002](../db/ADR-M4-002.md) M4-D05, [정확 일치 조회 계약](../design/foundation/seat-usage-api.md), [시설 API 기록](2026-11-02-facility-inspection-api.md).
 
 ## 1. 배경 / 문제
 
