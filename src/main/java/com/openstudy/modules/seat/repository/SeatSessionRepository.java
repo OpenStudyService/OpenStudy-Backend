@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Optional;
 
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -18,6 +19,8 @@ public interface SeatSessionRepository extends JpaRepository<SeatSession, Long> 
     List<SeatSession> findByStatusAndCustomerIdIn(SeatSession.Status status, Collection<Long> customerIds);
 
     List<SeatSession> findByPassIdInAndStatusOrderByIdAsc(Collection<Long> passIds, SeatSession.Status status);
+
+    List<SeatSession> findByCustomerIdOrderByCheckedInAtDescIdDesc(long customerId, Limit limit);
 
     boolean existsBySeatIdAndStatus(long seatId, SeatSession.Status status);
 

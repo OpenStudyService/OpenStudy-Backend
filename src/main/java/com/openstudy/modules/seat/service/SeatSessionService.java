@@ -19,6 +19,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Limit;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +42,7 @@ import com.openstudy.modules.customer.dto.response.CustomerSummary;
 import com.openstudy.modules.customer.service.CustomerService;
 import com.openstudy.modules.employee.service.EmployeeAccountService;
 import com.openstudy.modules.seat.dto.response.ActorSummary;
+import com.openstudy.modules.seat.dto.response.CustomerSeatUsage;
 import com.openstudy.modules.seat.dto.response.SeatMove;
 import com.openstudy.modules.seat.dto.response.SeatRef;
 import com.openstudy.modules.seat.dto.response.SeatSessionPass;
@@ -258,6 +260,13 @@ public class SeatSessionService {
                     session.getBilledMinutes(), checkOut == null ? null : checkOut.getActorEmployeeId(),
                     checkOut == null ? null : checkOut.getReason());
         }).toList();
+    }
+
+    /** The customer's latest stays at any branch (M5-D01), reduced to place and time for the cross-branch summary (M6-D06). */
+    @Transactional(readOnly = true)
+    public List<CustomerSeatUsage> recentUsages(long customerId, int limit) {
+        return sessions.findByCustomerIdOrderByCheckedInAtDescIdDesc(customerId, Limit.of(limit)).stream()
+                .map(session -> new CustomerSeatUsage(session.getBranchId(), session.getCheckedInAt(), session.getCheckedOutAt())).toList();
     }
 
     /** A live record answers the first result or, for another input, a conflict; an expired one is forgotten. */

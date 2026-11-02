@@ -38,6 +38,7 @@ import com.openstudy.modules.authorization.service.AuthorizedCommands;
 import com.openstudy.modules.customer.service.CustomerService;
 import com.openstudy.modules.employee.service.EmployeeAccountService;
 import com.openstudy.modules.locker.dto.response.ActorSummary;
+import com.openstudy.modules.locker.dto.response.CustomerLockerUsage;
 import com.openstudy.modules.locker.dto.response.LockerAssignmentView;
 import com.openstudy.modules.locker.dto.response.LockerChargeView;
 import com.openstudy.modules.locker.dto.response.LockerRef;
@@ -234,6 +235,32 @@ public class LockerAssignmentService {
         if (assignments.branchOf(id).filter(selected::contains).isEmpty()) throw notFound();
         return views(List.of(assignments.findById(id).orElseThrow(LockerAssignmentService::notFound)), state,
                 LockerInputs.today(clock.instant())).getFirst();
+    }
+
+    /**
+     * One customer's assignments at these branches, for a caller that has gated the customer and the branches. Through the
+     * same mapping as every other response, so a history cannot disagree with the ledger; amounts and payment references
+     * stay subject to {@code state}, branch by branch.
+     */
+    @Transactional(readOnly = true)
+    public List<LockerAssignmentView> ofCustomer(AuthorizationState state, long customerId, Set<Long> branches) {
+        return views(search.ofCustomer(customerId, branches), state, LockerInputs.today(clock.instant()));
+    }
+
+    /**
+     * The customer's latest locker use at any branch, reduced to place and time for the cross-branch summary (M6-D06). A
+     * use runs from the start of its first day to the return; until then it has no end, even past the paid period, because
+     * the things are still inside. An assignment returned before its start was never used.
+     */
+    @Transactional(readOnly = true)
+    public List<CustomerLockerUsage> recentUsages(long customerId, int limit, Instant now) {
+        var rows = assignments.heldBy(customerId, LockerInputs.today(now)).stream().filter(row -> row.getReturnedAt() == null
+                || !LockerInputs.today(row.getReturnedAt()).isBefore(row.getStartDate())).limit(limit).toList();
+        Map<Long, Long> branchOf = new HashMap<>();
+        lockers.findAllById(rows.stream().map(LockerAssignment::getLockerId).distinct().toList())
+                .forEach(locker -> branchOf.put(locker.getId(), locker.getBranchId()));
+        return rows.stream().map(row -> new CustomerLockerUsage(branchOf.get(row.getLockerId()), LockerInputs.startOf(row.getStartDate()),
+                row.getReturnedAt())).toList();
     }
 
     /** A live record answers the first result or, for another input, a conflict; an expired one is forgotten. */

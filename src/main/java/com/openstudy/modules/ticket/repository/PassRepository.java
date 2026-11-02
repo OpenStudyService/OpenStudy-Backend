@@ -22,6 +22,8 @@ public interface PassRepository extends JpaRepository<Pass, Long> {
 
     List<Pass> findByCustomerIdAndPurchaseBranchIdInOrderByIdAsc(long customerId, Collection<Long> purchaseBranchIds);
 
+    List<Pass> findByCustomerIdAndStatusInOrderByIdDesc(long customerId, Collection<PassStatus> statuses);
+
     /** The branch alone, so the row is first loaded by {@link #locked} and always holds the current values. */
     @Query("SELECT p.purchaseBranchId FROM Pass p WHERE p.id = :id")
     Optional<Long> purchaseBranchOf(@Param("id") long id);

@@ -31,6 +31,7 @@ import com.openstudy.modules.authorization.dto.BranchAction;
 import com.openstudy.modules.authorization.service.AuthorizationService;
 import com.openstudy.modules.customer.dto.response.CustomerSummary;
 import com.openstudy.modules.customer.service.CustomerService;
+import com.openstudy.modules.ticket.dto.CrossBranchPass;
 import com.openstudy.modules.ticket.dto.IssuedPass;
 import com.openstudy.modules.ticket.dto.PassLedger;
 import com.openstudy.modules.ticket.dto.PassSettlement;
@@ -60,6 +61,7 @@ public class PassService {
     private static final String EXHAUSTED = "소진";
     private static final String EXPIRED = "만료";
     private static final String REFUNDED = "환불";
+    private static final Set<PassStatus> HELD = Set.of(PassStatus.ACTIVE, PassStatus.EXHAUSTED, PassStatus.EXPIRED, PassStatus.REFUNDED);
     private final PassRepository repository;
     private final PassSearchRepository search;
     private final PassBalanceEventRepository ledger;
@@ -199,6 +201,17 @@ public class PassService {
                     pass.getRemainingCreditKrw(), pass.getExpiresAt(), Long.toString(pass.getPurchaseBranchId())));
         }
         return result;
+    }
+
+    /**
+     * Every pass the customer holds, wherever it was bought, for the cross-branch summary (M6-D06). This reaches beyond
+     * the purchase branch scope of {@link #list} on purpose, so it returns only the minimal {@link CrossBranchPass}.
+     * NOT_STARTED is left out: no such pass is issued (M4-D01) and the contract has no label for one.
+     */
+    @Transactional(readOnly = true)
+    public List<CrossBranchPass> heldBy(long customerId, Instant now) {
+        return repository.findByCustomerIdAndStatusInOrderByIdDesc(customerId, HELD).stream().map(pass ->
+                new CrossBranchPass(ProductViews.apiKind(pass.getKind()), pass.getSnapshotProductName(), status(pass, now), pass.getExpiresAt())).toList();
     }
 
     /** Refund state of the passes bought by these payments, keyed by payment id. */

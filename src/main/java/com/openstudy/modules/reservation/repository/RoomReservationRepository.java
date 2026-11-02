@@ -2,6 +2,7 @@ package com.openstudy.modules.reservation.repository;
 
 import java.time.Instant;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 import jakarta.persistence.LockModeType;
@@ -30,4 +31,7 @@ public interface RoomReservationRepository extends JpaRepository<RoomReservation
     Optional<RoomReservation> locked(@Param("id") long id);
 
     boolean existsByRoomIdAndStatus(long roomId, RoomReservationStatus status);
+
+    /** The list's fixed order: latest start first. */
+    List<RoomReservation> findByCustomerIdAndBranchIdInOrderByStartAtDescIdDesc(long customerId, Collection<Long> branches);
 }

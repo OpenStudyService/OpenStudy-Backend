@@ -17,6 +17,7 @@ import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Limit;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +41,7 @@ import com.openstudy.modules.customer.service.CustomerService;
 import com.openstudy.modules.employee.service.EmployeeAccountService;
 import com.openstudy.modules.payment.service.PaymentService;
 import com.openstudy.modules.reservation.dto.response.ActorSummary;
+import com.openstudy.modules.reservation.dto.response.CustomerRoomUsage;
 import com.openstudy.modules.reservation.dto.response.ReservationBilling;
 import com.openstudy.modules.reservation.dto.response.RoomRef;
 import com.openstudy.modules.reservation.dto.response.RoomReservationCalendar;
@@ -284,6 +286,23 @@ public class RoomReservationService {
         var reservation = reservations.findById(id).filter(found -> selected.contains(found.getBranchId()))
                 .orElseThrow(RoomReservationService::notFound);
         return views(List.of(reservation), state, clock.instant()).getFirst();
+    }
+
+    /**
+     * One customer's reservations at these branches, for a caller that has gated the customer and the branches. Through
+     * the same mapping as every other response, so a history cannot disagree with the ledger; amounts and payment
+     * references stay subject to {@code state}, branch by branch.
+     */
+    @Transactional(readOnly = true)
+    public List<RoomReservationView> ofCustomer(AuthorizationState state, long customerId, Set<Long> branches) {
+        if (branches.isEmpty()) return List.of();
+        return views(reservations.findByCustomerIdAndBranchIdInOrderByStartAtDescIdDesc(customerId, branches), state, clock.instant());
+    }
+
+    /** The customer's latest actual uses at any branch, reduced to place and time for the cross-branch summary (M6-D06). */
+    @Transactional(readOnly = true)
+    public List<CustomerRoomUsage> recentUsages(long customerId, int limit) {
+        return usages.latestOf(customerId, Limit.of(limit));
     }
 
     /** A live record answers the first result or, for another input, a conflict; an expired one is forgotten. */
