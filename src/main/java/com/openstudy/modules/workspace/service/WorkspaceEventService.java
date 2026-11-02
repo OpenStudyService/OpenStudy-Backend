@@ -130,7 +130,9 @@ public class WorkspaceEventService {
             // Payment ids are only meaningful to readers who may open them (payments:read).
             if("payments".equals(resource) && !authorization.permits(current.state(),event.branchId(),BranchAction.READ_PAYMENTS)) return;
             // A removed peer is no longer in minimal lookups, even while this branch remains readable.
-            String entityId="employees".equals(resource) || event.entityId()==null ? null : event.entityId().toString();
+            // A facility type id is not a facility id, so a new type only tells the facility screens to reload.
+            boolean typeEvent=event.entityType().startsWith("facility-type");
+            String entityId="employees".equals(resource) || typeEvent || event.entityId()==null ? null : event.entityId().toString();
             send(connection,new WorkspaceEvent("invalidate",resource,
                     entityId,event.branchId().toString(),event.occurredAt().toString()));
         } else if("employees".equals(resource)) {
@@ -153,6 +155,7 @@ public class WorkspaceEventService {
             case "payment","payments"->"payments";
             case "pass","passes"->"passes";
             case "task","tasks"->"tasks";
+            case "facility","facilities","facility-type","facility-types"->"facilities";
             case "seat","seats"->"seats";
             case "seat-session","seat-sessions"->"seat-sessions";
             case "lookups"->"lookups";
