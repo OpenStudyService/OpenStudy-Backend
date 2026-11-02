@@ -78,4 +78,13 @@ public class RoomReservation {
         reservation.status = approved ? RoomReservationStatus.CONFIRMED : RoomReservationStatus.PAYMENT_FAILED;
         return reservation;
     }
+
+    /** ck_room_reservations_11 ties these three columns to the status. */
+    public void cancel(long actor, String reason, Instant at) {
+        status = RoomReservationStatus.CANCELLED; cancelledBy = actor; cancelReason = reason; cancelledAt = at;
+    }
+
+    public void startUsage() { status = RoomReservationStatus.IN_USE; }
+
+    public void completeUsage() { status = RoomReservationStatus.COMPLETED; }
 }

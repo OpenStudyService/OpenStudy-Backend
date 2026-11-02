@@ -12,7 +12,10 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-/** One held hour of a confirmed reservation. uk_room_reservation_slots_1 is the last defence against double booking. */
+/**
+ * One held hour of a reservation. uk_room_reservation_slots_1 is the last defence against double booking. A cancellation
+ * deletes every slot and a completion deletes the hours not started yet, so a slot left behind is always in the past.
+ */
 @Entity
 @Table(name = "room_reservation_slots")
 @Getter

@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -43,26 +44,31 @@ import com.openstudy.modules.reservation.dto.response.ReservationBilling;
 import com.openstudy.modules.reservation.dto.response.RoomRef;
 import com.openstudy.modules.reservation.dto.response.RoomReservationCalendar;
 import com.openstudy.modules.reservation.dto.response.RoomReservationView;
+import com.openstudy.modules.reservation.dto.response.RoomUsageView;
 import com.openstudy.modules.reservation.entity.Room;
 import com.openstudy.modules.reservation.entity.RoomReservation;
 import com.openstudy.modules.reservation.entity.RoomReservationSlot;
 import com.openstudy.modules.reservation.entity.RoomReservationStatus;
 import com.openstudy.modules.reservation.entity.RoomState;
+import com.openstudy.modules.reservation.entity.RoomUsage;
 import com.openstudy.modules.reservation.repository.RoomRepository;
 import com.openstudy.modules.reservation.repository.RoomReservationRepository;
 import com.openstudy.modules.reservation.repository.RoomReservationSearchRepository;
 import com.openstudy.modules.reservation.repository.RoomReservationSlotRepository;
+import com.openstudy.modules.reservation.repository.RoomUsageRepository;
 
 /**
- * Booking with prepayment and its reads (FR-ROOM-02/03/05/06, FR-PAY-07, M6-D01·D05). The payment, the reservation and
- * the held slots commit together or not at all. The amount comes only from the room row read under its shared lock: no
- * request field carries money, hours or a rate. Every check of the contract's table runs under the locks, in its order,
- * and the time conflict is decided before any payment is written.
+ * Booking with prepayment and its reads (FR-ROOM-02/03/05/06, FR-PAY-07, M6-D01·D05), cancellation with its full refund
+ * (FR-ROOM-04, M6-D04) and the use of a room (FR-ROOM-08). The payment, the reservation and the held slots commit together
+ * or not at all. The amount comes only from the room row read under its shared lock: no request field carries money,
+ * hours or a rate. Every check of the contract's tables runs under the locks, in its order, and the time conflict is
+ * decided before any payment is written.
  */
 @Service
 @RequiredArgsConstructor
 public class RoomReservationService {
     private static final String CREATE = "room-reservations:create";
+    private static final String CANCEL = "room-reservations:cancel";
     private static final String ENTITY = "room-reservations";
     private static final int MAX_HOURS = 24;
     private static final int MAX_PARTY = 65_535;
@@ -70,6 +76,7 @@ public class RoomReservationService {
     private final RoomReservationRepository reservations;
     private final RoomReservationSearchRepository search;
     private final RoomReservationSlotRepository slots;
+    private final RoomUsageRepository usages;
     private final RoomRepository rooms;
     private final CustomerService customers;
     private final PaymentService payments;
@@ -100,7 +107,7 @@ public class RoomReservationService {
                 end.toString(), partySize, method, approved)));
         // WRITE_PAYMENT_HISTORY, not NEW_PAYMENT: a stopped branch must answer BRANCH_NOT_ACTIVE at its place in the table.
         return commands.inBranches(actor, Set.of(branch), BranchAction.WRITE_PAYMENT_HISTORY, () -> {}, state -> {
-            var replayed = replay(actor, scopeKey, key, fingerprint);
+            var replayed = replay(actor, CREATE, scopeKey, key, fingerprint);
             if (replayed.isPresent()) return replayed.get();
             var room = rooms.lockedShared(roomId).filter(found -> policy.permits(state, found.getBranchId(), BranchAction.READ))
                     .orElseThrow(RoomReservationService::notFound);
@@ -131,6 +138,110 @@ public class RoomReservationService {
                     clock.instant().plus(Duration.ofHours(24)));
             return result;
         });
+    }
+
+    /**
+     * The full refund of a confirmed reservation before its start (M6-D04). The refund event, both status changes, the
+     * freed slots, audit, events and the idempotent result commit together. A stopped branch may still refund (FR-BR-08),
+     * and the reservation stays as a record, so the same hour is simply booked again with a new key.
+     */
+    public RoomReservationView cancel(long actor, long id, String scope, String key, Map<String, Object> body, String requestId) {
+        var input = new StrictInput(body).only("version", "reason");
+        long version = input.version("version");
+        String reason = input.text("reason", 500);
+        RoomInputs.validKey(key);
+        Set<Long> selected = policy.scope(actor, scope, BranchAction.READ);
+        String scopeKey = Long.toString(id);
+        byte[] fingerprint = RoomInputs.digest(json.writeValueAsString(Arrays.asList(id, version, reason)));
+        return commands.inRecordBranch(actor, BranchAction.READ, () -> reservations.branchOf(id).filter(selected::contains), (state, branch) -> {
+            policy.require(state, Set.of(branch), BranchAction.WRITE_PAYMENT_HISTORY);
+            // Before the version check: the retry of a cancellation that went through carries the version it replaced.
+            var replayed = replay(actor, CANCEL, scopeKey, key, fingerprint);
+            if (replayed.isPresent()) return replayed.get();
+            var reservation = reservations.locked(id).orElseThrow(RoomReservationService::notFound);
+            ApiVersion.requireCurrent(version, reservation.getVersion(), reload(id));
+            if (reservation.getStatus() != RoomReservationStatus.CONFIRMED)
+                throw ApiException.conflict("RESERVATION_NOT_CANCELLABLE", "확정 상태의 예약만 취소할 수 있습니다.");
+            Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
+            if (!now.isBefore(reservation.getStartAt()))
+                throw ApiException.conflict("RESERVATION_NOT_CANCELLABLE", "시작 시각이 지난 예약은 취소할 수 없습니다.");
+            long refundId = payments.refundRoom(actor, reservation.getPaymentId(), reason,
+                    RoomInputs.storedKey("RFD-", actor, CANCEL, scopeKey, key), now, requestId);
+            String before = reservation.getStatus().name();
+            reservation.cancel(actor, reason, now);
+            reservations.saveAndFlush(reservation);
+            slots.deleteAllOf(id);
+            var after = new LinkedHashMap<String, Object>();
+            after.put("status", reservation.getStatus().name());
+            after.put("paymentId", Long.toString(reservation.getPaymentId()));
+            after.put("refundId", Long.toString(refundId));
+            audit.record(AuditEvent.change(actor, branch, ENTITY, id, reservation.getStatus().name(), reason,
+                    json.writeValueAsString(Map.of("status", before)), json.writeValueAsString(after), requestId));
+            outbox.invalidate(branch, ENTITY, id);
+            var result = views(List.of(reservation), state, now).getFirst();
+            requests.complete(actor, CANCEL, scopeKey, key, fingerprint, 200, json.writeValueAsString(result),
+                    clock.instant().plus(Duration.ofHours(24)));
+            return result;
+        });
+    }
+
+    /** Any employee of the branch. The start is when staff processes it, so the booked period is not compared. */
+    public RoomReservationView start(long actor, long id, String scope, Map<String, Object> body, String requestId) {
+        long version = new StrictInput(body).only("version").version("version");
+        Set<Long> selected = policy.scope(actor, scope, BranchAction.READ);
+        return commands.inRecordBranch(actor, BranchAction.READ, () -> reservations.branchOf(id).filter(selected::contains), (state, branch) -> {
+            var reservation = reservations.locked(id).orElseThrow(RoomReservationService::notFound);
+            ApiVersion.requireCurrent(version, reservation.getVersion(), reload(id));
+            if (reservation.getStatus() != RoomReservationStatus.CONFIRMED)
+                throw ApiException.conflict("INVALID_STATE", "확정 상태의 예약만 이용을 시작할 수 있습니다.");
+            if (!"ACTIVE".equals(state.branches().get(branch)))
+                throw ApiException.conflict("BRANCH_NOT_ACTIVE", "운영 중지된 지점에서는 이용을 시작할 수 없습니다.");
+            // A write lock, because two starts in one room must wait for each other: shared locks would not.
+            var room = rooms.locked(reservation.getRoomId()).orElseThrow();
+            if (room.getStatus() == RoomState.BLOCKED)
+                throw ApiException.conflict("ROOM_BLOCKED", "운영 중단된 룸은 이용을 시작할 수 없습니다.");
+            if (reservations.existsByRoomIdAndStatus(room.getId(), RoomReservationStatus.IN_USE))
+                throw ApiException.conflict("ROOM_IN_USE", "같은 룸에 이용 중인 예약이 있습니다.");
+            Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
+            usages.saveAndFlush(new RoomUsage(id, now, actor));
+            return moved(actor, reservation, reservation::startUsage, Map::of, state, now, requestId);
+        });
+    }
+
+    /**
+     * Any employee of the branch, also while the branch is stopped or the room is out of service (FR-BR-08). Completing
+     * early frees the hours not started yet. The rest are past, and a new booking must start after now, so a slot left
+     * behind can never refuse one.
+     */
+    public RoomReservationView complete(long actor, long id, String scope, Map<String, Object> body, String requestId) {
+        long version = new StrictInput(body).only("version").version("version");
+        Set<Long> selected = policy.scope(actor, scope, BranchAction.READ);
+        return commands.inRecordBranch(actor, BranchAction.READ, () -> reservations.branchOf(id).filter(selected::contains), (state, branch) -> {
+            var reservation = reservations.locked(id).orElseThrow(RoomReservationService::notFound);
+            ApiVersion.requireCurrent(version, reservation.getVersion(), reload(id));
+            if (reservation.getStatus() != RoomReservationStatus.IN_USE)
+                throw ApiException.conflict("INVALID_STATE", "이용 중인 예약만 완료할 수 있습니다.");
+            Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
+            var usage = usages.findByReservationId(id).orElseThrow(() -> new IllegalStateException("A started reservation has a usage"));
+            usage.end(now, actor);
+            usages.saveAndFlush(usage);
+            return moved(actor, reservation, reservation::completeUsage, () -> Map.of("releasedSlots", slots.deleteStartingAfter(id, now)),
+                    state, now, requestId);
+        });
+    }
+
+    /** The status change of a use, what follows from it, its audit row and event, answered in the shape of every response. */
+    private RoomReservationView moved(long actor, RoomReservation reservation, Runnable change, Supplier<Map<String, Object>> effects,
+            AuthorizationState state, Instant now, String requestId) {
+        String before = reservation.getStatus().name();
+        change.run();
+        reservations.saveAndFlush(reservation);
+        var after = new LinkedHashMap<String, Object>(effects.get());
+        after.put("status", reservation.getStatus().name());
+        audit.record(AuditEvent.change(actor, reservation.getBranchId(), ENTITY, reservation.getId(), reservation.getStatus().name(), null,
+                json.writeValueAsString(Map.of("status", before)), json.writeValueAsString(after), requestId));
+        outbox.invalidate(reservation.getBranchId(), ENTITY, reservation.getId());
+        return views(List.of(reservation), state, now).getFirst();
     }
 
     @Transactional(readOnly = true)
@@ -176,8 +287,8 @@ public class RoomReservationService {
     }
 
     /** A live record answers the first result or, for another input, a conflict; an expired one is forgotten. */
-    private Optional<RoomReservationView> replay(long actor, String scopeKey, String key, byte[] fingerprint) {
-        var prior = requests.lock(actor, CREATE, scopeKey, key);
+    private Optional<RoomReservationView> replay(long actor, String operation, String scopeKey, String key, byte[] fingerprint) {
+        var prior = requests.lock(actor, operation, scopeKey, key);
         if (prior.isEmpty()) return Optional.empty();
         if (!clock.instant().isBefore(prior.get().getExpiresAt())) {
             requests.discard(prior.get());
@@ -243,8 +354,12 @@ public class RoomReservationService {
         Map<Long, Room> byId = new HashMap<>();
         rooms.findAllById(rows.stream().map(RoomReservation::getRoomId).distinct().toList()).forEach(room -> byId.put(room.getId(), room));
         var people = customers.summaries(rows.stream().map(RoomReservation::getCustomerId).toList());
-        var names = employees.names(Stream.concat(rows.stream().map(RoomReservation::getCreatedBy),
-                rows.stream().map(RoomReservation::getCancelledBy).filter(Objects::nonNull)).toList());
+        Map<Long, RoomUsage> used = new HashMap<>();
+        usages.findByReservationIdIn(rows.stream().map(RoomReservation::getId).toList()).forEach(usage -> used.put(usage.getReservationId(), usage));
+        // One lookup for every person on these rows; a started-by or ended-by whose employee is gone is null.
+        var names = employees.names(Stream.of(rows.stream().map(RoomReservation::getCreatedBy), rows.stream().map(RoomReservation::getCancelledBy),
+                used.values().stream().map(RoomUsage::getStartedBy), used.values().stream().map(RoomUsage::getEndedBy))
+                .flatMap(ids -> ids).filter(Objects::nonNull).toList());
         var paymentLabels = payments.statusLabels(rows.stream().filter(row -> billingVisible(state, row.getBranchId()))
                 .map(RoomReservation::getPaymentId).filter(Objects::nonNull).toList());
         return rows.stream().map(row -> {
@@ -253,7 +368,7 @@ public class RoomReservationService {
                     && policy.permits(state, row.getBranchId(), BranchAction.WRITE_PAYMENT_HISTORY);
             return new RoomReservationView(row.getId().toString(), ApiVersion.fromDatabase(row.getVersion()), row.getStatus().label(),
                     Long.toString(row.getBranchId()), new RoomRef(room.getId().toString(), room.getRoomNo(), room.getName()),
-                    people.get(row.getCustomerId()), row.getStartAt(), row.getEndAt(), billing(row, paymentLabels), null, row.getCancelledAt(),
+                    people.get(row.getCustomerId()), row.getStartAt(), row.getEndAt(), billing(row, paymentLabels), usage(used.get(row.getId()), names), row.getCancelledAt(),
                     actor(row.getCancelledBy(), names), row.getCancelReason(), actor(row.getCreatedBy(), names), row.getCreatedAt(), canCancel);
         }).toList();
     }
@@ -271,9 +386,16 @@ public class RoomReservationService {
                 Long.toString(row.getPaymentId()), paymentLabels.get(row.getPaymentId()));
     }
 
+    private static RoomUsageView usage(RoomUsage usage, Map<Long, String> names) {
+        if (usage == null) return null;
+        return new RoomUsageView(usage.getStartedAt(), usage.getEndedAt(), actor(usage.getStartedBy(), names), actor(usage.getEndedBy(), names));
+    }
+
     private static ActorSummary actor(Long id, Map<Long, String> names) {
         return id == null ? null : new ActorSummary(id.toString(), names.getOrDefault(id, ""));
     }
 
     private static ResponseStatusException notFound() { return new ResponseStatusException(HttpStatus.NOT_FOUND); }
+
+    private static String reload(long id) { return "/api/room-reservations/" + id; }
 }
