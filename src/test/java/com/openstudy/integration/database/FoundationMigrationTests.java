@@ -55,11 +55,11 @@ class FoundationMigrationTests {
     }
     long count(String sql) { return jdbc.queryForObject(sql, Long.class); }
     @Test void createsTheConsolidatedBaselineWithIncrementalMigrationsAndPreservesDataOnRestart() {
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(5);
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(6);
         assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank", String.class))
-                .containsExactly("1", "2", "3", "4", "5");
+                .containsExactly("1", "2", "3", "4", "5", "6");
         assertThat(count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name <> 'flyway_schema_history'"))
-                .isEqualTo(65);
+                .isEqualTo(66);
         assertThat(count("SELECT COUNT(*) FROM employees")).isZero();
         assertThat(count("SELECT COUNT(*) FROM administration_guard WHERE id=1")).isEqualTo(1);
         jdbc.update("INSERT INTO branches(code,name,address) VALUES('RESTART','Restart test','Test')");
@@ -255,13 +255,45 @@ class FoundationMigrationTests {
         jdbc.update("INSERT INTO customers(id,member_no,name,phone) VALUES(40,'M-1','Customer','01012345678')");
         jdbc.update("INSERT INTO customer_service_interactions(id,customer_id,branch_id,employee_id,reason) VALUES(50,40,20,10,'lookup')");
 
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(1);
-        assertThat(flyway(null).validateWithResult().validationSuccessful).isTrue();
+        assertThat(flyway("5").migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(flyway("5").validateWithResult().validationSuccessful).isTrue();
 
         assertThat(jdbc.queryForObject("SELECT source FROM customer_service_interactions WHERE id=50", String.class)).isEqualTo("CHECK_IN_LOOKUP");
         jdbc.update("INSERT INTO customer_service_interactions(customer_id,branch_id,employee_id,reason,source) VALUES(40,20,10,'summary','CROSS_BRANCH_SUMMARY')");
         assertThatThrownBy(() -> jdbc.update("INSERT INTO customer_service_interactions(customer_id,branch_id,employee_id,reason,source) VALUES(40,20,10,'x','OTHER')"))
                 .isInstanceOf(org.springframework.dao.DataAccessException.class);
+    }
+
+    @Test void v6MakesEachReadPositionTheBaselineOfTheThreadsAndAddsTheirTable() {
+        flyway("5").migrate();
+        jdbc.update("INSERT INTO employees(id,email,password_hash,name,nickname,global_role,status) VALUES(10,'a@example.com','hash','A','A','OWNER','ACTIVE'),(11,'b@example.com','hash','B','B','EMPLOYEE','ACTIVE'),(12,'c@example.com','hash','C','C','EMPLOYEE','ACTIVE')");
+        jdbc.update("INSERT INTO conversations(id,kind,name,created_by) VALUES(30,'GLOBAL_CHANNEL','Channel',10),(31,'GLOBAL_CHANNEL','Other',10)");
+        jdbc.update("INSERT INTO conversation_members(conversation_id,employee_id,last_read_message_id,last_read_at) VALUES(30,10,NULL,NULL),(30,11,41,'2026-11-01 00:00:00'),(30,12,42,'2026-11-01 00:00:00'),(31,10,NULL,NULL)");
+        jdbc.update("INSERT INTO messages(id,conversation_id,sender_employee_id,parent_message_id,body,client_message_key) VALUES(40,30,10,NULL,'original','k1'),(41,30,10,40,'reply','k2'),(42,30,10,NULL,'later','k3'),(43,31,10,NULL,'other','k4'),(44,30,10,40,'reply 2','k5')");
+
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(flyway(null).validateWithResult().validationSuccessful).isTrue();
+
+        // A position on a reply (41) carries over as it is, and no position stays none.
+        assertThat(jdbc.queryForMap("SELECT last_read_message_id AS position, thread_read_baseline_message_id AS baseline FROM conversation_members WHERE conversation_id=30 AND employee_id=11"))
+                .containsEntry("baseline", java.math.BigInteger.valueOf(41)).containsEntry("position", java.math.BigInteger.valueOf(41));
+        assertThat(count("SELECT thread_read_baseline_message_id FROM conversation_members WHERE conversation_id=30 AND employee_id=12")).isEqualTo(42);
+        assertThat(count("SELECT COUNT(*) FROM conversation_members WHERE employee_id=10 AND thread_read_baseline_message_id IS NULL")).isEqualTo(2);
+        assertThat(count("SELECT COUNT(*) FROM conversation_thread_reads")).isZero();
+
+        // What a reader of the migrated rows is left with, by the rule of the unread queries.
+        String unreadReplies = "SELECT COUNT(*) FROM messages m JOIN conversation_members me ON me.conversation_id=m.conversation_id AND me.employee_id=%d "
+                + "WHERE m.conversation_id=30 AND m.parent_message_id IS NOT NULL AND (me.thread_read_baseline_message_id IS NULL OR m.id>me.thread_read_baseline_message_id)";
+        assertThat(count(unreadReplies.formatted(11))).isEqualTo(1);
+        assertThat(count(unreadReplies.formatted(10))).isEqualTo(2);
+
+        jdbc.update("INSERT INTO conversation_thread_reads(conversation_id,employee_id,parent_message_id,last_read_message_id,last_read_at) VALUES(30,11,40,44,'2026-11-03 00:00:00')");
+        String insert = "INSERT INTO conversation_thread_reads(conversation_id,employee_id,parent_message_id,last_read_message_id,last_read_at) VALUES(%s,'2026-11-03 00:00:00')";
+        assertThatThrownBy(() -> jdbc.update(insert.formatted("30,11,40,41"))).hasStackTraceContaining("Duplicate entry");
+        // A thread of another channel, a position in another channel, someone who never took part.
+        assertThatThrownBy(() -> jdbc.update(insert.formatted("31,10,40,43"))).hasStackTraceContaining("fk_conversation_thread_reads_2");
+        assertThatThrownBy(() -> jdbc.update(insert.formatted("30,12,40,43"))).hasStackTraceContaining("fk_conversation_thread_reads_3");
+        assertThatThrownBy(() -> jdbc.update(insert.formatted("31,11,43,43"))).hasStackTraceContaining("fk_conversation_thread_reads_1");
     }
 
     @Test void v4RefusesAV3DatabaseWithNonHourReservationsWithoutChangingAnything() {

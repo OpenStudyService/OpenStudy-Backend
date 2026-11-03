@@ -64,6 +64,7 @@ abstract class ChannelTestSupport {
         var channels = jdbc.queryForList("SELECT DISTINCT conversation_id FROM conversation_members WHERE employee_id IN (" + marks(people) + ")",
                 Long.class, people.toArray());
         for (long id : channels) {
+            jdbc.update("DELETE FROM conversation_thread_reads WHERE conversation_id=?", id);
             jdbc.update("DELETE FROM messages WHERE conversation_id=? AND parent_message_id IS NOT NULL", id);
             jdbc.update("DELETE FROM messages WHERE conversation_id=?", id);
             jdbc.update("DELETE FROM conversation_members WHERE conversation_id=?", id);

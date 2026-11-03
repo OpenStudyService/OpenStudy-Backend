@@ -148,6 +148,14 @@ erDiagram
     datetime_6 left_at
     bigint_unsigned last_read_message_id
     datetime_6 last_read_at
+    bigint_unsigned thread_read_baseline_message_id
+  }
+  conversation_thread_reads {
+    bigint_unsigned conversation_id PK,FK
+    bigint_unsigned employee_id PK,FK
+    bigint_unsigned parent_message_id PK,FK
+    bigint_unsigned last_read_message_id FK
+    datetime_6 last_read_at
   }
   conversations {
     bigint_unsigned id PK
@@ -789,6 +797,9 @@ erDiagram
   employees |o--o{ branches : "fk_branches_updated_by: updated_by"
   conversations ||--o{ conversation_members : "fk_conversation_members_1: conversation_id"
   employees ||--o{ conversation_members : "fk_conversation_members_2: employee_id"
+  conversation_members ||--o{ conversation_thread_reads : "fk_conversation_thread_reads_1: conversation_id,employee_id"
+  messages ||--o{ conversation_thread_reads : "fk_conversation_thread_reads_2: parent_message_id,conversation_id"
+  messages ||--o{ conversation_thread_reads : "fk_conversation_thread_reads_3: last_read_message_id,conversation_id"
   branches |o--o{ conversations : "fk_conversations_1: branch_id"
   employees |o--o{ conversations : "fk_conversations_2: dm_employee_low_id"
   employees |o--o{ conversations : "fk_conversations_3: dm_employee_high_id"

@@ -249,7 +249,7 @@ class ChannelIntegrationTests extends ChannelTestSupport {
         assertThat(count("SELECT COUNT(*) FROM messages WHERE conversation_id=?", channel)).isEqualTo(1);
     }
 
-    @Test void joiningAgainClearsLeftAtAndRestoresEarlierMessagesAndTheReadPosition() throws Exception {
+    @Test void joiningAgainClearsLeftAtAndRestoresEarlierMessagesAndMovesTheReadPosition() throws Exception {
         long channel = channelId(managerA, a, "재참여", staffA);
         long first = sent(managerA, channel, "이전 메시지");
         ok(read(staffA, channel, first));
@@ -259,9 +259,10 @@ class ChannelIntegrationTests extends ChannelTestSupport {
         ok(replaceMembers(managerA, channel, 2, managerA, staffA));
         assertThat(leftAtIsSet(channel, staffA)).isZero();
         assertThat(items(ok(get(staffA, "/api/channels/" + channel + "/messages")))).containsExactly(first, second);
+        // M7-D09: the messages stay open and count as read. ThreadReadIntegrationTests covers the threads.
         var seen = detail(staffA, channel);
-        assertThat(seen.get("lastReadMessageId").asString()).isEqualTo(Long.toString(first));
-        assertThat(seen.get("unreadCount").asLong()).isEqualTo(1);
+        assertThat(seen.get("lastReadMessageId").asString()).isEqualTo(Long.toString(second));
+        assertThat(seen.get("unreadCount").asLong()).isZero();
     }
 
     @Test void anIdenticalListChangesNothingAndAStaleOneConflicts() throws Exception {

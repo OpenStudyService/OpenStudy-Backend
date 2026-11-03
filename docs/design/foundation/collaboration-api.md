@@ -1,10 +1,12 @@
 # 업무·채널·시설·문의·공지 API 계약
 
-Backend [#74](https://github.com/OpenStudyService/OpenStudy-Backend/issues/74)의 M7 계약이다. 구현은 업무(#75), 채널·메시지(#76), 업무 카드(#77), 시설(#78), 문의(#79), 공지(#80)에서 이 문서를 기준으로 진행한다. Frontend는 같은 [OpenAPI](openapi.json)(`0.1.7-m7-collaboration`)로 연동한다(#26~#28).
+Backend [#74](https://github.com/OpenStudyService/OpenStudy-Backend/issues/74)의 M7 계약이다. 구현은 업무(#75), 채널·메시지(#76), 업무 카드(#77), 시설(#78), 문의(#79), 공지(#80)에서 이 문서를 기준으로 진행한다. Frontend는 같은 [OpenAPI](openapi.json)(최초 `0.1.7-m7-collaboration`, 현재 `0.1.9-m7-thread-read`)로 연동한다(#26~#28).
 
 정책 근거는 [ADR-M7-001](../../db/ADR-M7-001.md)(M7-D01~D07)이다. 공통 요청·응답·오류·목록 규칙은 [API 계약](api.md)을 따르고, 고객 조회 범위는 [M4 계약](customer-sales-api.md), 정확 일치 조회는 [M5 계약](seat-usage-api.md)을 따른다.
 
 2026-11-01: 업무 operation과 `GET /assignee-candidates`는 #75에서 구현됐다(`implemented`). 2026-11-02: 시설 유형·시설 operation 8개는 #78에서, 고객 문의 operation 8개는 #79에서, 공지 operation 5개는 #80에서, 채널·메시지 operation 13개는 #76에서, 업무 카드 공유 operation은 #77에서 구현됐다(`implemented`). 나머지 operation은 설계 계약(`design-target`)이며 아직 서버에 구현되어 있지 않다. DM과 채팅 실시간 전송은 M14 범위다.
+
+2026-11-03: 본문·스레드별 독립 읽음을 #155에서 계약·구현했다(`implemented`). 읽음 절의 위치·미확인 수와 재참여 규칙이 이때 바뀌었다.
 
 ## 제공 범위
 
@@ -36,7 +38,8 @@ Backend [#74](https://github.com/OpenStudyService/OpenStudy-Backend/issues/74)�
 | `PATCH /channels/{id}` | 채널 관리자 | 이름·설명 수정 | #76 |
 | `GET /channels/{id}/members` | 참여자 또는 관리자 | 참여자 목록 | #76 |
 | `PUT /channels/{id}/members` | 채널 관리자 | 참여자 전체 변경 | #76 |
-| `POST /channels/{id}/read` | 참여자 | 읽음 위치 갱신 | #76 |
+| `POST /channels/{id}/read` | 참여자 | 본문 읽음 위치 갱신 | #76, #155 |
+| `POST /channels/{id}/messages/{messageId}/read` | 참여자 | 스레드 읽음 위치 갱신 | #155 |
 | `GET /channels/{id}/messages` | 참여자 | 원문 메시지 과거 조회 | #76 |
 | `POST /channels/{id}/messages` | 참여자 | 메시지·답글 전송. `clientMessageKey` 필수 | #76 |
 | `GET /channels/{id}/messages/{messageId}` | 참여자 | 메시지 단건 | #76 |
@@ -97,6 +100,7 @@ Backend [#74](https://github.com/OpenStudyService/OpenStudy-Backend/issues/74)�
 | 422 | `INVALID_ASSIGNEE` | 해당 지점의 활성 직원이 아닌 담당자 |
 | 422 | `INVALID_CHANNEL_MEMBER` | 채널 참여 자격이 없는 직원 |
 | 422 | `INVALID_PARENT_MESSAGE` | 답글에 답글을 달려는 요청 |
+| 422 | `INVALID_READ_TARGET` | 같은 채널의 메시지이지만 그 읽음 위치가 될 수 없는 메시지 |
 | 409 | `DUPLICATE_FACILITY_TYPE` | 같은 이름의 시설 유형 |
 
 ## 업무(FR-TASK-01~06·08, M7-D01)
@@ -147,7 +151,7 @@ Backend [#74](https://github.com/OpenStudyService/OpenStudy-Backend/issues/74)�
 
 - 전체 채널은 OWNER만, 지점 채널은 해당 지점 MANAGER 이상이 만들고 수정한다. 채널 관리자는 참여자가 아니어도 채널 정보와 참여자를 볼 수 있지만 메시지는 참여자만 읽는다.
 - **참여 자격**: 지점 채널은 그 지점의 유효 소속 활성 직원, 전체 채널은 소속이 하나 이상 유효한 활성 직원이다. 활성 OWNER는 모든 지점의 유효 관리자이므로 자격이 있다. 자격이 없으면 422 `INVALID_CHANNEL_MEMBER`다.
-- 생성자는 자동으로 참여한다. `PUT /channels/{id}/members`는 최종 참여자 전체를 받는다. 빠진 직원은 `left_at`을 기록하고 즉시 접근이 끝난다. 다시 넣으면 `left_at`을 지우고 이전 메시지도 다시 볼 수 있다.
+- 생성자는 자동으로 참여한다. `PUT /channels/{id}/members`는 최종 참여자 전체를 받는다. 빠진 직원은 `left_at`을 기록하고 즉시 접근이 끝난다. 다시 넣으면 `left_at`을 지우고 이전 메시지도 다시 볼 수 있으며, 읽음 위치는 [재참여 규칙](#재참여m7-d09)을 따른다.
 - **참여 자동 종료(M7-D07)**: 소속이 회수되거나 계정이 비활성·이용 제한되면 관련 채널의 참여를 같은 트랜잭션에서 종료한다. 조회·전송도 매 요청 현재 자격을 다시 확인한다.
 - 채널 삭제 API는 없다. 요구사항이 없고 메시지가 채널을 참조한다.
 - `GET /channels`는 페이지가 없다. 참여 중인 전체 채널과 scope 지점 채널을 이름순으로 준다. DM은 어떤 M7 API에도 나오지 않는다.
@@ -155,6 +159,10 @@ Backend [#74](https://github.com/OpenStudyService/OpenStudy-Backend/issues/74)�
 ### 스키마 변경(#76)
 
 V1 `conversations`에는 FR-CHAT-09의 설명과 이슈 인수 조건의 버전을 담을 열이 없다. #76이 `description varchar(500) NULL`, `version bigint unsigned NOT NULL DEFAULT 0`을 추가하는 마이그레이션을 포함한다. 버전 번호는 병합 직전에 정한다. `description`·`version`·참여자 변경이 같은 채널 version을 쓴다.
+
+### 스키마 변경(#155)
+
+V6가 `conversation_members.thread_read_baseline_message_id`와 `conversation_thread_reads`를 추가한다. 의미는 [읽음](#읽음fr-chat-06)을 따른다.
 
 ## 메시지(FR-CHAT-02·04~07)
 
@@ -189,12 +197,63 @@ V1 `conversations`에는 FR-CHAT-09의 설명과 이슈 인수 조건의 버전�
 
 ### 읽음(FR-CHAT-06)
 
-- 읽음 위치는 **채널·직원당 하나**(`last_read_message_id`)다. V1에 스레드별 저장 위치가 없고, 스레드별 읽음은 범위 밖이다.
-- `POST /channels/{id}/read`는 `messageId`(같은 채널의 메시지, 원문·답글 모두)를 받는다. 다른 채널의 ID는 404다.
-- 앞으로만 이동한다. 현재 위치 이하의 값은 위치를 바꾸지 않고 현재 값을 200으로 준다.
-- 요청자의 위치만 바꾼다. 다른 사용자의 위치를 지정하는 입력이 없다.
-- `unreadCount`는 이 위치보다 뒤이고 본인이 보내지 않은 메시지 수이며 답글을 포함한다.
-- 채널 전체 위치 하나이므로, 원문 목록 하단을 읽으면 그보다 앞선 답글도 읽은 것으로 계산된다. 화면이 보이고 하단 메시지를 확인했을 때만 호출하는 것은 클라이언트 책임이다.
+본문과 원문별 스레드는 서로 독립된 위치를 가진다(M7-D08). 본문 C를 읽어도 이전 본문 A의 열지 않은 답글 B는 미확인으로 남고, A 스레드를 읽어도 다른 스레드와 본문의 위치는 바뀌지 않는다.
+
+| 대상 | 위치 | 미확인 조건(공통: 본인이 보내지 않음) |
+| --- | --- | --- |
+| 본문(원문) | `conversation_members.last_read_message_id` | `id > 본문 위치`, 위치가 없으면 전부 |
+| 스레드(답글) | `conversation_thread_reads`의 원문별 행과 `conversation_members.thread_read_baseline_message_id` | `id > max(기준 위치, 스레드 위치)`, 둘 다 없으면 전부 |
+
+- **기준 위치**는 모든 스레드에 함께 적용되는 하한이다. V6 전환과 재참여만 정하고 읽음 요청으로는 바뀌지 않는다. 스레드 행은 기준 위치를 넘어 읽을 때 처음 만들어진다.
+- 위치는 앞으로만 이동한다. 현재 위치 이하의 값은 위치를 바꾸지 않고 현재 값을 200으로 준다. 같은 요청을 재시도해도 같다.
+- 요청자의 위치만 바꾼다. 다른 사용자의 위치를 지정하는 입력이 없다. 메시지를 보내도 자기 위치는 움직이지 않는다.
+- 모든 메시지는 업무 카드를 포함해 원문·답글 위치에 따라 같은 규칙으로 센다.
+- 화면이 보이고 하단 메시지를 확인했을 때만 호출하는 것은 클라이언트 책임이다.
+
+#### 갱신 API
+
+| 요청 | 입력 | 404 | 422 `INVALID_READ_TARGET` |
+| --- | --- | --- | --- |
+| `POST /channels/{id}/read` | `messageId`(원문) | 비참여자·참여 종료, 다른 채널·없는 ID | `messageId`가 답글 |
+| `POST /channels/{id}/messages/{messageId}/read` | `replyId`(그 원문의 답글) | 비참여자·참여 종료, 경로 원문이나 `replyId`가 다른 채널이거나 없는 ID | 경로 메시지가 답글, `replyId`가 원문이거나 다른 스레드의 답글 |
+
+입력 형식이 틀리면 참여자에게 422 `VALIDATION_FAILED`이고, 비참여자에게는 입력과 관계없이 404다.
+
+#### 응답 필드
+
+| 응답 | 필드 | 의미 |
+| --- | --- | --- |
+| 채널 목록·상세, 두 갱신 응답 | `unreadCount` | `mainUnreadCount + replyUnreadCount` |
+| | `mainUnreadCount` | 미확인 원문 수 |
+| | `replyUnreadCount` | 모든 스레드의 미확인 답글 합계 |
+| 채널 목록·상세, 본문 갱신 응답 | `lastReadMessageId` | 본문 위치 |
+| 메시지 단건·목록·전송 응답의 원문 | `threadUnreadCount` | 이 스레드의 미확인 답글 수 |
+| | `threadLastReadMessageId` | 이 스레드의 답글이 비교되는 위치. `max(기준 위치, 스레드 위치)`이고 읽은 답글이 없으면 null |
+| 메시지 응답의 답글 | 위 두 필드 | 항상 null |
+| 스레드 갱신 응답 | `messageId`, `lastReadMessageId`, `lastReadAt`, `threadUnreadCount` | 원문, 그 스레드의 위치, 스레드 위치를 마지막으로 옮긴 시각(기준 위치만으로 읽음이면 null), 그 스레드의 미확인 답글 수 |
+
+- `lastReadMessageId`와 `threadLastReadMessageId`는 **ID를 비교하는 데만 쓴다.** 본문 위치는 전환 전 기록과 재참여에서 답글 ID일 수 있고, 스레드 위치는 기준 위치일 때 그 스레드의 답글이 아닐 수 있다. 이 값을 메시지 조회 대상으로 쓰지 않는다.
+- 참여하지 않은 관리자에게 세 수는 0이고 위치는 null이다.
+
+#### 전환과 호환(M7-D08)
+
+- V6는 기존 `last_read_message_id`를 기준 위치로 복사한다. 그 위치 이하의 답글은 스레드에서도 읽음이고, 전환 직후 직원별 `unreadCount`는 전환 전과 같다. 위치가 null인 직원은 전처럼 전부 미확인이다. 2026-11-03 사용자 확정.
+- 기존 위치가 답글을 가리켜도 변환하지 않는다. 비교는 ID 순서로만 한다.
+- `POST /channels/{id}/read`는 호환 분기 없이 바뀌었다. 전에는 답글도 받아 채널 전체 위치를 옮겼으나 이제 답글은 422다. Frontend live 빌드는 #155 전까지 읽음 요청을 보내지 않고 미확인 배지도 표시하지 않았으므로(Frontend #27) 깨지는 호출자가 없다.
+- 전에 "채널 전체 위치 하나, 스레드별 읽음은 범위 밖"이던 규칙은 이 절로 대체됐다. 응답의 기존 필드 이름은 유지했고 `unreadCount`는 같은 합계다.
+
+#### 재참여(M7-D09)
+
+- 참여 종료 뒤 `PUT /channels/{id}/members`로 다시 넣으면 그 시점의 채널 최신 메시지(원문·답글 중 가장 큰 ID)를 본문 위치와 기준 위치로 삼는다. 본문과 모든 스레드가 읽음이 되고, 이후 메시지만 미확인이다. 2026-11-03 사용자 확정으로, 전의 "이전 위치 유지"를 대체한다.
+- 이전 메시지를 다시 볼 수 있는 동작은 그대로다. 기존 스레드 행은 지우지 않으며 기준 위치가 앞서면 무시된다.
+- 채널에 메시지가 없으면 위치는 그대로다. 목록에 남아 있던 직원의 위치는 바뀌지 않는다.
+- 새로 참여하는 직원의 초기 위치는 null(전부 미확인)이다.
+- 참여 종료(목록 제외·소속 회수·계정 상태)는 위치를 건드리지 않는다. 소속이 복구돼도 자동으로 재참여하지 않으며, 다시 넣을 때 이 규칙이 적용된다.
+
+#### 동시성과 이벤트
+
+- 읽음 갱신은 전송과 같은 가드 아래에서 채널 행을 잠근 뒤 처리한다. 동시 요청은 차례로 실행되어 위치가 역행하지 않고 스레드의 첫 행도 한 번만 생긴다.
+- 읽음은 감사 기록과 workspace 이벤트를 남기지 않는다. 요청자만의 상태이고 #76부터 같은 방침이다. 다른 탭·기기는 재조회로 맞춘다.
 
 ## 업무 카드(FR-TASK-07·08, M7-D07)
 
