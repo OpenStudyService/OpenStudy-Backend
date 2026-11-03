@@ -100,13 +100,19 @@ class WorkforceContractTests {
         });
     }
 
-    @Test void theContractIsADesignTargetSplitBetweenTheScheduleAndAttendanceIssues() {
+    @Test void theContractIsSplitBetweenTheScheduleAndAttendanceIssues() {
         assertThat(spec.at("/info/version").asString()).isEqualTo("0.1.10-m8-workforce");
         OPERATIONS.keySet().forEach(id -> {
-            assertThat(operation(id).get("x-implementation-status").asString()).as(id).isEqualTo("design-target");
             String issue = SHIFT_OPERATIONS.contains(id) ? "#83" : "#84";
             assertThat(operation(id).get("x-implementation-issue").asString()).as(id).isEqualTo(issue);
         });
+    }
+
+    @Test void issue83ImplementedTheShiftOperationsAndAttendanceStaysADesignTarget() throws Exception {
+        OPERATIONS.keySet().forEach(id -> assertThat(operation(id).get("x-implementation-status").asString()).as(id)
+                .isEqualTo(SHIFT_OPERATIONS.contains(id) ? "implemented" : "design-target"));
+        assertThat(spec.at("/info/description").asString()).contains("주간 근무표·근무 목록·등록·상세·수정·취소 operation은 #83에서 구현됐다");
+        assertThat(contract()).contains("근무표 operation 6개(주간 근무표·목록·등록·상세·수정·취소)는 #83에서 구현됐다(`implemented`)");
     }
 
     @Test void onlyCreatingCommandsTakeARequestKeyAndTheRestCarryAVersion() {

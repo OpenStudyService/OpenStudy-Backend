@@ -65,11 +65,11 @@ class LocalPreviewIntegrationTests {
 
     @Test
     void previewKeepsExistingUiSortOptionsButRejectsPrivateFields() throws Exception {
-        // /api/tasks (#75), /api/seats (#61), /api/facilities (#78), /api/rooms (#69) and /api/lockers (#71) are real operational endpoints now.
-        assertThat(get("/api/shifts?sort=status").statusCode()).isEqualTo(200);
+        // /api/tasks (#75), /api/seats (#61), /api/facilities (#78), /api/rooms (#69), /api/lockers (#71) and /api/shifts (#83)
+        // are real operational endpoints now.
         // /api/products is a real operational endpoint now (#16); members is still preview-only.
         assertThat(get("/api/members?sort=status").statusCode()).isEqualTo(200);
-        assertThat(get("/api/shifts?sort=password_hash").statusCode()).isEqualTo(422);
+        assertThat(get("/api/members?sort=password_hash").statusCode()).isEqualTo(422);
         assertThat(get("/api/members?sort=due").statusCode()).isEqualTo(422);
     }
 
@@ -104,14 +104,14 @@ class LocalPreviewIntegrationTests {
         assertThat(scoped.get("seats").size()).isEqualTo(12);
         for (var seat : scoped.get("seats")) assertThat(seat.get("branchId").asString()).isEqualTo(branch);
         assertThat(get("/api/home?scope=999999999").statusCode()).isEqualTo(403);
-        var page = json.readTree(get("/api/shifts?scope=" + branch + "&page=1&pageSize=5").body());
+        var page = json.readTree(get("/api/members?scope=" + branch + "&page=1&pageSize=5").body());
         assertThat(page.at("/meta/total").asInt()).isEqualTo(1);
         assertThat(page.get("items").size()).isEqualTo(1);
         String id = page.at("/items/0/id").asString();
-        assertThat(get("/api/shifts/" + id + "?scope=" + branch).statusCode()).isEqualTo(200);
+        assertThat(get("/api/members/" + id + "?scope=" + branch).statusCode()).isEqualTo(200);
         String otherBranch = json.readTree(get("/api/me").body()).at("/branches/1/id").asString();
-        assertThat(get("/api/shifts/" + id + "?scope=" + otherBranch).statusCode()).isEqualTo(404);
-        assertThat(get("/api/shifts?page=0").statusCode()).isEqualTo(422);
+        assertThat(get("/api/members/" + id + "?scope=" + otherBranch).statusCode()).isEqualTo(404);
+        assertThat(get("/api/members?page=0").statusCode()).isEqualTo(422);
     }
 
     @Test
@@ -137,12 +137,30 @@ class LocalPreviewIntegrationTests {
     @Test
     void rejectsSampleWritesAndDoesNotChangeDatabase() throws Exception {
         String csrf = json.readTree(get("/api/auth/csrf").body()).get("token").asString();
-        var response = client.send(request("/api/shifts").header("X-CSRF-Token", csrf)
+        var response = client.send(request("/api/members").header("X-CSRF-Token", csrf)
                 .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString("{}"))
                 .build(), HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).isEqualTo(501);
         assertThat(json.readTree(response.body()).get("code").asString()).isEqualTo("PREVIEW_READ_ONLY");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM work_tasks", Integer.class)).isZero();
+    }
+
+    @Test
+    void shiftsAreAnsweredByTheOperationalApiEvenInThePreview() throws Exception {
+        // #83 replaced the sample /api/shifts list, detail and 501 writes; the home and lookup samples keep their shift rows.
+        var page = get("/api/shifts?page=1&pageSize=5");
+        assertThat(page.statusCode()).isEqualTo(200);
+        assertThat(page.body()).doesNotContain("preview-shift");
+        assertThat(json.readTree(page.body()).has("items")).isTrue();
+        assertThat(get("/api/shifts/preview-shift-1").statusCode()).isEqualTo(422);
+        assertThat(get("/api/shifts?sort=password_hash").statusCode()).as("no sort parameter at all").isEqualTo(200);
+        String csrf = json.readTree(get("/api/auth/csrf").body()).get("token").asString();
+        var write = client.send(request("/api/shifts").header("X-CSRF-Token", csrf)
+                .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString("{}"))
+                .build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(write.statusCode()).isEqualTo(422);
+        assertThat(json.readTree(write.body()).get("code").asString()).isEqualTo("VALIDATION_FAILED");
+        assertThat(get("/api/shifts/weekly").statusCode()).isEqualTo(200);
     }
 
     private HttpRequest.Builder request(String path) {

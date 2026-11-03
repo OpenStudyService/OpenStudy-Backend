@@ -21,6 +21,11 @@ public enum BranchAction {
     SERVE_CROSS_BRANCH_AS_MANAGER(null, true, false),
     /** M6 cross-branch summary, grant half: the permission an administrator gives a chosen employee (M6-D06). */
     SERVE_CROSS_BRANCH("customers:cross-branch-read", false, false),
+    /**
+     * M8 "MANAGER 이상" for shifts: the branch role alone, with no separate grant (M8-D01). It also passes at a stopped
+     * branch, so a command can answer BRANCH_NOT_ACTIVE instead of 403 and a cancellation stays possible (M8-D04).
+     */
+    MANAGE_SHIFTS(null, true, false),
     WRITE_MEMBERS("members:write", false, false),
     WRITE_FACILITIES("facilities:write", false, false),
     WRITE_NOTICES("notices:write", false, false),
