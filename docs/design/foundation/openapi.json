@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "OpenStudy 1차 기반 기능 API 설계",
-    "version": "0.1.9-m7-thread-read",
-    "description": "검토 완료 8중분류/61요구사항의 구현 전 목표 계약. Q1~Q12의 2026-10-23 당시 사용자 답변을 기록하되 Q8은 SRS v1.1 정책으로 대체됨. decisions.md 참고. 기존 서버 전체 구현 명세가 아니다. ID문자열·API version=DB+1. 상태 변경은 CSRF, 지점과 행위 인가를 함께 검증한다. Issue #27의 /me/profile 및 CurrentUser는 구현된 M1 닉네임 계약이다. 나머지 operation의 구현 상태는 각각의 표기를 따른다. SRS v1.1 확정 상품 정책: 거래 유무와 무관하게 물리 삭제 미제공; 판매 중지·재개 및 기존 상품·거래·revision 보존. 이전 Q8 조건부 삭제안은 적용하지 않는다. /lookups와 /workspace/events는 단일 인스턴스 기반 workspace 구현 계약이다. 상품/분류 선택 데이터는 관련 업무 API 구현 전까지 빈 배열이다. M4 고객·Mock 결제·발급 이용권·환불 operation은 Issue #55의 설계 계약(customer-sales-api.md, ADR-M4-002)이며 구현은 #56~#58에서 진행한다. 결제·환불 요청에는 금액 필드가 없고 Idempotency-Key가 필수다. M5 좌석·입퇴실·차감·정확 일치 조회·수동 조정 operation은 Issue #60의 설계 계약(seat-usage-api.md, ADR-M5-001)이며 구현은 #61~#64에서 진행한다. 입실·퇴실·이동·조정은 Idempotency-Key가 필수이고, 퇴실·조정 요청에 차감량 필드는 없다. M7 업무·채널·메시지·업무 카드·시설·문의·공지 operation은 Issue #74의 설계 계약(collaboration-api.md, ADR-M7-001)이며 구현은 #75~#80에서 진행한다. 메시지 전송은 clientMessageKey가 필수이고 업무에는 삭제 API가 없다. 업무 operation과 담당자 후보는 #75에서, 시설 operation은 #78에서, 고객 문의 operation은 #79에서, 공지 operation은 #80에서 구현됐다. 채널·메시지 operation은 #76에서, 업무 카드 공유 operation은 #77에서 구현됐다. 좌석 목록·상세·등록·수정·운영 중단/재개·배치도·현황 operation은 #61에서 구현됐다. 입실용 정확 일치 조회·입실·이용 기록 상세·퇴실 operation은 #62에서, 이용 중 좌석 이동 operation은 #63에서, 입퇴실 이력·이용권 수동 조정·고객 구매·사용 내역 operation은 #64에서 구현됐다. M6 룸·예약·사물함·배정·타 지점 요약 operation은 Issue #67의 설계 계약(space-operations-api.md, ADR-M6-001)이며 구현은 #68~#72에서 진행한다. 예약·배정·연장·취소는 Idempotency-Key가 필수이고 요청에 금액 필드가 없다. 룸 등록·조회·수정·운영 중단/재개와 예약 생성·목록·달력·상세 operation은 #69에서, 예약 취소와 이용 시작·완료 operation은 #70에서 구현됐다. 사물함 목록·등록·현황·상세·수정·운영 중단/재개·지점 요금 일괄 적용과 배정 목록·생성·상세·연장·반납 operation은 #71에서 구현됐다. 타 지점 고객 최소 요약과 고객의 룸·사물함 이력 operation은 #72에서 구현됐다. 본문·스레드별 독립 읽음은 Issue #155에서 계약·구현됐다(collaboration-api.md, ADR-M7-001 M7-D08·D09). POST /channels/{id}/read는 본문 위치 전용으로 바뀌어 답글 ID를 받지 않고, POST /channels/{id}/messages/{messageId}/read가 원문별 스레드 위치를 갱신한다."
+    "version": "0.1.10-m8-workforce",
+    "description": "검토 완료 8중분류/61요구사항의 구현 전 목표 계약. Q1~Q12의 2026-10-23 당시 사용자 답변을 기록하되 Q8은 SRS v1.1 정책으로 대체됨. decisions.md 참고. 기존 서버 전체 구현 명세가 아니다. ID문자열·API version=DB+1. 상태 변경은 CSRF, 지점과 행위 인가를 함께 검증한다. Issue #27의 /me/profile 및 CurrentUser는 구현된 M1 닉네임 계약이다. 나머지 operation의 구현 상태는 각각의 표기를 따른다. SRS v1.1 확정 상품 정책: 거래 유무와 무관하게 물리 삭제 미제공; 판매 중지·재개 및 기존 상품·거래·revision 보존. 이전 Q8 조건부 삭제안은 적용하지 않는다. /lookups와 /workspace/events는 단일 인스턴스 기반 workspace 구현 계약이다. 상품/분류 선택 데이터는 관련 업무 API 구현 전까지 빈 배열이다. M4 고객·Mock 결제·발급 이용권·환불 operation은 Issue #55의 설계 계약(customer-sales-api.md, ADR-M4-002)이며 구현은 #56~#58에서 진행한다. 결제·환불 요청에는 금액 필드가 없고 Idempotency-Key가 필수다. M5 좌석·입퇴실·차감·정확 일치 조회·수동 조정 operation은 Issue #60의 설계 계약(seat-usage-api.md, ADR-M5-001)이며 구현은 #61~#64에서 진행한다. 입실·퇴실·이동·조정은 Idempotency-Key가 필수이고, 퇴실·조정 요청에 차감량 필드는 없다. M7 업무·채널·메시지·업무 카드·시설·문의·공지 operation은 Issue #74의 설계 계약(collaboration-api.md, ADR-M7-001)이며 구현은 #75~#80에서 진행한다. 메시지 전송은 clientMessageKey가 필수이고 업무에는 삭제 API가 없다. 업무 operation과 담당자 후보는 #75에서, 시설 operation은 #78에서, 고객 문의 operation은 #79에서, 공지 operation은 #80에서 구현됐다. 채널·메시지 operation은 #76에서, 업무 카드 공유 operation은 #77에서 구현됐다. 좌석 목록·상세·등록·수정·운영 중단/재개·배치도·현황 operation은 #61에서 구현됐다. 입실용 정확 일치 조회·입실·이용 기록 상세·퇴실 operation은 #62에서, 이용 중 좌석 이동 operation은 #63에서, 입퇴실 이력·이용권 수동 조정·고객 구매·사용 내역 operation은 #64에서 구현됐다. M6 룸·예약·사물함·배정·타 지점 요약 operation은 Issue #67의 설계 계약(space-operations-api.md, ADR-M6-001)이며 구현은 #68~#72에서 진행한다. 예약·배정·연장·취소는 Idempotency-Key가 필수이고 요청에 금액 필드가 없다. 룸 등록·조회·수정·운영 중단/재개와 예약 생성·목록·달력·상세 operation은 #69에서, 예약 취소와 이용 시작·완료 operation은 #70에서 구현됐다. 사물함 목록·등록·현황·상세·수정·운영 중단/재개·지점 요금 일괄 적용과 배정 목록·생성·상세·연장·반납 operation은 #71에서 구현됐다. 타 지점 고객 최소 요약과 고객의 룸·사물함 이력 operation은 #72에서 구현됐다. 본문·스레드별 독립 읽음은 Issue #155에서 계약·구현됐다(collaboration-api.md, ADR-M7-001 M7-D08·D09). POST /channels/{id}/read는 본문 위치 전용으로 바뀌어 답글 ID를 받지 않고, POST /channels/{id}/messages/{messageId}/read가 원문별 스레드 위치를 갱신한다. M8 근무표·출퇴근·근태 operation은 Issue #82의 설계 계약(workforce-api.md, ADR-M8-001)이며 구현은 근무표 #83, 근태 #84에서 진행한다. 근무 등록과 출근은 Idempotency-Key가 필수이고, 근태 명령은 /me/attendance 아래에서 경로·본문에 직원·근태 ID 없이 본인의 진행 중 근태만 바꾼다. 근무 충돌은 409 SHIFT_CONFLICT와 ShiftConflictError의 겹친 구간으로 알리고, 요청자가 볼 수 없는 지점의 근무는 \"다른 지점 근무\"로만 표시한다."
   },
   "servers": [
     {
@@ -93,6 +93,12 @@
     },
     {
       "name": "locker-assignments"
+    },
+    {
+      "name": "shifts"
+    },
+    {
+      "name": "attendance"
     }
   ],
   "x-source": {
@@ -13419,6 +13425,1356 @@
           "FORBIDDEN"
         ]
       }
+    },
+    "/shifts": {
+      "get": {
+        "operationId": "listShifts",
+        "summary": "근무 목록",
+        "tags": [
+          "shifts"
+        ],
+        "description": "조회 범위 안의 근무를 startsAt 오름차순(같으면 id)으로 반환한다. status 기본값은 예정이며 취소된 근무는 status=취소로만 나온다. from·to는 Asia/Seoul 날짜이고 workDate가 [from, to]인 근무를 고른다. scope는 지점만 좁히고 직원 조건을 풀지 않는다.",
+        "x-requirement-ids": [
+          "FR-SHIFT-01",
+          "FR-SHIFT-04"
+        ],
+        "x-permission": "OWNER 또는 scope 지점의 유효 소속. 행은 M8-D02 조회 범위: OWNER 전체, 기록 지점의 MANAGER는 그 지점 전체, 그 외 본인 기록",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#83",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShiftPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "name": "employeeId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            },
+            "description": "조회 범위와 교집합. 일반 직원이 다른 직원 ID를 넣으면 빈 결과"
+          },
+          {
+            "name": "mine",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "true면 본인 기록만"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ShiftStatus"
+            },
+            "description": "기본 예정"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "workDate ≥ from (Asia/Seoul)"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "workDate ≤ to (Asia/Seoul)"
+          }
+        ],
+        "x-error-codes": [
+          "FORBIDDEN",
+          "VALIDATION_FAILED"
+        ],
+        "x-adr-decisions": [
+          "M8-D02"
+        ]
+      },
+      "post": {
+        "operationId": "createShift",
+        "summary": "예정 근무 등록",
+        "tags": [
+          "shifts"
+        ],
+        "description": "근무 지점의 MANAGER 이상이 활성 소속 직원의 예정 근무를 등록한다. 시각은 분 단위, 종료 > 시작, 길이 24시간 이하, 예정 휴게 분 < 길이(자정 넘김 허용). 같은 직원의 모든 지점의 예정 근무와 승인 휴가와 겹치면 409 SHIFT_CONFLICT와 겹친 구간을 반환한다. 운영 중지 지점은 409 BRANCH_NOT_ACTIVE. 대상 직원 행을 잠가 같은 직원의 동시 등록을 직렬화한다. 같은 키·같은 입력은 저장된 결과, 같은 키·다른 입력은 409 IDEMPOTENCY_CONFLICT.",
+        "x-requirement-ids": [
+          "FR-SHIFT-02",
+          "FR-SHIFT-03",
+          "FR-BR-08",
+          "FR-COM-15"
+        ],
+        "x-permission": "OWNER 또는 branchId 지점의 MANAGER(M8-D01). 대상 직원은 그 지점의 활성 소속",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#83",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "201": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Shift"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "description": "버전·상태·운영 중지·멱등성 충돌. code=SHIFT_CONFLICT면 conflicts에 겹친 구간을 담는다.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "description": "다시 시도할 때까지 초. 409는 REQUEST_IN_PROGRESS인 경우에만 포함."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShiftConflictError"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShiftCreate"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "FORBIDDEN",
+          "BRANCH_NOT_ACTIVE",
+          "INVALID_SHIFT_EMPLOYEE",
+          "SHIFT_TIME_INVALID",
+          "SHIFT_BREAK_INVALID",
+          "SHIFT_CONFLICT",
+          "VALIDATION_FAILED",
+          "IDEMPOTENCY_CONFLICT",
+          "REQUEST_IN_PROGRESS"
+        ],
+        "x-adr-decisions": [
+          "M8-D01",
+          "M8-D03",
+          "M8-D04",
+          "M8-D05",
+          "M8-D06"
+        ]
+      }
+    },
+    "/shifts/weekly": {
+      "get": {
+        "operationId": "getWeeklyShiftSchedule",
+        "summary": "주간 근무표",
+        "tags": [
+          "shifts"
+        ],
+        "description": "weekOf(Asia/Seoul 날짜, 생략 시 오늘)가 속한 월요일~일요일의 예정 근무(shifts)와 실제 근태(attendance)를 따로 반환한다. 근무는 startsAt, 근태는 clockInAt의 Asia/Seoul 날짜로 그 주에 속하며 자정을 넘는 근무는 시작한 주에만 나온다. 취소된 근무는 빠진다. 페이지가 없다.",
+        "x-requirement-ids": [
+          "FR-SHIFT-01",
+          "FR-ATT-05"
+        ],
+        "x-permission": "OWNER 또는 scope 지점의 유효 소속. 행은 M8-D02 조회 범위: OWNER 전체, 기록 지점의 MANAGER는 그 지점 전체, 그 외 본인 기록",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#83",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeeklyShiftSchedule"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "name": "weekOf",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "이 날짜가 속한 주(월요일 시작, Asia/Seoul)"
+          },
+          {
+            "name": "employeeId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            },
+            "description": "조회 범위와 교집합. 일반 직원이 다른 직원 ID를 넣으면 빈 결과"
+          },
+          {
+            "name": "mine",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "true면 본인 기록만"
+          }
+        ],
+        "x-error-codes": [
+          "FORBIDDEN",
+          "VALIDATION_FAILED"
+        ],
+        "x-adr-decisions": [
+          "M8-D02"
+        ]
+      }
+    },
+    "/shifts/{id}": {
+      "get": {
+        "operationId": "getShift",
+        "summary": "근무 상세",
+        "tags": [
+          "shifts"
+        ],
+        "description": "취소된 근무도 반환한다. 연결된 근태 요약을 함께 준다. 볼 수 없으면 404다.",
+        "x-requirement-ids": [
+          "FR-SHIFT-01",
+          "FR-SHIFT-04"
+        ],
+        "x-permission": "근무를 볼 수 있는 사용자(M8-D02)",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#83",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Shift"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          }
+        ],
+        "x-error-codes": [
+          "NOT_FOUND"
+        ],
+        "x-adr-decisions": [
+          "M8-D02"
+        ]
+      },
+      "patch": {
+        "operationId": "updateShift",
+        "summary": "예정 근무 수정",
+        "tags": [
+          "shifts"
+        ],
+        "description": "시작·종료·예정 휴게만 수정한다. branchId·employeeId·status는 422 IMMUTABLE_FIELD. 시각 규칙은 보내지 않은 필드를 현재 값으로 채운 최종 값으로 검사하고, 자기 자신을 뺀 같은 직원의 예정 근무·승인 휴가와 겹치면 409 SHIFT_CONFLICT. 취소된 근무는 409 INVALID_STATE, 운영 중지 지점은 409 BRANCH_NOT_ACTIVE. 볼 수 없으면 404, 볼 수 있으나 근무 지점의 MANAGER가 아니면 403.",
+        "x-requirement-ids": [
+          "FR-SHIFT-02",
+          "FR-SHIFT-03",
+          "FR-BR-08"
+        ],
+        "x-permission": "OWNER 또는 근무 지점의 MANAGER(M8-D01)",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#83",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Shift"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "description": "버전·상태·운영 중지·멱등성 충돌. code=SHIFT_CONFLICT면 conflicts에 겹친 구간을 담는다.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "description": "다시 시도할 때까지 초. 409는 REQUEST_IN_PROGRESS인 경우에만 포함."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShiftConflictError"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShiftUpdate"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN",
+          "VERSION_CONFLICT",
+          "INVALID_STATE",
+          "BRANCH_NOT_ACTIVE",
+          "INVALID_SHIFT_EMPLOYEE",
+          "SHIFT_TIME_INVALID",
+          "SHIFT_BREAK_INVALID",
+          "SHIFT_CONFLICT",
+          "VALIDATION_FAILED",
+          "IMMUTABLE_FIELD"
+        ],
+        "x-adr-decisions": [
+          "M8-D01",
+          "M8-D03",
+          "M8-D04",
+          "M8-D05",
+          "M8-D06"
+        ]
+      }
+    },
+    "/shifts/{id}/cancel": {
+      "post": {
+        "operationId": "cancelShift",
+        "summary": "예정 근무 취소",
+        "tags": [
+          "shifts"
+        ],
+        "description": "근무를 취소 상태로 바꾸고 shift_events에 이력을 남긴다. 근무 행·이력·연결된 근태는 삭제하지 않는다. 취소된 근무는 기본 목록·주간 근무표·충돌 검사에서 빠진다. 운영 중지 지점과 대상 직원의 소속이 회수된 경우에도 허용한다. 이미 취소된 근무는 409 INVALID_STATE.",
+        "x-requirement-ids": [
+          "FR-SHIFT-04",
+          "FR-BR-08"
+        ],
+        "x-permission": "OWNER 또는 근무 지점의 MANAGER(M8-D01)",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#83",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Shift"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShiftCancel"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN",
+          "VERSION_CONFLICT",
+          "INVALID_STATE",
+          "VALIDATION_FAILED"
+        ],
+        "x-adr-decisions": [
+          "M8-D01",
+          "M8-D04"
+        ]
+      }
+    },
+    "/me/attendance/current": {
+      "get": {
+        "operationId": "getMyCurrentAttendance",
+        "summary": "진행 중인 본인 근태",
+        "tags": [
+          "attendance"
+        ],
+        "description": "본인의 진행 중 근태(근무 중·휴게 중) 하나 또는 null을 반환한다. 소속이 회수된 지점의 근태도 본인이 닫을 수 있도록 반환한다.",
+        "x-requirement-ids": [
+          "FR-ATT-02",
+          "FR-ATT-03",
+          "FR-ATT-05"
+        ],
+        "x-permission": "ACTIVE 본인",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#84",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentAttendance"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [],
+        "x-error-codes": [
+          "FORBIDDEN"
+        ],
+        "x-adr-decisions": [
+          "M8-D02",
+          "M8-D08"
+        ]
+      }
+    },
+    "/me/attendance/clock-in": {
+      "post": {
+        "operationId": "clockIn",
+        "summary": "본인 출근",
+        "tags": [
+          "attendance"
+        ],
+        "description": "현재 서버 시각과 선택 지점으로 본인 근태를 만든다. 선택 지점의 활성 소속이 아니면 403(OWNER도 소속 행 필요), 운영 중지 지점은 409 BRANCH_NOT_ACTIVE, 지점과 무관하게 진행 중 근태가 있으면 409 ATTENDANCE_ALREADY_WORKING. 같은 지점의 예정 근무 중 startsAt ≤ 출근 시각 < endsAt인 근무가 있으면 연결한다. 예정 근무만으로 출근 처리하지 않는다. 같은 키·같은 입력은 저장된 결과, 같은 키·다른 입력은 409 IDEMPOTENCY_CONFLICT.",
+        "x-requirement-ids": [
+          "FR-ATT-01",
+          "FR-BR-08",
+          "FR-COM-15"
+        ],
+        "x-permission": "ACTIVE 본인. branchId 지점의 활성 소속(M8-D08)",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#84",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "201": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceRecord"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClockIn"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "FORBIDDEN",
+          "BRANCH_NOT_ACTIVE",
+          "ATTENDANCE_ALREADY_WORKING",
+          "VALIDATION_FAILED",
+          "IDEMPOTENCY_CONFLICT",
+          "REQUEST_IN_PROGRESS"
+        ],
+        "x-adr-decisions": [
+          "M8-D04",
+          "M8-D08"
+        ]
+      }
+    },
+    "/me/attendance/break-start": {
+      "post": {
+        "operationId": "startBreak",
+        "summary": "휴게 시작",
+        "tags": [
+          "attendance"
+        ],
+        "description": "근무 중에만 현재 서버 시각으로 휴게를 시작한다. 진행 중 근태가 없으면 409 ATTENDANCE_NOT_WORKING, 휴게 중이면 409 ATTENDANCE_ON_BREAK. 근태 지점이 현재 유효 소속이 아니면 403. 운영 중지 지점에서도 허용한다. 상태를 먼저 검사하고 version을 검사한다. reloadUrl은 /api/me/attendance/current.",
+        "x-requirement-ids": [
+          "FR-ATT-02",
+          "FR-BR-08"
+        ],
+        "x-permission": "ACTIVE 본인. 경로·본문에 직원·근태 ID가 없고 본인의 진행 중 근태만 바꾼다(M8-D08)",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#84",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceRecord"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionCommand"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "FORBIDDEN",
+          "ATTENDANCE_NOT_WORKING",
+          "ATTENDANCE_ON_BREAK",
+          "VERSION_CONFLICT",
+          "VALIDATION_FAILED"
+        ],
+        "x-adr-decisions": [
+          "M8-D04",
+          "M8-D08"
+        ]
+      }
+    },
+    "/me/attendance/break-end": {
+      "post": {
+        "operationId": "endBreak",
+        "summary": "휴게 종료",
+        "tags": [
+          "attendance"
+        ],
+        "description": "휴게 중에만 현재 서버 시각으로 열린 휴게를 끝낸다. 진행 중 근태가 없으면 409 ATTENDANCE_NOT_WORKING, 휴게 중이 아니면 409 ATTENDANCE_NOT_ON_BREAK. 운영 중지 지점과 소속이 회수된 지점에서도 허용한다. 상태를 먼저 검사하고 version을 검사한다. reloadUrl은 /api/me/attendance/current.",
+        "x-requirement-ids": [
+          "FR-ATT-02",
+          "FR-BR-08"
+        ],
+        "x-permission": "ACTIVE 본인. 경로·본문에 직원·근태 ID가 없고 본인의 진행 중 근태만 바꾼다(M8-D08)",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#84",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceRecord"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionCommand"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "ATTENDANCE_NOT_WORKING",
+          "ATTENDANCE_NOT_ON_BREAK",
+          "VERSION_CONFLICT",
+          "VALIDATION_FAILED"
+        ],
+        "x-adr-decisions": [
+          "M8-D04",
+          "M8-D08"
+        ]
+      }
+    },
+    "/me/attendance/clock-out": {
+      "post": {
+        "operationId": "clockOut",
+        "summary": "본인 퇴근",
+        "tags": [
+          "attendance"
+        ],
+        "description": "현재 서버 시각을 퇴근 시각으로 저장하고 퇴근 상태로 바꾼다. 휴게 중이면 409 ATTENDANCE_ON_BREAK, 진행 중 근태가 없으면(중복 퇴근 포함) 409 ATTENDANCE_NOT_WORKING. 운영 중지 지점과 소속이 회수된 지점에서도 허용한다. 실근무 분은 M8-D07로 계산한다. 상태를 먼저 검사하고 version을 검사한다. reloadUrl은 /api/me/attendance/current.",
+        "x-requirement-ids": [
+          "FR-ATT-03",
+          "FR-ATT-04",
+          "FR-BR-08"
+        ],
+        "x-permission": "ACTIVE 본인. 경로·본문에 직원·근태 ID가 없고 본인의 진행 중 근태만 바꾼다(M8-D08)",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#84",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceRecord"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionCommand"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "ATTENDANCE_NOT_WORKING",
+          "ATTENDANCE_ON_BREAK",
+          "VERSION_CONFLICT",
+          "VALIDATION_FAILED"
+        ],
+        "x-adr-decisions": [
+          "M8-D04",
+          "M8-D07",
+          "M8-D08"
+        ]
+      }
+    },
+    "/attendance-records": {
+      "get": {
+        "operationId": "listAttendanceRecords",
+        "summary": "근태 목록",
+        "tags": [
+          "attendance"
+        ],
+        "description": "조회 범위 안의 근태를 clockInAt 내림차순(같으면 id)으로 반환한다. 일반 직원은 본인 근태만, MANAGER는 MANAGER인 지점에서 기록된 근태와 그 외 지점의 본인 근태를 받는다. 지점 선택(scope)만으로 다른 직원의 기록이 열리지 않는다. from·to는 Asia/Seoul 날짜이고 workDate가 [from, to]인 근태를 고른다.",
+        "x-requirement-ids": [
+          "FR-ATT-04",
+          "FR-ATT-05"
+        ],
+        "x-permission": "OWNER 또는 scope 지점의 유효 소속. 행은 M8-D02 조회 범위: OWNER 전체, 기록 지점의 MANAGER는 그 지점 전체, 그 외 본인 기록",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#84",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceRecordPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "name": "employeeId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            },
+            "description": "조회 범위와 교집합. 일반 직원이 다른 직원 ID를 넣으면 빈 결과"
+          },
+          {
+            "name": "mine",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "true면 본인 기록만"
+          },
+          {
+            "name": "shiftId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            },
+            "description": "이 근무에 연결된 근태"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/AttendanceStatus"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "workDate ≥ from (Asia/Seoul)"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "workDate ≤ to (Asia/Seoul)"
+          }
+        ],
+        "x-error-codes": [
+          "FORBIDDEN",
+          "VALIDATION_FAILED"
+        ],
+        "x-adr-decisions": [
+          "M8-D02",
+          "M8-D07"
+        ]
+      }
+    },
+    "/attendance-records/{id}": {
+      "get": {
+        "operationId": "getAttendanceRecord",
+        "summary": "근태 상세",
+        "tags": [
+          "attendance"
+        ],
+        "description": "출근·퇴근 시각, 휴게 구간, 실근무 분, 현재 상태, 연결된 근무를 반환한다. 목록과 같은 계산을 쓴다. 볼 수 없으면 404다.",
+        "x-requirement-ids": [
+          "FR-ATT-04",
+          "FR-ATT-05"
+        ],
+        "x-permission": "근태를 볼 수 있는 사용자(M8-D02)",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#84",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceRecord"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          }
+        ],
+        "x-error-codes": [
+          "NOT_FOUND"
+        ],
+        "x-adr-decisions": [
+          "M8-D02",
+          "M8-D07"
+        ]
+      }
     }
   },
   "components": {
@@ -15633,7 +16989,9 @@
               "rooms",
               "room-reservations",
               "lockers",
-              "locker-assignments"
+              "locker-assignments",
+              "shifts",
+              "attendance-records"
             ]
           },
           "entityId": {
@@ -21346,6 +22704,594 @@
         ],
         "additionalProperties": false,
         "description": "요청 scope 지점의 룸 예약·사물함 배정이다. 페이지가 없다."
+      },
+      "ShiftStatus": {
+        "type": "string",
+        "enum": [
+          "예정",
+          "취소"
+        ],
+        "description": "DB SCHEDULED=예정, CANCELLED=취소."
+      },
+      "AttendanceStatus": {
+        "type": "string",
+        "enum": [
+          "근무 중",
+          "휴게 중",
+          "퇴근"
+        ],
+        "description": "WORKING이고 열린 휴게가 없으면 근무 중, 있으면 휴게 중, LEFT는 퇴근."
+      },
+      "ShiftCancellation": {
+        "type": "object",
+        "properties": {
+          "cancelledAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cancelledBy": {
+            "$ref": "#/components/schemas/ActorSummary"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "nullable": true
+          }
+        },
+        "required": [
+          "cancelledAt",
+          "cancelledBy",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "shift_events의 CANCELLED 행에서 읽는다."
+      },
+      "AttendanceSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AttendanceStatus"
+          },
+          "clockInAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "clockOutAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "workedMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "nullable": true,
+            "description": "M8-D07: (퇴근 − 출근 − 휴게 합)을 초 단위로 계산한 뒤 분 미만 버림, 0 미만 없음. 퇴근 전에는 null."
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "clockInAt",
+          "clockOutAt",
+          "workedMinutes"
+        ],
+        "additionalProperties": false,
+        "description": "근무에 연결된 실제 근태 요약. 같은 직원·같은 지점이다."
+      },
+      "Shift": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ShiftStatus"
+          },
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "employee": {
+            "$ref": "#/components/schemas/ActorSummary"
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "workDate": {
+            "type": "string",
+            "format": "date",
+            "description": "startsAt의 Asia/Seoul 날짜"
+          },
+          "plannedBreakMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1439
+          },
+          "plannedWorkMinutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1440,
+            "description": "근무 길이(분) − 예정 휴게 분"
+          },
+          "cancellation": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ShiftCancellation"
+              }
+            ],
+            "nullable": true
+          },
+          "attendance": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttendanceSummary"
+            }
+          },
+          "createdBy": {
+            "$ref": "#/components/schemas/ActorSummary"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "canEdit": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "status",
+          "branchId",
+          "employee",
+          "startsAt",
+          "endsAt",
+          "workDate",
+          "plannedBreakMinutes",
+          "plannedWorkMinutes",
+          "cancellation",
+          "attendance",
+          "createdBy",
+          "createdAt",
+          "updatedAt",
+          "canEdit"
+        ],
+        "additionalProperties": false,
+        "description": "예정 근무. 실제 출퇴근은 AttendanceRecord로 구분한다. 목록·주간 근무표·상세가 같은 DTO다. canEdit은 화면 안내용이며 서버가 다시 검사한다."
+      },
+      "ShiftPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Shift"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "additionalProperties": false
+      },
+      "ShiftCreate": {
+        "type": "object",
+        "properties": {
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "employeeId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "오프셋이 있는 ISO 8601. 초·초 미만은 0(분 단위)"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "오프셋이 있는 ISO 8601. 초·초 미만은 0(분 단위)"
+          },
+          "plannedBreakMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1439,
+            "description": "근무 길이(분)보다 작아야 한다",
+            "default": 0
+          }
+        },
+        "required": [
+          "branchId",
+          "employeeId",
+          "startsAt",
+          "endsAt"
+        ],
+        "additionalProperties": false,
+        "description": "상태는 항상 예정으로 만든다. 등록자는 세션 사용자다. 0 < endsAt − startsAt ≤ 24시간, plannedBreakMinutes < 길이."
+      },
+      "ShiftUpdate": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "오프셋이 있는 ISO 8601. 초·초 미만은 0(분 단위)"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "오프셋이 있는 ISO 8601. 초·초 미만은 0(분 단위)"
+          },
+          "plannedBreakMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1439,
+            "description": "근무 길이(분)보다 작아야 한다"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "additionalProperties": false,
+        "description": "branchId·employeeId·status는 받지 않는다(422 IMMUTABLE_FIELD). version 외 항목이 없으면 422. reason은 shift_events에 남는다."
+      },
+      "ShiftCancel": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "additionalProperties": false,
+        "description": "reason은 선택이며 shift_events에 남는다."
+      },
+      "AttendanceBreak": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "startedAt",
+          "endedAt"
+        ],
+        "additionalProperties": false,
+        "description": "휴게 구간. endedAt이 null이면 진행 중 휴게다."
+      },
+      "AttendanceRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AttendanceStatus"
+          },
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "employee": {
+            "$ref": "#/components/schemas/ActorSummary"
+          },
+          "shiftId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Id"
+              }
+            ],
+            "nullable": true
+          },
+          "clockInAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "clockOutAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "workDate": {
+            "type": "string",
+            "format": "date",
+            "description": "clockInAt의 Asia/Seoul 날짜"
+          },
+          "breaks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttendanceBreak"
+            }
+          },
+          "workedMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "nullable": true,
+            "description": "M8-D07: (퇴근 − 출근 − 휴게 합)을 초 단위로 계산한 뒤 분 미만 버림, 0 미만 없음. 퇴근 전에는 null."
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "status",
+          "branchId",
+          "employee",
+          "shiftId",
+          "clockInAt",
+          "clockOutAt",
+          "workDate",
+          "breaks",
+          "workedMinutes"
+        ],
+        "additionalProperties": false,
+        "description": "실제 출퇴근. 시각은 초 미만을 버린 서버 시각이다. 목록·상세·주간 근무표가 같은 DTO와 같은 계산을 쓴다."
+      },
+      "AttendanceRecordPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttendanceRecord"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "additionalProperties": false
+      },
+      "CurrentAttendance": {
+        "type": "object",
+        "properties": {
+          "attendance": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AttendanceRecord"
+              }
+            ],
+            "nullable": true
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "attendance",
+          "asOf"
+        ],
+        "additionalProperties": false,
+        "description": "진행 중 근태가 없으면 attendance는 null이다."
+      },
+      "ClockIn": {
+        "type": "object",
+        "properties": {
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": [
+          "branchId"
+        ],
+        "additionalProperties": false,
+        "description": "시각과 직원은 받지 않는다. 서버 시각과 세션 사용자로 기록한다."
+      },
+      "WeeklyShiftSchedule": {
+        "type": "object",
+        "properties": {
+          "weekStart": {
+            "type": "string",
+            "format": "date",
+            "description": "월요일(Asia/Seoul)"
+          },
+          "weekEnd": {
+            "type": "string",
+            "format": "date",
+            "description": "일요일(Asia/Seoul), 포함"
+          },
+          "timeZone": {
+            "type": "string",
+            "enum": [
+              "Asia/Seoul"
+            ]
+          },
+          "shifts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Shift"
+            }
+          },
+          "attendance": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttendanceRecord"
+            }
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "weekStart",
+          "weekEnd",
+          "timeZone",
+          "shifts",
+          "attendance",
+          "asOf"
+        ],
+        "additionalProperties": false,
+        "description": "shifts는 workDate가 그 주인 예정 근무(취소 제외), attendance는 workDate가 그 주인 실제 근태다. 페이지가 없다."
+      },
+      "ShiftConflictTarget": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "branchId",
+          "startsAt",
+          "endsAt"
+        ],
+        "additionalProperties": false,
+        "description": "요청자가 볼 수 있는 겹친 근무. 직원·휴게·등록자·version은 담지 않는다."
+      },
+      "ShiftConflict": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "근무",
+              "휴가"
+            ]
+          },
+          "visible": {
+            "type": "boolean"
+          },
+          "label": {
+            "type": "string",
+            "enum": [
+              "근무",
+              "다른 지점 근무",
+              "승인 휴가"
+            ]
+          },
+          "overlapStartsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "overlapEndsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "shift": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ShiftConflictTarget"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "kind",
+          "visible",
+          "label",
+          "overlapStartsAt",
+          "overlapEndsAt",
+          "shift"
+        ],
+        "additionalProperties": false,
+        "description": "겹친 구간은 요청 근무와의 교집합이다. 볼 수 없는 근무는 visible=false, label=다른 지점 근무, shift=null이고 겹친 구간을 시간순으로 합친다. 휴가는 visible=false, label=승인 휴가, shift=null이다."
+      },
+      "ShiftConflictError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "fieldErrors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "latestVersion": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "reloadUrl": {
+            "type": "string"
+          },
+          "conflicts": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/ShiftConflict"
+            }
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "requestId"
+        ],
+        "additionalProperties": false,
+        "description": "근무 등록·수정의 409 본문. ApiError 필드에 conflicts를 더한다. code=SHIFT_CONFLICT일 때만 conflicts가 있고 overlapStartsAt 오름차순이다."
       }
     }
   },
