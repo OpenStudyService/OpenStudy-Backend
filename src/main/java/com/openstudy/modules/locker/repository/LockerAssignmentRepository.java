@@ -39,4 +39,9 @@ public interface LockerAssignmentRepository extends JpaRepository<LockerAssignme
      */
     @Query("SELECT a FROM LockerAssignment a WHERE a.lockerId IN :lockers AND " + LockerOccupation.STARTED + " ORDER BY a.startDate, a.id")
     List<LockerAssignment> occupying(@Param("lockers") Collection<Long> lockers, @Param("today") LocalDate today);
+
+    /** What the customer actually held or holds, latest start first: a failed or cancelled assignment held nothing. */
+    @Query("SELECT a FROM LockerAssignment a WHERE a.customerId = :customer AND a.startDate <= :today AND (a.status = " + LockerOccupation.ACTIVE
+            + " OR a.status = " + LockerOccupation.RETURNED + ") ORDER BY a.startDate DESC, a.id DESC")
+    List<LockerAssignment> heldBy(@Param("customer") long customer, @Param("today") LocalDate today);
 }

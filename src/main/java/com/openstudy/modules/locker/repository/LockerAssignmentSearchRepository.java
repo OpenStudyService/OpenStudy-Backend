@@ -40,6 +40,16 @@ public class LockerAssignmentSearchRepository {
         return new Page(found, ((Number) count.getSingleResult()).longValue());
     }
 
+    /** The whole record of one customer at these branches, in the list's order. */
+    public List<LockerAssignment> ofCustomer(long customerId, Set<Long> branches) {
+        if (branches.isEmpty()) return List.of();
+        var binds = new LinkedHashMap<String, Object>();
+        var rows = entityManager.createQuery("SELECT a" + where(new Filter(branches, null, customerId, null), binds)
+                + " ORDER BY a.createdAt DESC, a.id DESC", LockerAssignment.class);
+        binds.forEach(rows::setParameter);
+        return rows.getResultList();
+    }
+
     private static String where(Filter filter, Map<String, Object> binds) {
         var where = new StringBuilder(" FROM LockerAssignment a WHERE a.lockerId IN (SELECT l.id FROM Locker l WHERE l.branchId IN :branches)");
         binds.put("branches", filter.branches());

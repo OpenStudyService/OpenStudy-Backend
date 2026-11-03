@@ -4,7 +4,7 @@ Backend [#67](https://github.com/OpenStudyService/OpenStudy-Backend/issues/67)�
 
 정책 근거는 [ADR-M6-001](../../db/ADR-M6-001.md)(M6-D01~D06)이다. 공통 요청·응답·오류·목록 규칙은 [API 계약](api.md)을, 결제·환불은 [M4 계약](customer-sales-api.md)을, 고객 조회 범위는 ADR-M4-002 M4-D05를 따른다.
 
-2026-11-02: 룸 operation 5개와 예약 생성·목록·달력·상세 operation은 #69에서 구현됐다(`implemented`). 2026-11-02: 예약 취소와 이용 시작·완료 operation은 #70에서 구현됐다(`implemented`). 2026-11-02: 사물함 operation 7개와 배정 operation 5개는 #71에서 구현됐다(`implemented`). 나머지 operation은 설계 계약(`design-target`)이며 아직 서버에 구현되어 있지 않다. #67에서 스키마는 바꾸지 않는다. 룸 시간 단위 열과 새 권한은 #68의 마이그레이션이 추가한다. 사물함 표는 V1 그대로 쓴다.
+2026-11-02: 룸 operation 5개와 예약 생성·목록·달력·상세 operation은 #69에서 구현됐다(`implemented`). 2026-11-02: 예약 취소와 이용 시작·완료 operation은 #70에서 구현됐다(`implemented`). 2026-11-02: 사물함 operation 7개와 배정 operation 5개는 #71에서 구현됐다(`implemented`). 2026-11-02: 타 지점 최소 요약과 고객의 룸·사물함 이력 operation 2개는 #72에서 구현됐다(`implemented`). 이 문서의 operation은 모두 구현됐다. #67에서 스키마는 바꾸지 않는다. 룸 시간 단위 열과 새 권한은 #68의 마이그레이션이 추가한다. 사물함 표는 V1 그대로 쓴다.
 
 ## 제공 범위
 
@@ -291,7 +291,7 @@ amountKrw = terms × 결제 당시 사물함의 4주 요금
 
 **기록(NFR-SEC-09)**
 
-- 성공: `customer_service_interactions`에 고객·응대 지점·조회자·사유·시각을 남긴다. 이 표는 소속을 참조하므로, 응대 지점에 소속 행이 없는 OWNER는 `audit_events`(`CROSS_BRANCH_SUMMARY`)에 남긴다.
+- 성공: `customer_service_interactions`에 고객·응대 지점·조회자·사유·시각을 남긴다. 기록 출처는 `CROSS_BRANCH_SUMMARY`이며, 정확 일치 조회 기록과 달리 문의 대상 판정의 근거가 되지 않는다. 이 표는 소속을 참조하므로, 응대 지점에 소속 행이 없는 OWNER는 `audit_events`(`CROSS_BRANCH_SUMMARY`)에 남긴다.
 - 거부: `audit_events`(`CROSS_BRANCH_SUMMARY_DENIED`)에 조회자·대상 고객 ID·응대 지점을 남긴다. 거부 응답이 롤백해도 남도록 별도 트랜잭션으로 기록한다. 사유 원문은 남기지 않는다.
 - 없는 고객은 404다.
 

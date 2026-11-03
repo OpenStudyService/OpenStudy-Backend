@@ -768,6 +768,7 @@ CREATE TABLE `customer_service_interactions` (
   `branch_id` bigint unsigned NOT NULL,
   `employee_id` bigint unsigned NOT NULL,
   `reason` varchar(500) NOT NULL,
+  `source` enum('CHECK_IN_LOOKUP','CROSS_BRANCH_SUMMARY') NOT NULL DEFAULT 'CHECK_IN_LOOKUP',
   `verified_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   PRIMARY KEY (`id`),
   KEY `ix_customer_service_interactions_1` (`customer_id`,`branch_id`,`verified_at`),
@@ -1366,8 +1367,8 @@ INSERT INTO `permission_definitions` (`id`,`code`,`description`,`is_admin_only`)
 INSERT INTO `permission_definitions` (`id`,`code`,`description`,`is_admin_only`) VALUES (8,'people:manage','직원 및 권한 관리',1);
 INSERT INTO `permission_definitions` (`id`,`code`,`description`,`is_admin_only`) VALUES (9,'ai:read','AI 분석 조회',0);
 INSERT INTO `permission_definitions` (`id`,`code`,`description`,`is_admin_only`) VALUES (16,'customers:cross-branch-read','타 지점 고객 최소 요약 조회',0);
-INSERT INTO `permission_presets` (`id`,`name`,`role`,`is_system`,`created_by`,`created_at`,`updated_at`,`version`,`updated_by`) VALUES (1,'일반 직원 기본','STAFF',1,NULL,'2026-11-02T07:58:49.903617','2026-11-02T07:58:49.903617',0,NULL);
-INSERT INTO `permission_presets` (`id`,`name`,`role`,`is_system`,`created_by`,`created_at`,`updated_at`,`version`,`updated_by`) VALUES (2,'지점 관리자 기본','MANAGER',1,NULL,'2026-11-02T07:58:49.905109','2026-11-02T07:58:49.905109',0,NULL);
+INSERT INTO `permission_presets` (`id`,`name`,`role`,`is_system`,`created_by`,`created_at`,`updated_at`,`version`,`updated_by`) VALUES (1,'일반 직원 기본','STAFF',1,NULL,'2026-11-02T14:38:53.867826','2026-11-02T14:38:53.867826',0,NULL);
+INSERT INTO `permission_presets` (`id`,`name`,`role`,`is_system`,`created_by`,`created_at`,`updated_at`,`version`,`updated_by`) VALUES (2,'지점 관리자 기본','MANAGER',1,NULL,'2026-11-02T14:38:53.869320','2026-11-02T14:38:53.869320',0,NULL);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,1);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,2);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,3);
@@ -1377,8 +1378,9 @@ INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,6
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,7);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,8);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,9);
-INSERT INTO `administration_guard` (`id`,`updated_at`) VALUES (1,'2026-11-02T07:58:49.915156');
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (1,'1','init schema','SQL','V1__init_schema.sql',-747993029,'foundation_test','2026-11-02 16:58:49.0',4817,1);
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (2,'2','customer branch and memo','SQL','V2__customer_branch_and_memo.sql',191084984,'foundation_test','2026-11-02 16:58:50.0',250,1);
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (3,'3','channel description and version','SQL','V3__channel_description_and_version.sql',-552623542,'foundation_test','2026-11-02 16:58:50.0',187,1);
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (4,'4','room hourly and cross branch permission','SQL','V4__room_hourly_and_cross_branch_permission.sql',-1250266497,'foundation_test','2026-11-02 16:58:52.0',1638,1);
+INSERT INTO `administration_guard` (`id`,`updated_at`) VALUES (1,'2026-11-02T14:38:53.879323');
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (1,'1','init schema','SQL','V1__init_schema.sql',-747993029,'foundation_test','2026-11-02 23:38:53.0',8348,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (2,'2','customer branch and memo','SQL','V2__customer_branch_and_memo.sql',191084984,'foundation_test','2026-11-02 23:38:54.0',290,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (3,'3','channel description and version','SQL','V3__channel_description_and_version.sql',-552623542,'foundation_test','2026-11-02 23:38:54.0',185,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (4,'4','room hourly and cross branch permission','SQL','V4__room_hourly_and_cross_branch_permission.sql',-1250266497,'foundation_test','2026-11-02 23:38:56.0',1740,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (5,'5','customer interaction source','SQL','V5__customer_interaction_source.sql',-483919048,'foundation_test','2026-11-02 23:38:56.0',182,1);

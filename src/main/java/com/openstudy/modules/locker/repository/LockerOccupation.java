@@ -8,6 +8,7 @@ package com.openstudy.modules.locker.repository;
 final class LockerOccupation {
     private static final String ENTITY = "com.openstudy.modules.locker.entity.";
     static final String ACTIVE = ENTITY + "LockerAssignmentStatus.ACTIVE";
+    static final String RETURNED = ENTITY + "LockerAssignmentStatus.RETURNED";
     static final String AVAILABLE = "l.status = " + ENTITY + "LockerState.AVAILABLE";
     static final String BLOCKED = "l.status = " + ENTITY + "LockerState.BLOCKED";
     /** Started and neither returned nor cancelled. A period that ended without a return still counts: the things are inside. */

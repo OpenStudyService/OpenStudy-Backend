@@ -70,6 +70,12 @@ public class AuditEvent {
                 AuditResult.SUCCESS);
     }
 
+    /** A refused request that must still be traceable; {@code detail} carries what no column can hold. */
+    public static AuditEvent denied(Long actor, Long branch, String entityType, Long entityId, String action, String detail,
+            String requestId) {
+        return new AuditEvent(actor, branch, entityType, entityId, action, null, null, detail, requestId, AuditResult.DENIED);
+    }
+
     /** An authentication attempt; no snapshots, the outcome is carried by reason and result. */
     public static AuditEvent attempt(Long actor, String entityType, Long entityId, String action, String reason,
             String requestId, AuditResult result) {

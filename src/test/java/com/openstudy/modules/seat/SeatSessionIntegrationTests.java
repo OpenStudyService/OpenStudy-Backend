@@ -795,6 +795,7 @@ class SeatSessionIntegrationTests {
             assertThat(((Number) row.get("branch_id")).longValue()).isEqualTo(first);
             assertThat(((Number) row.get("employee_id")).longValue()).isEqualTo(staff);
             assertThat(row.get("reason")).isEqualTo("입실 정확 일치 조회(연락처)");
+            assertThat(row.get("source")).isEqualTo("CHECK_IN_LOOKUP");
             assertThat(at("SELECT verified_at FROM customer_service_interactions WHERE customer_id=?", customer)).isEqualTo(TEN);
 
             assertThat(lookup(s, byMemberNo(first, memberNo(customer))).statusCode()).isEqualTo(200);

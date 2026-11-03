@@ -41,6 +41,7 @@ import com.openstudy.modules.customer.dto.response.CustomerListItem;
 import com.openstudy.modules.customer.dto.response.CustomerSummary;
 import com.openstudy.modules.customer.dto.response.ExactCustomerMatch;
 import com.openstudy.modules.customer.entity.Customer;
+import com.openstudy.modules.customer.entity.CustomerInteractionSource;
 import com.openstudy.modules.customer.entity.CustomerServiceInteraction;
 import com.openstudy.modules.customer.entity.CustomerStatus;
 import com.openstudy.modules.customer.entity.CustomerStatusEvent;
@@ -193,15 +194,17 @@ public class CustomerService {
     /**
      * Target check for an inquiry registered by proxy (M7-D02). The customer must be in the requester's general lookup
      * scope (M4-D05), or the requester must have found the customer by exact match at this same branch (the
-     * customer_service_interactions row is the proof; the client's claim is never trusted). Anything else is a 404, so
-     * an ID is not an existence oracle. The check grants nothing: the general scope is unchanged afterwards. An OWNER
-     * without a membership row leaves no interaction row, but every customer is inside the OWNER's scope.
+     * customer_service_interactions row of that lookup is the proof; the client's claim is never trusted). A cross-branch
+     * summary's row is no proof: it takes any ID and withholds the identity on purpose. Anything else is a 404, so an ID is
+     * not an existence oracle. The check grants nothing: the general scope is unchanged afterwards. An OWNER without a
+     * membership row leaves no interaction row, but every customer is inside the OWNER's scope.
      */
     @Transactional(readOnly = true)
     public CustomerSummary requireInquiryTarget(AuthorizationState state, long id, long branch) {
         Set<Long> selected = policy.scope(state, "all", BranchAction.READ);
         boolean inScope = search.visible(id, selected, unassigned(state, "all"));
-        if (!inScope && !interactions.existsByCustomerIdAndBranchIdAndEmployeeId(id, branch, state.employeeId()))
+        if (!inScope && !interactions.existsByCustomerIdAndBranchIdAndEmployeeIdAndSource(id, branch, state.employeeId(),
+                CustomerInteractionSource.CHECK_IN_LOOKUP))
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         return summary(lockedCustomer(id));
     }
@@ -255,7 +258,13 @@ public class CustomerService {
     /** The access trail of an exact-match result (M5-D07); needs a membership row of (branch, employee). */
     @Transactional
     public void recordLookup(long customerId, long branch, long employee, String reason, Instant at) {
-        interactions.save(new CustomerServiceInteraction(customerId, branch, employee, reason, at));
+        interactions.save(new CustomerServiceInteraction(customerId, branch, employee, reason, CustomerInteractionSource.CHECK_IN_LOOKUP, at));
+    }
+
+    /** The access trail of a cross-branch summary (M6-D06); needs a membership row of (branch, employee). */
+    @Transactional
+    public void recordCrossBranchSummary(long customerId, long branch, long employee, String reason, Instant at) {
+        interactions.save(new CustomerServiceInteraction(customerId, branch, employee, reason, CustomerInteractionSource.CROSS_BRANCH_SUMMARY, at));
     }
 
     private static ExactCustomerMatch match(Customer customer) {

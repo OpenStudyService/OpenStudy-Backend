@@ -111,6 +111,13 @@ class SpaceOperationsContractTests {
         }
     }
 
+    @Test void issue72ImplementedTheSummaryAndTheHistoryLeavingNothingOfThisContractToBuild() {
+        for (String id : List.of("getCrossBranchSummary", "getCustomerSpaceHistory")) {
+            assertThat(operation(id).get("x-implementation-status").asString()).as(id).isEqualTo("implemented");
+        }
+        OPERATIONS.keySet().forEach(id -> assertThat(operation(id).get("x-implementation-status").asString()).as(id).isEqualTo("implemented"));
+    }
+
     @Test void completingEarlyReleasesTheHoursNotStartedYet() throws Exception {
         assertThat(operation("completeRoomUsage").get("description").asString()).contains("아직 시작하지 않은 시간의 슬롯을 삭제");
         assertThat(Files.readString(DESIGN.resolve("space-operations-api.md")))

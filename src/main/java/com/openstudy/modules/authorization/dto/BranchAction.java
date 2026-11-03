@@ -17,6 +17,10 @@ public enum BranchAction {
     WRITE_ROOMS("operations:write", false, false),
     /** M6 locker ledger with its stop, resume and branch rate: operations:write at the locker's branch, also while the branch is stopped. */
     WRITE_LOCKERS("operations:write", false, false),
+    /** M6 cross-branch summary, MANAGER half: the role alone at the serving branch, with no separate grant (M6-D06). */
+    SERVE_CROSS_BRANCH_AS_MANAGER(null, true, false),
+    /** M6 cross-branch summary, grant half: the permission an administrator gives a chosen employee (M6-D06). */
+    SERVE_CROSS_BRANCH("customers:cross-branch-read", false, false),
     WRITE_MEMBERS("members:write", false, false),
     WRITE_FACILITIES("facilities:write", false, false),
     WRITE_NOTICES("notices:write", false, false),

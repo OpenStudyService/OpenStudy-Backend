@@ -22,6 +22,12 @@ public class AuthorizationService {
         return state;
     }
 
+    /** For a record that names a client-supplied branch after the request was refused: audit_events.branch_id is a foreign key. */
+    @Transactional(readOnly = true)
+    public boolean branchExists(long branchId) {
+        return repository.branches().stream().anyMatch(row -> ((Number) row[0]).longValue() == branchId);
+    }
+
     public boolean permits(AuthorizationState state, long branchId, BranchAction action) {
         if (!"ACTIVE".equals(state.status()) || !state.branches().containsKey(branchId)) return false;
         if (action.requiresOperatingBranch && !"ACTIVE".equals(state.branches().get(branchId))) return false;

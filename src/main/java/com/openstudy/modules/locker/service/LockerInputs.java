@@ -24,6 +24,9 @@ final class LockerInputs {
     /** The business date: an instant is one day in UTC and the next in Korea from 15:00 UTC on. */
     static LocalDate today(Instant at) { return LocalDate.ofInstant(at, SEOUL); }
 
+    /** Where a business date begins, the instant a locker period starts. */
+    static Instant startOf(LocalDate day) { return day.atStartOfDay(SEOUL).toInstant(); }
+
     static LockerState state(String value, String field) {
         return Arrays.stream(LockerState.values()).filter(state -> state.label().equals(value)).findFirst()
                 .orElseThrow(() -> ApiException.validation(field, "허용되지 않은 값입니다."));
