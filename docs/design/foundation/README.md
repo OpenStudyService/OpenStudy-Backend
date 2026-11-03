@@ -12,6 +12,8 @@
 
 2026-11-03 추가: Issue #155의 본문·스레드별 독립 읽음은 [협업 API 계약](collaboration-api.md)의 읽음 절과 OpenAPI `0.1.9-m7-thread-read`를 따른다. 정책은 [ADR-M7-001](../../db/ADR-M7-001.md) M7-D08·D09이고 V6가 스키마를 추가한다.
 
+2026-11-03 추가: Issue #82의 M8 근무표·출퇴근·근태 API는 [근무표·근태 API 계약](workforce-api.md)과 OpenAPI `0.1.10-m8-workforce`의 설계 계약(`design-target`)을 따른다. 정책은 [ADR-M8-001](../../db/ADR-M8-001.md)이며 구현은 근무표 #83, 근태 #84에서 진행한다. 스키마 변경은 없다. 휴가·대체근무·근태 정정은 M12다.
+
 2026-10-27 추가: Issue #15의 초대 미리보기·신규/기존 계정 수락·최종 승인은 [초대 수락·승인 구현 계약](invitation-acceptance-api.md)을 따른다. 기존 요청·응답 모델과 계약 버전은 유지하고 해당 operation의 구현 상태만 OpenAPI에 표시한다.
 
 2026-10-27 추가: Issue #14의 초대 발송 worker·SMTP·lease·재시도는 [메일 발송·장애 복구 계약](invitation-delivery.md)을 따른다. 기본 비활성이며 실제 운영 SMTP 수신 및 공개 수락·승인(#15)의 검증 범위를 구분한다.
