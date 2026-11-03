@@ -35,6 +35,7 @@ class CollaborationContractTests {
             Map.entry("listChannelMembers", "get /channels/{id}/members"),
             Map.entry("replaceChannelMembers", "put /channels/{id}/members"),
             Map.entry("markChannelRead", "post /channels/{id}/read"),
+            Map.entry("markThreadRead", "post /channels/{id}/messages/{messageId}/read"),
             Map.entry("listChannelMessages", "get /channels/{id}/messages"),
             Map.entry("sendChannelMessage", "post /channels/{id}/messages"),
             Map.entry("getChannelMessage", "get /channels/{id}/messages/{messageId}"),
@@ -147,6 +148,26 @@ class CollaborationContractTests {
         assertThat(schema("MessageFeed").get("properties").has("nextCursor")).isTrue();
         assertThat(schema("MessageFeed").get("properties").has("hasMore")).isTrue();
         assertThat(schema("MessageFeed").get("properties").has("meta")).isFalse();
+    }
+
+    @Test void theMainFeedAndEachThreadHaveTheirOwnReadPositionAndOneRuleForCounts() {
+        assertThat(schema("ChannelRead").get("required").toString()).contains("\"messageId\"");
+        assertThat(schema("ThreadRead").get("required").toString()).contains("\"replyId\"");
+        for (String id : List.of("markChannelRead", "markThreadRead")) {
+            assertThat(operation(id).get("x-implementation-status").asString()).isEqualTo("implemented");
+            assertThat(operation(id).get("x-implementation-issue").asString()).isEqualTo("#155");
+            assertThat(operation(id).get("x-permission").asString()).isEqualTo("참여자");
+            assertThat(operation(id).get("x-error-codes").toString()).contains("\"INVALID_READ_TARGET\"", "\"NOT_FOUND\"", "\"VALIDATION_FAILED\"");
+        }
+        assertThat(operation("markChannelRead").at("/responses/200/content/application~1json/schema/$ref").asString()).endsWith("/ChannelReadResult");
+        assertThat(operation("markThreadRead").at("/responses/200/content/application~1json/schema/$ref").asString()).endsWith("/ThreadReadResult");
+        for (String name : List.of("Channel", "ChannelReadResult", "ThreadReadResult")) {
+            for (String field : List.of("unreadCount", "mainUnreadCount", "replyUnreadCount")) {
+                assertThat(schema(name).get("required").toString()).as("%s %s", name, field).contains("\"" + field + "\"");
+            }
+        }
+        assertThat(schema("Message").at("/properties/threadUnreadCount/nullable").asBoolean()).isTrue();
+        assertThat(schema("Message").at("/properties/threadLastReadMessageId/nullable").asBoolean()).isTrue();
     }
 
     @Test void everyEditCarriesAVersionAndAConflictIsDeclared() {

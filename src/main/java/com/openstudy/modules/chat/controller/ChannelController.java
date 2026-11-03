@@ -29,6 +29,7 @@ import com.openstudy.modules.chat.dto.response.ChannelReadResult;
 import com.openstudy.modules.chat.dto.response.ChannelView;
 import com.openstudy.modules.chat.dto.response.MessageFeed;
 import com.openstudy.modules.chat.dto.response.MessageView;
+import com.openstudy.modules.chat.dto.response.ThreadReadResult;
 import com.openstudy.modules.chat.service.ChannelService;
 import com.openstudy.modules.chat.service.MessageService;
 
@@ -122,6 +123,11 @@ public class ChannelController {
     public MessageFeed replies(Authentication actor, @PathVariable long id, @PathVariable long messageId,
             @RequestParam(required = false) String before, @RequestParam(required = false) String limit) {
         return messages.replies(actor(actor), id, messageId, before, limit);
+    }
+
+    @PostMapping("/{id}/messages/{messageId}/read")
+    public ThreadReadResult readThread(Authentication actor, @PathVariable long id, @PathVariable long messageId, @RequestBody Map<String, Object> body) {
+        return messages.markThreadRead(actor(actor), id, messageId, body);
     }
 
     private static long actor(Authentication authentication) { return Long.parseLong(authentication.getName()); }

@@ -35,6 +35,7 @@ class MessageIntegrationTests extends ChannelTestSupport {
         refused(send(person, channel, key(), "   ", null), 404, "NOT_FOUND");
         refused(read(person, channel, message), 404, "NOT_FOUND");
         refused(write(person, "POST", base + "/read", Map.of("wrong", "field")), 404, "NOT_FOUND");
+        refused(write(person, "POST", base + "/messages/" + message + "/read", Map.of("replyId", Long.toString(reply))), 404, "NOT_FOUND");
     }
 
     @Test void aNonParticipantGets404OnEveryMessagePathEvenAsAdministrator() throws Exception {
@@ -372,7 +373,7 @@ class MessageIntegrationTests extends ChannelTestSupport {
         refused(write(staffA, "POST", "/api/channels/" + channel + "/read", Map.of("messageId", Long.toString(third), "employeeId", Long.toString(staffA2))), 422, "VALIDATION_FAILED");
     }
 
-    @Test void unreadCountsMessagesAfterThePositionFromOthersIncludingReplies() throws Exception {
+    @Test void unreadCountsOriginalsAfterThePositionAndEveryUnopenedReplyFromOthers() throws Exception {
         long channel = channelId(owner, a, "안 읽음", staffA);
         long first = sent(owner, channel, "남의 원문");
         sent(staffA, channel, "내 원문");
@@ -383,13 +384,14 @@ class MessageIntegrationTests extends ChannelTestSupport {
         assertThat(listed.get(0).get("unreadCount").asLong()).isEqualTo(2);
         assertThat(listed.get(0).get("lastMessageAt").isNull()).isFalse();
 
-        // A reply is a valid position, and the channel has one position for originals and replies alike.
-        assertThat(ok(read(staffA, channel, reply)).get("unreadCount").asLong()).isZero();
+        // The main feed's position says nothing about replies, and a reply cannot be it.
+        refused(read(staffA, channel, reply), 422, "INVALID_READ_TARGET");
+        assertThat(ok(read(staffA, channel, first)).get("unreadCount").asLong()).isEqualTo(1);
         long later = sent(owner, channel, "이후 원문");
-        assertThat(detail(staffA, channel).get("unreadCount").asLong()).isEqualTo(1);
+        assertThat(detail(staffA, channel).get("unreadCount").asLong()).isEqualTo(2);
         assertThat(ok(read(staffA, channel, later)).get("lastReadMessageId").asString()).isEqualTo(Long.toString(later));
         reply(owner, channel, "나중의 이전 스레드 답글", first);
-        assertThat(detail(staffA, channel).get("unreadCount").asLong()).isEqualTo(1);
+        assertThat(detail(staffA, channel).get("unreadCount").asLong()).isEqualTo(2);
     }
 
     // ---- task cards stay unbroken ---------------------------------------------------------------------------

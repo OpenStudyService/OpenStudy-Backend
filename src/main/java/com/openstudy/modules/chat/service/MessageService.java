@@ -27,20 +27,26 @@ import com.openstudy.modules.chat.dto.response.ActorSummary;
 import com.openstudy.modules.chat.dto.response.ChannelReadResult;
 import com.openstudy.modules.chat.dto.response.MessageFeed;
 import com.openstudy.modules.chat.dto.response.MessageView;
+import com.openstudy.modules.chat.dto.response.ThreadReadResult;
+import com.openstudy.modules.chat.entity.ConversationMember;
+import com.openstudy.modules.chat.entity.ConversationThreadRead;
+import com.openstudy.modules.chat.entity.ConversationThreadReadId;
 import com.openstudy.modules.chat.entity.Message;
 import com.openstudy.modules.chat.entity.MessageKind;
 import com.openstudy.modules.chat.repository.ConversationMemberRepository;
 import com.openstudy.modules.chat.repository.ConversationRepository;
+import com.openstudy.modules.chat.repository.ConversationThreadReadRepository;
 import com.openstudy.modules.chat.repository.MessageRepository;
 import com.openstudy.modules.authorization.dto.AuthorizationState;
 import com.openstudy.modules.employee.service.EmployeeAccountService;
 import com.openstudy.modules.task.service.TaskCardService;
 
 /**
- * Messages, threads and the read position (FR-CHAT-02·04~07). Every path first asks {@link ChannelAccess#participation}:
+ * Messages, threads and the read positions (FR-CHAT-02·04~07). Every path first asks {@link ChannelAccess#participation}:
  * a non-participant gets the same 404 for a channel, a message and a reply, a manager included, and before any input is
  * looked at. Sends and read positions go through the guard, which is also what makes IDs follow commit order: a reader
- * can never pass a message that commits later with a smaller ID. The body is stored and returned as sent.
+ * can never pass a message that commits later with a smaller ID. The body is stored and returned as sent. A read
+ * position concerns only its reader: moving one writes no audit row and raises no workspace event.
  */
 @Service
 @RequiredArgsConstructor
@@ -48,6 +54,8 @@ public class MessageService {
     private final ConversationRepository channels;
     private final ConversationMemberRepository members;
     private final MessageRepository messages;
+    private final ConversationThreadReadRepository threadReads;
+    private final ReadPositions reads;
     private final ChannelAccess access;
     private final EmployeeAccountService employees;
     private final AuthorizationService policy;
@@ -60,26 +68,26 @@ public class MessageService {
     @Transactional(readOnly = true)
     public MessageFeed list(long actor, long channel, String before, String limit) {
         var state = policy.current(actor);
-        access.participation(state, channel);
+        var member = access.participation(state, channel);
         int size = ChannelInputs.limit(limit);
-        return feed(messages.originals(channel, ChannelInputs.before(before), Limit.of(size + 1)), size, state);
+        return feed(messages.originals(channel, ChannelInputs.before(before), Limit.of(size + 1)), size, state, member);
     }
 
     @Transactional(readOnly = true)
     public MessageView get(long actor, long channel, long id) {
         var state = policy.current(actor);
-        access.participation(state, channel);
-        return view(found(channel, id), state);
+        var member = access.participation(state, channel);
+        return view(found(channel, id), state, member);
     }
 
     /** The target has to be a message of this channel. Asked of a reply, the answer is an empty feed. */
     @Transactional(readOnly = true)
     public MessageFeed replies(long actor, long channel, long id, String before, String limit) {
         var state = policy.current(actor);
-        access.participation(state, channel);
+        var member = access.participation(state, channel);
         found(channel, id);
         int size = ChannelInputs.limit(limit);
-        return feed(messages.replies(channel, id, ChannelInputs.before(before), Limit.of(size + 1)), size, state);
+        return feed(messages.replies(channel, id, ChannelInputs.before(before), Limit.of(size + 1)), size, state, member);
     }
 
     /**
@@ -108,7 +116,7 @@ public class MessageService {
 
     private Sent attempt(long actor, long channel, Map<String, Object> body, boolean card) {
         return commands.activeEmployee(actor, () -> channels.lock(channel), state -> {
-            access.participation(state, channel);
+            var member = access.participation(state, channel);
             var input = card ? new StrictInput(body).only("clientMessageKey", "taskId", "text", "parentId")
                     : new StrictInput(body).only("clientMessageKey", "text", "parentId");
             String key = ChannelInputs.clientKey(body.get("clientMessageKey"));
@@ -122,26 +130,57 @@ public class MessageService {
             if (prior.isPresent()) {
                 if (!sameInput(prior.get(), task, text, parent))
                     throw ApiException.conflict("IDEMPOTENCY_CONFLICT", "같은 키로 다른 입력을 저장할 수 없습니다.");
-                return new Sent(view(prior.get(), state), false);
+                return new Sent(view(prior.get(), state, member), false);
             }
             Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
             var row = card ? Message.taskCard(channel, actor, parent, task, text, key, now) : Message.text(channel, actor, parent, text, key, now);
             var saved = DuplicateKeys.translate(() -> messages.saveAndFlush(row));
-            return new Sent(view(saved, state), true);
+            return new Sent(view(saved, state, member), true);
         });
     }
 
+    /** The main feed's position, so only an original can be it. Replies keep their own positions. */
     public ChannelReadResult markRead(long actor, long channel, Map<String, Object> body) {
         return commands.activeEmployee(actor, () -> channels.lock(channel), state -> {
             var member = access.participation(state, channel);
             long message = new StrictInput(body).only("messageId").id("messageId");
-            if (!messages.existsByIdAndConversationId(message, channel)) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+            if (found(channel, message).getParentMessageId() != null) throw invalidReadTarget("본문 읽음 위치에는 원문만 지정할 수 있습니다.");
             member.advanceReadPosition(message, clock.instant().truncatedTo(ChronoUnit.MICROS));
             members.saveAndFlush(member);
-            long unread = messages.unreadCounts(actor, List.of(channel)).stream().mapToLong(row -> ((Number) row[1]).longValue()).sum();
+            var unread = reads.unread(actor, channel);
             return new ChannelReadResult(member.getLastReadMessageId() == null ? null : member.getLastReadMessageId().toString(),
-                    member.getLastReadAt(), unread);
+                    member.getLastReadAt(), unread.total(), unread.main(), unread.replies());
         });
+    }
+
+    /**
+     * One thread's position. It moves only past what already counts as read, so a reply the baseline covers writes
+     * nothing. The channel lock makes reading and writing the row one step: the first row of a thread cannot be inserted
+     * twice, and a slower request for an earlier reply finds the further position.
+     */
+    public ThreadReadResult markThreadRead(long actor, long channel, long original, Map<String, Object> body) {
+        return commands.activeEmployee(actor, () -> channels.lock(channel), state -> {
+            var member = access.participation(state, channel);
+            long reply = new StrictInput(body).only("replyId").id("replyId");
+            if (found(channel, original).getParentMessageId() != null) throw invalidReadTarget("스레드 읽음 위치는 원문에만 둘 수 있습니다.");
+            if (!Objects.equals(found(channel, reply).getParentMessageId(), original)) throw invalidReadTarget("이 스레드의 답글이 아닙니다.");
+            var row = threadReads.findById(new ConversationThreadReadId(channel, actor, original)).orElse(null);
+            Long current = ReadPositions.position(member, row == null ? null : row.getLastReadMessageId());
+            if (current == null || reply > current) {
+                Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
+                if (row == null) row = new ConversationThreadRead(channel, actor, original, reply, now);
+                else row.advance(reply, now);
+                row = threadReads.saveAndFlush(row);
+            }
+            var unread = reads.unread(actor, channel);
+            var thread = reads.threads(member, List.of(original)).get(original);
+            return new ThreadReadResult(Long.toString(original), thread.position() == null ? null : thread.position().toString(),
+                    row == null ? null : row.getLastReadAt(), thread.unread(), unread.total(), unread.main(), unread.replies());
+        });
+    }
+
+    private static ApiException invalidReadTarget(String message) {
+        return ApiException.unprocessable("INVALID_READ_TARGET", message);
     }
 
     private Message found(long channel, long id) {
@@ -156,27 +195,35 @@ public class MessageService {
     }
 
     /** {@code rows} are newest first with up to one extra row, which only says that more exist. */
-    private MessageFeed feed(List<Message> rows, int size, AuthorizationState reader) {
+    private MessageFeed feed(List<Message> rows, int size, AuthorizationState reader, ConversationMember member) {
         boolean more = rows.size() > size;
         var page = new ArrayList<>(more ? rows.subList(0, size) : rows);
         Collections.reverse(page);
-        var items = views(page, reader);
+        var items = views(page, reader, member);
         return new MessageFeed(items, more, more ? items.getFirst().id() : null);
     }
 
-    private MessageView view(Message row, AuthorizationState reader) { return views(List.of(row), reader).getFirst(); }
+    private MessageView view(Message row, AuthorizationState reader, ConversationMember member) {
+        return views(List.of(row), reader, member).getFirst();
+    }
 
     /** Cards are read from their tasks now, for this reader: the stored row never decides what a card shows. */
-    private List<MessageView> views(List<Message> rows, AuthorizationState reader) {
+    private List<MessageView> views(List<Message> rows, AuthorizationState reader, ConversationMember member) {
         if (rows.isEmpty()) return List.of();
         var names = employees.names(rows.stream().map(Message::getSenderEmployeeId).distinct().toList());
         Map<Long, Long> replies = new HashMap<>();
         for (Object[] row : messages.replyCounts(rows.stream().map(Message::getId).toList()))
             replies.put(((Number) row[0]).longValue(), ((Number) row[1]).longValue());
         var cards = taskCards.cards(reader, rows.stream().map(Message::getRelatedTaskId).filter(Objects::nonNull).distinct().toList());
-        return rows.stream().map(row -> new MessageView(row.getId().toString(), Long.toString(row.getConversationId()),
-                new ActorSummary(Long.toString(row.getSenderEmployeeId()), names.getOrDefault(row.getSenderEmployeeId(), "")),
-                row.getParentMessageId() == null ? null : row.getParentMessageId().toString(), ChannelInputs.label(row.getKind()),
-                row.getBody(), row.getRelatedTaskId() == null ? null : cards.get(row.getRelatedTaskId()), row.getClientMessageKey(), replies.getOrDefault(row.getId(), 0L), row.getSentAt())).toList();
+        var threads = reads.threads(member, rows.stream().filter(row -> row.getParentMessageId() == null).map(Message::getId).toList());
+        return rows.stream().map(row -> {
+            var thread = threads.get(row.getId());
+            return new MessageView(row.getId().toString(), Long.toString(row.getConversationId()),
+                    new ActorSummary(Long.toString(row.getSenderEmployeeId()), names.getOrDefault(row.getSenderEmployeeId(), "")),
+                    row.getParentMessageId() == null ? null : row.getParentMessageId().toString(), ChannelInputs.label(row.getKind()),
+                    row.getBody(), row.getRelatedTaskId() == null ? null : cards.get(row.getRelatedTaskId()), row.getClientMessageKey(),
+                    replies.getOrDefault(row.getId(), 0L), thread == null ? null : Long.valueOf(thread.unread()),
+                    thread == null || thread.position() == null ? null : thread.position().toString(), row.getSentAt());
+        }).toList();
     }
 }

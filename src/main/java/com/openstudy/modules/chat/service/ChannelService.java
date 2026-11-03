@@ -23,6 +23,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.ObjectMapper;
 
 import com.openstudy.common.audit.AuditEvent;
@@ -66,6 +67,7 @@ public class ChannelService {
     private final ConversationRepository channels;
     private final ConversationMemberRepository members;
     private final MessageRepository messages;
+    private final ReadPositions reads;
     private final ChannelAccess access;
     private final EmployeeAccountService employees;
     private final AuthorizationService policy;
@@ -143,7 +145,9 @@ public class ChannelService {
                 if (now.isBefore(prior.get().getExpiresAt())) {
                     if (!MessageDigest.isEqual(fingerprint, prior.get().getRequestHash()))
                         throw ApiException.conflict("IDEMPOTENCY_CONFLICT", "같은 키로 다른 입력을 저장할 수 없습니다.");
-                    return json.readValue(prior.get().getResponseJson(), ChannelView.class);
+                    // A response stored before the split counts existed has none; it is a new channel, so 0 is right.
+                    return json.readerFor(ChannelView.class).without(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES)
+                            .readValue(prior.get().getResponseJson());
                 }
                 requests.discard(prior.get());
             }
@@ -207,10 +211,12 @@ public class ChannelService {
             if (current.equals(wanted)) return memberList(id);
             Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
             for (long employee : current) if (!wanted.contains(employee)) rows.get(employee).leave(now);
+            Long latest = messages.latestId(id);
             for (long employee : wanted) {
                 var row = rows.get(employee);
                 if (row == null) members.save(new ConversationMember(id, employee, now));
-                else row.rejoin();
+                // Staying on the list is not joining again: those positions must not move.
+                else if (!row.active()) row.rejoin(latest, now);
             }
             members.flush();
             channels.incrementVersions(List.of(id));
@@ -248,15 +254,16 @@ public class ChannelService {
         Map<Long, ConversationMember> own = qualified.isEmpty() ? Map.of()
                 : members.findByEmployeeIdAndLeftAtIsNullAndConversationIdIn(state.employeeId(), qualified).stream()
                         .collect(Collectors.toMap(ConversationMember::getConversationId, row -> row));
-        Map<Long, Long> unread = own.isEmpty() ? Map.of() : longs(messages.unreadCounts(state.employeeId(), own.keySet()));
+        Map<Long, ReadPositions.Unread> unread = own.isEmpty() ? Map.of() : reads.unread(state.employeeId(), own.keySet());
         Map<Long, Instant> last = new HashMap<>();
         if (!own.isEmpty()) for (Object[] row : messages.lastSent(own.keySet())) last.put(((Number) row[0]).longValue(), (Instant) row[1]);
         return rows.stream().map(channel -> {
             var mine = own.get(channel.getId());
             String read = mine == null || mine.getLastReadMessageId() == null ? null : mine.getLastReadMessageId().toString();
+            var pending = unread.getOrDefault(channel.getId(), ReadPositions.Unread.NONE);
             return new ChannelView(channel.getId().toString(), ChannelInputs.label(channel.getKind()),
                     channel.getBranchId() == null ? null : channel.getBranchId().toString(), channel.getName(), channel.getDescription(),
-                    counts.getOrDefault(channel.getId(), 0L), mine != null, unread.getOrDefault(channel.getId(), 0L), read,
+                    counts.getOrDefault(channel.getId(), 0L), mine != null, pending.total(), pending.main(), pending.replies(), read,
                     mine == null ? null : last.get(channel.getId()), access.manages(state, channel),
                     ApiVersion.fromDatabase(channel.getVersion()), channel.getCreatedAt());
         }).toList();

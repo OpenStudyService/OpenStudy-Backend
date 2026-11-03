@@ -756,6 +756,7 @@ CREATE TABLE `conversation_members` (
   `left_at` datetime(6) DEFAULT NULL,
   `last_read_message_id` bigint unsigned DEFAULT NULL,
   `last_read_at` datetime(6) DEFAULT NULL,
+  `thread_read_baseline_message_id` bigint unsigned DEFAULT NULL,
   PRIMARY KEY (`conversation_id`,`employee_id`),
   KEY `ix_conversation_members_1` (`employee_id`,`conversation_id`),
   CONSTRAINT `fk_conversation_members_1` FOREIGN KEY (`conversation_id`) REFERENCES `conversations` (`id`) ON DELETE CASCADE,
@@ -1332,6 +1333,20 @@ CREATE TABLE `attendance_corrections` (
   CONSTRAINT `ck_attendance_corrections_3` CHECK (((`after_break_end_at` is null) or (`after_break_end_at` >= `after_break_start_at`)))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='직원 신청, 관리자 승인 시 실제 근태 반영';
 
+CREATE TABLE `conversation_thread_reads` (
+  `conversation_id` bigint unsigned NOT NULL,
+  `employee_id` bigint unsigned NOT NULL,
+  `parent_message_id` bigint unsigned NOT NULL,
+  `last_read_message_id` bigint unsigned NOT NULL,
+  `last_read_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`conversation_id`,`employee_id`,`parent_message_id`),
+  KEY `fk_conversation_thread_reads_2` (`parent_message_id`,`conversation_id`),
+  KEY `fk_conversation_thread_reads_3` (`last_read_message_id`,`conversation_id`),
+  CONSTRAINT `fk_conversation_thread_reads_1` FOREIGN KEY (`conversation_id`, `employee_id`) REFERENCES `conversation_members` (`conversation_id`, `employee_id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_conversation_thread_reads_2` FOREIGN KEY (`parent_message_id`, `conversation_id`) REFERENCES `messages` (`id`, `conversation_id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_conversation_thread_reads_3` FOREIGN KEY (`last_read_message_id`, `conversation_id`) REFERENCES `messages` (`id`, `conversation_id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='스레드별 직원 읽음 위치. 기준 위치를 넘어선 스레드만 행이 있다';
+
 CREATE TABLE `pass_balance_events` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `pass_id` bigint unsigned NOT NULL,
@@ -1367,8 +1382,8 @@ INSERT INTO `permission_definitions` (`id`,`code`,`description`,`is_admin_only`)
 INSERT INTO `permission_definitions` (`id`,`code`,`description`,`is_admin_only`) VALUES (8,'people:manage','직원 및 권한 관리',1);
 INSERT INTO `permission_definitions` (`id`,`code`,`description`,`is_admin_only`) VALUES (9,'ai:read','AI 분석 조회',0);
 INSERT INTO `permission_definitions` (`id`,`code`,`description`,`is_admin_only`) VALUES (16,'customers:cross-branch-read','타 지점 고객 최소 요약 조회',0);
-INSERT INTO `permission_presets` (`id`,`name`,`role`,`is_system`,`created_by`,`created_at`,`updated_at`,`version`,`updated_by`) VALUES (1,'일반 직원 기본','STAFF',1,NULL,'2026-11-02T14:38:53.867826','2026-11-02T14:38:53.867826',0,NULL);
-INSERT INTO `permission_presets` (`id`,`name`,`role`,`is_system`,`created_by`,`created_at`,`updated_at`,`version`,`updated_by`) VALUES (2,'지점 관리자 기본','MANAGER',1,NULL,'2026-11-02T14:38:53.869320','2026-11-02T14:38:53.869320',0,NULL);
+INSERT INTO `permission_presets` (`id`,`name`,`role`,`is_system`,`created_by`,`created_at`,`updated_at`,`version`,`updated_by`) VALUES (1,'일반 직원 기본','STAFF',1,NULL,'2026-11-03T01:57:52.376227','2026-11-03T01:57:52.376227',0,NULL);
+INSERT INTO `permission_presets` (`id`,`name`,`role`,`is_system`,`created_by`,`created_at`,`updated_at`,`version`,`updated_by`) VALUES (2,'지점 관리자 기본','MANAGER',1,NULL,'2026-11-03T01:57:52.377514','2026-11-03T01:57:52.377514',0,NULL);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,1);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,2);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,3);
@@ -1378,9 +1393,10 @@ INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,6
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,7);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,8);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,9);
-INSERT INTO `administration_guard` (`id`,`updated_at`) VALUES (1,'2026-11-02T14:38:53.879323');
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (1,'1','init schema','SQL','V1__init_schema.sql',-747993029,'foundation_test','2026-11-02 23:38:53.0',8348,1);
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (2,'2','customer branch and memo','SQL','V2__customer_branch_and_memo.sql',191084984,'foundation_test','2026-11-02 23:38:54.0',290,1);
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (3,'3','channel description and version','SQL','V3__channel_description_and_version.sql',-552623542,'foundation_test','2026-11-02 23:38:54.0',185,1);
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (4,'4','room hourly and cross branch permission','SQL','V4__room_hourly_and_cross_branch_permission.sql',-1250266497,'foundation_test','2026-11-02 23:38:56.0',1740,1);
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (5,'5','customer interaction source','SQL','V5__customer_interaction_source.sql',-483919048,'foundation_test','2026-11-02 23:38:56.0',182,1);
+INSERT INTO `administration_guard` (`id`,`updated_at`) VALUES (1,'2026-11-03T01:57:52.387293');
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (1,'1','init schema','SQL','V1__init_schema.sql',-747993029,'foundation_test','2026-11-03 10:57:52.0',8353,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (2,'2','customer branch and memo','SQL','V2__customer_branch_and_memo.sql',191084984,'foundation_test','2026-11-03 10:57:52.0',299,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (3,'3','channel description and version','SQL','V3__channel_description_and_version.sql',-552623542,'foundation_test','2026-11-03 10:57:52.0',214,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (4,'4','room hourly and cross branch permission','SQL','V4__room_hourly_and_cross_branch_permission.sql',-1250266497,'foundation_test','2026-11-03 10:57:54.0',1648,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (5,'5','customer interaction source','SQL','V5__customer_interaction_source.sql',-483919048,'foundation_test','2026-11-03 10:57:54.0',169,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (6,'6','thread read positions','SQL','V6__thread_read_positions.sql',892098293,'foundation_test','2026-11-03 10:57:55.0',264,1);
