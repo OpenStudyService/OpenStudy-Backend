@@ -68,6 +68,39 @@ public class ShiftSearchRepository {
         return rows.getResultList();
     }
 
+    /**
+     * What a clock-in is in now: {@code LEFT} stored, or WORKING with or without an open break. "휴게 중" is not stored,
+     * so the list filter reads the breaks in the same query.
+     */
+    public enum AttendanceState { WORKING, ON_BREAK, LEFT }
+
+    public record AttendancePage(List<AttendanceRecord> rows, long total) {}
+
+    /**
+     * The attendance list (FR-ATT-05) under the same reader condition as the shifts, by its recorded branch. The filter's
+     * shift status does not apply; shift and state narrow further. Newest clock-in first, then id, both descending.
+     */
+    public AttendancePage findAttendance(Filter filter, Long shift, AttendanceState state, long offset, int limit) {
+        if (filter.branches().isEmpty()) return new AttendancePage(List.of(), 0);
+        var binds = new LinkedHashMap<String, Object>();
+        var where = new StringBuilder(where("AttendanceRecord a", "a", "a.clockInAt", filter, binds));
+        if (shift != null) { where.append(" AND a.shiftId = :shift"); binds.put("shift", shift); }
+        if (state != null) {
+            binds.put("status", state == AttendanceState.LEFT ? AttendanceRecord.Status.LEFT : AttendanceRecord.Status.WORKING);
+            where.append(" AND a.status = :status");
+            String open = "EXISTS (SELECT 1 FROM AttendanceBreak b WHERE b.attendanceId = a.id AND b.endedAt IS NULL)";
+            if (state == AttendanceState.WORKING) where.append(" AND NOT ").append(open);
+            if (state == AttendanceState.ON_BREAK) where.append(" AND ").append(open);
+        }
+        var rows = entityManager.createQuery("SELECT a" + where + " ORDER BY a.clockInAt DESC, a.id DESC", AttendanceRecord.class);
+        Query count = entityManager.createQuery("SELECT COUNT(a)" + where);
+        binds.forEach(rows::setParameter);
+        binds.forEach(count::setParameter);
+        var found = offset > Integer.MAX_VALUE ? List.<AttendanceRecord>of()
+                : rows.setFirstResult((int) offset).setMaxResults(limit).getResultList();
+        return new AttendancePage(found, ((Number) count.getSingleResult()).longValue());
+    }
+
     private static String where(String entity, String alias, String time, Filter filter, Map<String, Object> binds) {
         var where = new StringBuilder(" FROM ").append(entity).append(" WHERE ").append(alias).append(".branchId IN :branches AND (");
         binds.put("branches", filter.branches());

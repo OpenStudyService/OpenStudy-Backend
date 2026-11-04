@@ -208,6 +208,29 @@ abstract class ShiftIntegrationSupport {
 
     HttpResponse<String> cancel(Session session, long id, long version) throws Exception { return cancel(session, id, Map.of("version", version)); }
 
+    // ---- attendance commands (#84): the path names no employee and no record ----------------------------------
+
+    HttpResponse<String> clockIn(Session session, long branch, String key) throws Exception {
+        return http(session.client(), "POST", "/api/me/attendance/clock-in", session.token(), Map.of("branchId", Long.toString(branch)), key);
+    }
+
+    HttpResponse<String> clockIn(Session session, long branch) throws Exception { return clockIn(session, branch, key()); }
+
+    HttpResponse<String> breakStart(Session session, long version) throws Exception { return self(session, "break-start", Map.of("version", version)); }
+
+    HttpResponse<String> breakEnd(Session session, long version) throws Exception { return self(session, "break-end", Map.of("version", version)); }
+
+    HttpResponse<String> clockOut(Session session, long version) throws Exception { return self(session, "clock-out", Map.of("version", version)); }
+
+    HttpResponse<String> self(Session session, String command, Object body) throws Exception {
+        return http(session.client(), "POST", "/api/me/attendance/" + command, session.token(), body, null);
+    }
+
+    /** The requester's attendance in progress, or a JSON null. */
+    JsonNode current(Session session) throws Exception { return ok(get(session, "/api/me/attendance/current")).get("attendance"); }
+
+    long working(long person) { return count("SELECT COUNT(*) FROM attendance_records WHERE employee_id=? AND status='WORKING'", person); }
+
     JsonNode node(HttpResponse<String> response) { return json.readTree(response.body()); }
 
     JsonNode ok(HttpResponse<String> response) {

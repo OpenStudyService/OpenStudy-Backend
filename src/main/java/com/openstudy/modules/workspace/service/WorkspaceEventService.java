@@ -17,6 +17,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import com.openstudy.modules.authorization.dto.BranchAction;
 import com.openstudy.modules.authorization.service.AuthorizationService;
 import com.openstudy.modules.employee.service.EmployeeAccountService;
+import com.openstudy.modules.workforce.service.AttendanceService;
 import com.openstudy.modules.workforce.service.ShiftService;
 import com.openstudy.modules.workspace.dto.WorkspaceEvent;
 import com.openstudy.modules.workspace.repository.WorkspaceOutboxRepository;
@@ -30,6 +31,7 @@ public class WorkspaceEventService {
     private final AuthorizationService authorization;
     private final EmployeeAccountService employees;
     private final ShiftService shifts;
+    private final AttendanceService attendance;
     private final WorkspaceOutboxRepository outbox;
     private final Clock clock;
     private final long heartbeatMillis;
@@ -49,11 +51,11 @@ public class WorkspaceEventService {
     }
 
     public WorkspaceEventService(WorkspaceAccessService access,AuthorizationService authorization,
-            EmployeeAccountService employees,ShiftService shifts,WorkspaceOutboxRepository outbox,Clock clock,
+            EmployeeAccountService employees,ShiftService shifts,AttendanceService attendance,WorkspaceOutboxRepository outbox,Clock clock,
             @Value("${openstudy.workspace.heartbeat-millis:15000}") long heartbeatMillis,
             @Value("${openstudy.workspace.max-connections:512}") int maxConnections) {
         if(heartbeatMillis<1 || maxConnections<1) throw new IllegalArgumentException("Invalid workspace stream configuration");
-        this.access=access;this.authorization=authorization;this.employees=employees;this.shifts=shifts;this.outbox=outbox;
+        this.access=access;this.authorization=authorization;this.employees=employees;this.shifts=shifts;this.attendance=attendance;this.outbox=outbox;
         this.clock=clock;this.heartbeatMillis=heartbeatMillis;this.maxConnections=maxConnections;
     }
 
@@ -133,6 +135,9 @@ public class WorkspaceEventService {
             if("payments".equals(resource) && !authorization.permits(current.state(),event.branchId(),BranchAction.READ_PAYMENTS)) return;
             // A shift names its employee: only the OWNER, the branch's MANAGER and that employee hear of it (M8-D02).
             if("shifts".equals(resource) && (event.entityId()==null || !shifts.announcedTo(current.state(),event.branchId(),event.entityId()))) return;
+            // An attendance names its employee and when they clocked in or out: the same readers as a shift (M8-D02).
+            if("attendance-records".equals(resource) && (event.entityId()==null
+                    || !attendance.announcedTo(current.state(),event.branchId(),event.entityId()))) return;
             // A removed peer is no longer in minimal lookups, even while this branch remains readable.
             // A facility type id is not a facility id, so a new type only tells the facility screens to reload.
             boolean typeEvent=event.entityType().startsWith("facility-type");
@@ -171,6 +176,7 @@ public class WorkspaceEventService {
             case "locker","lockers"->"lockers";
             case "locker-assignment","locker-assignments"->"locker-assignments";
             case "shift","shifts"->"shifts";
+            case "attendance-record","attendance-records"->"attendance-records";
             case "lookups"->"lookups";
             default->null;
         };

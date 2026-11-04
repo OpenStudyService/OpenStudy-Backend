@@ -4,7 +4,7 @@ Backend [#82](https://github.com/OpenStudyService/OpenStudy-Backend/issues/82)�
 
 정책 근거는 [ADR-M8-001](../../db/ADR-M8-001.md)(M8-D01~D08)이다. 공통 요청·응답·오류·목록 규칙은 [API 계약](api.md)을 따른다. 휴가·대체근무·근태 정정은 [ADR-M12-001](../../db/ADR-M12-001.md)의 M12 범위다.
 
-2026-11-03: 이 문서의 operation은 모두 설계 계약(`design-target`)으로 정했다. 2026-11-03: 근무표 operation 6개(주간 근무표·목록·등록·상세·수정·취소)는 #83에서 구현됐다(`implemented`). 나머지 근태 operation 7개는 설계 계약이며 아직 서버에 구현되어 있지 않다(#84). 스키마는 바꾸지 않는다. V1의 `shifts`, `shift_events`, `attendance_records`, `attendance_breaks`, `leave_requests`를 그대로 쓴다.
+2026-11-03: 이 문서의 operation은 모두 설계 계약(`design-target`)으로 정했다. 2026-11-03: 근무표 operation 6개(주간 근무표·목록·등록·상세·수정·취소)는 #83에서 구현됐다(`implemented`). 2026-11-03: 근태 operation 7개(현재 근태·출근·휴게 시작·휴게 종료·퇴근·근태 목록·근태 상세)는 #84에서 구현됐다(`implemented`). 이로써 이 문서의 M8 operation 13개가 모두 구현됐다. 스키마는 바꾸지 않는다. V1의 `shifts`, `shift_events`, `attendance_records`, `attendance_breaks`, `leave_requests`를 그대로 쓴다.
 
 ## 제공 범위
 

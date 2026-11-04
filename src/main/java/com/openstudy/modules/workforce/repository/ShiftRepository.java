@@ -35,6 +35,17 @@ public interface ShiftRepository extends JpaRepository<Shift, Long> {
             @Param("end") Instant end);
 
     /**
+     * The shift a clock-in at this instant belongs to: the employee's, at the clock-in branch, with startsAt ≤ at &lt; endsAt
+     * (M8-D08). One employee's shifts never overlap, so there is at most one. FOR SHARE so that a cancellation still
+     * being committed is waited for, and a clock-in never links to a shift that has just been cancelled.
+     */
+    @Lock(LockModeType.PESSIMISTIC_READ)
+    @Query("SELECT s FROM Shift s WHERE s.employeeId = :employee AND s.branchId = :branch AND s.status = :status "
+            + "AND s.startsAt <= :at AND s.endsAt > :at ORDER BY s.startsAt, s.id")
+    List<Shift> covering(@Param("employee") long employee, @Param("branch") long branch, @Param("status") ShiftStatus status,
+            @Param("at") Instant at);
+
+    /**
      * JPA-01 native exception: the employee module owns employees, and this is a step of the shift lock order, not a
      * read. Every write to one employee's shifts takes this row first, so writes for that employee run one at a time
      * whichever branch they come from (M8-D05). The row of a missing employee locks nothing and is refused later.
