@@ -65,7 +65,8 @@ class LocalPreviewIntegrationTests {
 
     @Test
     void previewKeepsExistingUiSortOptionsButRejectsPrivateFields() throws Exception {
-        // /api/tasks (#75), /api/seats (#61), /api/facilities (#78), /api/rooms (#69), /api/lockers (#71) and /api/shifts (#83)
+        // /api/tasks (#75), /api/seats (#61), /api/facilities (#78), /api/rooms (#69), /api/lockers (#71), /api/shifts (#83)
+        // and attendance (#84, /api/attendance-records)
         // are real operational endpoints now.
         // /api/products is a real operational endpoint now (#16); members is still preview-only.
         assertThat(get("/api/members?sort=status").statusCode()).isEqualTo(200);
@@ -161,6 +162,28 @@ class LocalPreviewIntegrationTests {
         assertThat(write.statusCode()).isEqualTo(422);
         assertThat(json.readTree(write.body()).get("code").asString()).isEqualTo("VALIDATION_FAILED");
         assertThat(get("/api/shifts/weekly").statusCode()).isEqualTo(200);
+    }
+
+    @Test void attendanceIsAnsweredByTheOperationalApiAndTheSampleListIsGone() throws Exception {
+        // #84 retired the sample /api/attendance list; the operational paths never overlapped it. The lookup sample keeps its key.
+        assertThat(get("/api/attendance").statusCode()).isEqualTo(404);
+        assertThat(get("/api/attendance?page=1&pageSize=5").statusCode()).isEqualTo(404);
+        var page = get("/api/attendance-records?page=1&pageSize=5");
+        assertThat(page.statusCode()).isEqualTo(200);
+        assertThat(json.readTree(page.body()).has("items")).isTrue();
+        var current = get("/api/me/attendance/current");
+        assertThat(current.statusCode()).isEqualTo(200);
+        assertThat(json.readTree(current.body()).get("attendance").isNull()).isTrue();
+        // The preview OWNER has no membership row, so the real clock-in refuses it (M8-D08) and writes nothing.
+        String csrf = json.readTree(get("/api/auth/csrf").body()).get("token").asString();
+        String branch = json.readTree(get("/api/me").body()).at("/branches/0/id").asString();
+        var clockIn = client.send(request("/api/me/attendance/clock-in").header("X-CSRF-Token", csrf)
+                .header("Idempotency-Key", UUID.randomUUID().toString()).header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of("branchId", branch)))).build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(clockIn.statusCode()).isEqualTo(403);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM attendance_records WHERE employee_id=?", Integer.class, employeeId)).isZero();
+        assertThat(json.readTree(get("/api/local-preview/lookups?scope=all").body()).has("attendance")).isTrue();
     }
 
     private HttpRequest.Builder request(String path) {

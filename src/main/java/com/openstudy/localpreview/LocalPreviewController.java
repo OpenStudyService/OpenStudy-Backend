@@ -51,7 +51,8 @@ public class LocalPreviewController {
         return result;
     }
 
-    @GetMapping("/api/{resource:products|members|employees|branches|passes|attendance|payments|reservations|usage|invitations|corrections|leaveGrants|leaveRequests|substitutions|audit}")
+    // #84 retired the sample /api/attendance list: attendance is read from /api/attendance-records and /api/me/attendance/current.
+    @GetMapping("/api/{resource:products|members|employees|branches|passes|payments|reservations|usage|invitations|corrections|leaveGrants|leaveRequests|substitutions|audit}")
     public PageResponse<Map<String, Object>> list(Authentication auth, @PathVariable String resource,
             @RequestParam(defaultValue = "all") String scope, @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "20") int pageSize, @RequestParam(defaultValue = "") String q,

@@ -7,7 +7,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.TemporalAdjusters;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -19,7 +18,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -40,20 +38,13 @@ import com.openstudy.modules.authorization.service.AuthorizationService;
 import com.openstudy.modules.authorization.service.AuthorizedCommands;
 import com.openstudy.modules.employee.service.EmployeeAccountService;
 import com.openstudy.modules.workforce.dto.response.ActorSummary;
-import com.openstudy.modules.workforce.dto.response.AttendanceBreakView;
-import com.openstudy.modules.workforce.dto.response.AttendanceRecordView;
-import com.openstudy.modules.workforce.dto.response.AttendanceSummary;
 import com.openstudy.modules.workforce.dto.response.ShiftCancellation;
 import com.openstudy.modules.workforce.dto.response.ShiftView;
 import com.openstudy.modules.workforce.dto.response.WeeklyShiftSchedule;
-import com.openstudy.modules.workforce.entity.AttendanceBreak;
-import com.openstudy.modules.workforce.entity.AttendanceRecord;
 import com.openstudy.modules.workforce.entity.LeaveRequest;
 import com.openstudy.modules.workforce.entity.Shift;
 import com.openstudy.modules.workforce.entity.ShiftEvent;
 import com.openstudy.modules.workforce.entity.ShiftStatus;
-import com.openstudy.modules.workforce.repository.AttendanceBreakRepository;
-import com.openstudy.modules.workforce.repository.AttendanceRecordRepository;
 import com.openstudy.modules.workforce.repository.LeaveRequestRepository;
 import com.openstudy.modules.workforce.repository.ShiftEventRepository;
 import com.openstudy.modules.workforce.repository.ShiftRepository;
@@ -78,8 +69,8 @@ public class ShiftService {
     private final ShiftEventRepository history;
     private final ShiftSearchRepository search;
     private final LeaveRequestRepository leaves;
-    private final AttendanceRecordRepository attendance;
-    private final AttendanceBreakRepository breaks;
+    private final AttendanceViews attendance;
+    private final RecordScope readers;
     private final EmployeeAccountService employees;
     private final AuthorizationService policy;
     private final AuthorizedCommands commands;
@@ -98,7 +89,7 @@ public class ShiftService {
         LocalDate last = to == null ? null : ShiftInputs.date(to, "to");
         if (first != null && last != null && last.isBefore(first)) throw ApiException.validation("to", "종료 날짜는 시작 날짜보다 앞설 수 없습니다.");
         var state = policy.current(actor);
-        var filter = filter(state, scope, employee, own, filterStatus, first == null ? null : ShiftInputs.startOf(first),
+        var filter = readers.filter(state, scope, employee, own, filterStatus, first == null ? null : ShiftInputs.startOf(first),
                 last == null ? null : ShiftInputs.startOf(last.plusDays(1)));
         var page = search.find(filter, query.offset(), query.pageSize());
         return new PageResponse<>(views(page.rows(), state), new PageResponse.Meta(query.page(), query.pageSize(), page.total()));
@@ -116,16 +107,16 @@ public class ShiftService {
         boolean own = ShiftInputs.flag(mine, "mine");
         LocalDate monday = day.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
         var state = policy.current(actor);
-        var filter = filter(state, scope, employee, own, ShiftStatus.SCHEDULED, ShiftInputs.startOf(monday), ShiftInputs.startOf(monday.plusDays(7)));
+        var filter = readers.filter(state, scope, employee, own, ShiftStatus.SCHEDULED, ShiftInputs.startOf(monday), ShiftInputs.startOf(monday.plusDays(7)));
         return new WeeklyShiftSchedule(monday, monday.plusDays(6), ShiftInputs.SEOUL.getId(), views(search.all(filter), state),
-                records(search.attendance(filter)), now);
+                attendance.records(search.attendance(filter)), now);
     }
 
     /** Also a cancelled shift. 404 hides a shift the reader may not see, so IDs are not an existence oracle. */
     @Transactional(readOnly = true)
     public ShiftView get(long actor, long id) {
         var state = policy.current(actor);
-        var visible = policy.scope(state, "all", BranchAction.READ);
+        var visible = readers.readable(state);
         var shift = shifts.findById(id).filter(found -> sees(state, visible, found)).orElseThrow(ShiftService::notFound);
         return views(List.of(shift), state).getFirst();
     }
@@ -226,7 +217,7 @@ public class ShiftService {
      */
     @Transactional(readOnly = true)
     public boolean announcedTo(AuthorizationState state, long branch, long shiftId) {
-        if (policy.permits(state, branch, BranchAction.MANAGE_SHIFTS)) return true;
+        if (readers.manages(state, branch)) return true;
         return shifts.employeeOf(shiftId).filter(employee -> employee == state.employeeId()).isPresent();
     }
 
@@ -304,24 +295,7 @@ public class ShiftService {
 
     /** M8-D02 for one shift: its branch is readable and either managed by the reader or the shift is the reader's own. */
     private boolean sees(AuthorizationState state, Set<Long> readable, Shift shift) {
-        return readable.contains(shift.getBranchId()) && (policy.permits(state, shift.getBranchId(), BranchAction.MANAGE_SHIFTS)
-                || shift.getEmployeeId() == state.employeeId());
-    }
-
-    /**
-     * The reader condition of every list: the scope's readable branches, the managed part of them, and the reader. mine
-     * and an employee filter only narrow it, so a staff member naming a colleague gets nothing rather than a 403.
-     */
-    private ShiftSearchRepository.Filter filter(AuthorizationState state, String scope, Long employee, boolean own, ShiftStatus status,
-            Instant from, Instant to) {
-        Set<Long> readable = policy.scope(state, scope, BranchAction.READ);
-        Set<Long> managed = readable.stream().filter(branch -> policy.permits(state, branch, BranchAction.MANAGE_SHIFTS)).collect(Collectors.toSet());
-        Long person = employee;
-        if (own) {
-            if (employee != null && employee != state.employeeId()) readable = Set.of();
-            person = state.employeeId();
-        }
-        return new ShiftSearchRepository.Filter(readable, managed, state.employeeId(), person, status, from, to);
+        return readers.sees(state, readable, shift.getBranchId(), shift.getEmployeeId());
     }
 
     private void record(Shift shift, long actor, ShiftEvent.Type type, Map<String, Object> before, String reason) {
@@ -348,14 +322,7 @@ public class ShiftService {
         var ids = rows.stream().map(Shift::getId).toList();
         Map<Long, ShiftEvent> cancelled = new HashMap<>();
         history.findByShiftIdInAndEventTypeOrderByIdAsc(ids, ShiftEvent.Type.CANCELLED).forEach(event -> cancelled.put(event.getShiftId(), event));
-        var linked = attendance.findByShiftIdInOrderByClockInAtAscIdAsc(ids);
-        var breaksOf = breaksOf(linked);
-        Map<Long, List<AttendanceSummary>> attended = new HashMap<>();
-        for (var record : linked) {
-            var parts = breaksOf.getOrDefault(record.getId(), List.of());
-            attended.computeIfAbsent(record.getShiftId(), shift -> new ArrayList<>()).add(new AttendanceSummary(record.getId().toString(),
-                    AttendanceReadings.status(record, parts), record.getClockInAt(), record.getClockOutAt(), AttendanceReadings.workedMinutes(record, parts)));
-        }
+        var attended = attendance.linkedTo(ids);
         var people = new LinkedHashSet<Long>();
         rows.forEach(row -> { people.add(row.getEmployeeId()); people.add(row.getCreatedBy()); });
         cancelled.values().forEach(event -> people.add(event.getActorEmployeeId()));
@@ -370,29 +337,6 @@ public class ShiftService {
                     attended.getOrDefault(row.getId(), List.of()), actor(row.getCreatedBy(), names), row.getCreatedAt(), row.getUpdatedAt(),
                     !row.cancelled() && policy.permits(state, row.getBranchId(), BranchAction.MANAGE_SHIFTS));
         }).toList();
-    }
-
-    /** Actual attendance, apart from the plan; the same reading as a shift's linked attendance. */
-    private List<AttendanceRecordView> records(List<AttendanceRecord> rows) {
-        if (rows.isEmpty()) return List.of();
-        var breaksOf = breaksOf(rows);
-        var names = employees.names(rows.stream().map(AttendanceRecord::getEmployeeId).distinct().toList());
-        return rows.stream().map(row -> {
-            var parts = breaksOf.getOrDefault(row.getId(), List.of());
-            return new AttendanceRecordView(row.getId().toString(), ApiVersion.fromDatabase(row.getVersion()), AttendanceReadings.status(row, parts),
-                    Long.toString(row.getBranchId()), actor(row.getEmployeeId(), names), row.getShiftId() == null ? null : row.getShiftId().toString(),
-                    row.getClockInAt(), row.getClockOutAt(), ShiftInputs.day(row.getClockInAt()),
-                    parts.stream().map(part -> new AttendanceBreakView(part.getId().toString(), part.getStartedAt(), part.getEndedAt())).toList(),
-                    AttendanceReadings.workedMinutes(row, parts));
-        }).toList();
-    }
-
-    private Map<Long, List<AttendanceBreak>> breaksOf(List<AttendanceRecord> records) {
-        Map<Long, List<AttendanceBreak>> result = new HashMap<>();
-        if (records.isEmpty()) return result;
-        breaks.findByAttendanceIdInOrderByStartedAtAscIdAsc(records.stream().map(AttendanceRecord::getId).toList())
-                .forEach(part -> result.computeIfAbsent(part.getAttendanceId(), id -> new ArrayList<>()).add(part));
-        return result;
     }
 
     private static ActorSummary actor(Long id, Map<Long, String> names) {

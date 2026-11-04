@@ -108,11 +108,16 @@ class WorkforceContractTests {
         });
     }
 
-    @Test void issue83ImplementedTheShiftOperationsAndAttendanceStaysADesignTarget() throws Exception {
+    /** #83 implemented the shift operations and #84 the attendance ones: every M8 operation is now implemented. */
+    @Test void issues83And84ImplementedEveryWorkforceOperation() throws Exception {
         OPERATIONS.keySet().forEach(id -> assertThat(operation(id).get("x-implementation-status").asString()).as(id)
-                .isEqualTo(SHIFT_OPERATIONS.contains(id) ? "implemented" : "design-target"));
-        assertThat(spec.at("/info/description").asString()).contains("주간 근무표·근무 목록·등록·상세·수정·취소 operation은 #83에서 구현됐다");
-        assertThat(contract()).contains("근무표 operation 6개(주간 근무표·목록·등록·상세·수정·취소)는 #83에서 구현됐다(`implemented`)");
+                .isEqualTo("implemented"));
+        assertThat(spec.at("/info/description").asString()).contains("주간 근무표·근무 목록·등록·상세·수정·취소 operation은 #83에서 구현됐다",
+                "현재 근태·출근·휴게 시작·휴게 종료·퇴근·근태 목록·근태 상세 operation은 #84에서 구현됐다");
+        assertThat(contract()).contains("근무표 operation 6개(주간 근무표·목록·등록·상세·수정·취소)는 #83에서 구현됐다(`implemented`)",
+                "근태 operation 7개(현재 근태·출근·휴게 시작·휴게 종료·퇴근·근태 목록·근태 상세)는 #84에서 구현됐다(`implemented`)",
+                "M8 operation 13개가 모두 구현됐다")
+                .doesNotContain("아직 서버에 구현되어 있지 않다(#84)");
     }
 
     @Test void onlyCreatingCommandsTakeARequestKeyAndTheRestCarryAVersion() {
