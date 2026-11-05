@@ -24,6 +24,11 @@ public class ApiException extends RuntimeException {
         return new ApiException(422, "VALIDATION_FAILED", "입력 형식을 확인해 주세요.", Map.of(field, message), null, null);
     }
 
+    /** A 422 with its own code that still names the field to fix, e.g. PERIOD_TOO_LONG on {@code to}. */
+    public static ApiException invalid(String code, String message, String field, String fieldMessage) {
+        return new ApiException(422, code, message, Map.of(field, fieldMessage), null, null);
+    }
+
     /** A safe 422 without field details, e.g. an invitation link whose failure reason must not be revealed. */
     public static ApiException unprocessable(String code, String message) {
         return new ApiException(422, code, message, null, null, null);

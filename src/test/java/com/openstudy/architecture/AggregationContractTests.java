@@ -108,14 +108,21 @@ class AggregationContractTests {
         });
     }
 
-    @Test void theContractIsADesignTargetSplitAcrossTheImplementationIssues() throws Exception {
+    @Test void theContractIsSplitAcrossTheImplementationIssues() throws Exception {
         assertThat(spec.at("/info/version").asString()).isEqualTo("0.1.11-m9-aggregation");
         assertThat(spec.at("/info/description").asString()).contains("Issue #86의 설계 계약(aggregation-api.md, ADR-M9-001)");
-        OPERATIONS.keySet().forEach(id -> {
-            assertThat(operation(id).get("x-implementation-status").asString()).as(id).isEqualTo("design-target");
-            assertThat(operation(id).get("x-implementation-issue").asString()).as(id).isEqualTo(ISSUES.get(id));
-        });
+        OPERATIONS.keySet().forEach(id ->
+                assertThat(operation(id).get("x-implementation-issue").asString()).as(id).isEqualTo(ISSUES.get(id)));
         assertThat(contract()).contains("`0.1.11-m9-aggregation`", "아직 서버에 구현되어 있지 않다", "스키마는 바꾸지 않는다");
+    }
+
+    @Test void issue87ImplementedRevenueBranchComparisonAndTheLedgerAndTheRestStaysADesignTarget() throws Exception {
+        OPERATIONS.keySet().forEach(id -> assertThat(operation(id).get("x-implementation-status").asString()).as(id)
+                .isEqualTo("#87".equals(ISSUES.get(id)) ? "implemented" : "design-target"));
+        assertThat(spec.at("/info/description").asString()).contains("매출·지점 비교·최소 원장 operation은 #87에서 구현됐다");
+        assertThat(contract()).contains("매출·지점 비교·최소 원장 operation 3개(`GET /sales/revenue`, `GET /sales/revenue/branches`, "
+                + "`GET /sales/ledger`)는 #87에서 구현됐다(`implemented`)",
+                "`modules/sales`에는 #87의 공통 집계 기반과 매출·지점 비교·최소 원장이 있다");
     }
 
     @Test void everyRequestedBranchNeedsSalesReadAndNoneIsDroppedSilently() throws Exception {
