@@ -29,7 +29,7 @@ public class LocalPreviewData {
     }
 
     public Map<String, List<Map<String, Object>>> snapshot(long employeeId, String scope) {
-        CurrentUser current = users.current(employeeId);
+        CurrentUser current = users.getCurrentUser(employeeId);
         if (!scope.equals("all") && current.branches().stream().noneMatch(branch -> branch.id().equals(scope))) {
             throw new AccessDeniedException("지점 접근 권한이 없습니다.");
         }
