@@ -199,13 +199,52 @@ class AggregationContractTests {
                 "`2026-11-01T00:00+09:00`(=`2026-10-31T15:00:00Z`) ~ `2026-11-06T00:00+09:00`(=`2026-11-05T15:00:00Z`), `defaultPeriod=true`");
     }
 
-    /** ADR-M9-001 says 400 for a period over 366 days; the common contract answers every input range error with 422. */
-    @Test void theInputErrorStatusFollowsTheCommonContractAndRecordsTheAdrDifference() throws Exception {
+    /** 2026-11-05 the user confirmed 422 PERIOD_TOO_LONG for a period over 366 days and ADR-M9-001 now says so. */
+    @Test void aPeriodOver366DaysIsConfirmedAs422() throws Exception {
         assertThat(spec.at("/components/responses").has("Error400")).isFalse();
         for (String id : OPERATIONS.keySet()) assertThat(operation(id).get("responses").has("400")).as(id).isFalse();
-        assertThat(contract()).contains("### 입력 오류의 상태 코드: 422(ADR의 400과 다름)",
-                "| 366일 초과의 상태 코드 | 422 `PERIOD_TOO_LONG`(ADR·#87 문구는 400) |", "ADR과 #87 인수 조건의 \"400\" 문구는 바꾸지 않았다");
-        assertThat(Files.readString(Path.of("docs/db/ADR-M9-001.md"))).contains("366일을 넘는 기간은 400으로 거부한다");
+        for (String id : SALES) {
+            assertThat(operation(id).at("/responses/422/$ref").asString()).as(id).endsWith("/Error422");
+        }
+        assertThat(contract()).contains("### 입력 오류의 상태 코드: 422(사용자 확정)", "**사용자 확정: 422.**",
+                "#87 이슈 본문의 인수 조건은 아직 \"400\"이라 422로 맞춰야 한다");
+        String adr = Files.readString(Path.of("docs/db/ADR-M9-001.md"));
+        assertThat(adr).contains("366일을 넘는 기간은 422 `PERIOD_TOO_LONG`으로 거부한다", "| 2026-10-28 | 최초 확정 |",
+                "| 2026-11-05 | 366일 초과 응답을 400에서 422 `PERIOD_TOO_LONG`으로 변경(기존 입력 범위 오류와 통일, 사용자 결정).")
+                .doesNotContain("400으로 거부한다");
+    }
+
+    /** 2026-11-05 user decision: the home shift card alone shows same-branch colleagues, by name and planned times only. */
+    @Test void theHomeShiftCardShowsColleaguesByNameAndTimesOnly() throws Exception {
+        var colleague = schema("HomeShiftColleague");
+        assertThat(colleague.get("additionalProperties").asBoolean()).isFalse();
+        assertThat(names(colleague)).containsExactlyInAnyOrder("branchId", "employeeName", "startsAt", "endsAt");
+        var card = schema("HomeShiftCard");
+        assertThat(names(card)).containsExactlyInAnyOrder("count", "items", "colleagueCount", "colleagues", "link", "source");
+        assertThat(card.at("/properties/colleagues/items/$ref").asString()).endsWith("/HomeShiftColleague");
+        assertThat(card.at("/properties/colleagues/maxItems").asInt()).isEqualTo(5);
+        assertThat(operation("getHomeSummary").get("x-permission").asString()).contains("colleagues", "2026-11-05 사용자 결정");
+        assertThat(contract()).contains("#### 같은 지점 동료의 오늘 근무(2026-11-05 사용자 결정)", "**홈 카드만의 예외**",
+                "일반 직원의 `colleagues`는 `GET /shifts`로 재현되지 않는다",
+                "`shifts` 이벤트의 전달 대상(기록을 볼 수 있는 OWNER·기록 지점 MANAGER·직원 본인)은 바꾸지 않는다");
+        assertThat(Files.readString(Path.of("docs/db/ADR-M8-001.md"))).contains(
+                "| 2026-11-05 | 홈 요약의 오늘 근무 카드에서 같은 지점 동료의 이름·근무 시각만 공개(FR-DASH-05, 사용자 결정). 근무표·근태 API의 조회 범위는 그대로.");
+        assertThat(Files.readString(Path.of("docs/db/ADR-M9-001.md"))).contains("같은 지점 동료 근무를 직원 이름과 근무 시작·종료 시각만으로");
+    }
+
+    /** The colleague exception must not widen the M8 operations: their scope wording and shapes stay as #82 published them. */
+    @Test void theWorkforceOperationsKeepTheirM8D02Scope() {
+        for (String path : List.of("/shifts", "/shifts/weekly", "/attendance-records")) {
+            assertThat(spec.at("/paths/" + path.replace("/", "~1") + "/get/x-permission").asString()).as(path)
+                    .contains("M8-D02", "OWNER 전체, 기록 지점의 MANAGER는 그 지점 전체, 그 외 본인 기록").doesNotContain("동료", "colleague");
+        }
+        for (String path : List.of("/shifts/{id}", "/attendance-records/{id}")) {
+            assertThat(spec.at("/paths/" + path.replace("/", "~1") + "/get/x-permission").asString()).as(path)
+                    .contains("M8-D02").doesNotContain("동료", "colleague");
+        }
+        assertThat(spec.at("/paths/~1shifts/get/parameters").toString()).doesNotContain("colleague");
+        assertThat(names(schema("Shift"))).doesNotContain("colleagues");
+        assertThat(names(schema("HomeShiftItem"))).containsExactlyInAnyOrder("id", "branchId", "employee", "startsAt", "endsAt", "link");
     }
 
     @Test void metricDefinitionsLiveWhereM10ReadsThemAndMatchTheContract() throws Exception {
@@ -323,7 +362,7 @@ class AggregationContractTests {
         assertThat(names(schema("HomeTaskCard"))).contains("today", "mine", "items", "link", "sources");
         assertThat(names(schema("HomeInquiryItem"))).noneMatch(field -> field.toLowerCase().contains("customer"));
         assertThat(contract()).contains("| 근무 | M8 `GET /shifts`: **M8-D02 조회 범위**.",
-                "근무 카드는 M8-D02 때문에 일반 직원에게 **본인 근무만** 보인다",
+                "근무 카드의 `count`·`items`는 M8-D02 조회 범위 그대로라 일반 직원에게는 **본인 근무만** 들어간다",
                 "| `mine`·`assigneeId` 없음 | 선택 범위 전체 업무(`mine=false`) | 본인 담당 업무(`mine=true`) |");
     }
 
