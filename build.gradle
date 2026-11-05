@@ -62,6 +62,9 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    // Every Spring test context the suite caches (one per distinct test configuration) stays in this JVM. At ~80 suites
+    // the 512 MiB Gradle default ran out of heap (2026-11-05, #87), so the worker gets more room.
+    maxHeapSize = '1g'
     systemProperty 'ownerBootstrap.runtimeClasspath', sourceSets.main.runtimeClasspath.asPath
     // Service connections override these values. An unconfigured test must fail closed.
     systemProperty 'spring.profiles.active', 'test'

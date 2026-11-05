@@ -4,7 +4,7 @@ Backend [#86](https://github.com/OpenStudyService/OpenStudy-Backend/issues/86)�
 
 정책 근거는 [ADR-M9-001](../../db/ADR-M9-001.md)(M9-D01~D09)이다. 공통 요청·응답·오류·목록 규칙은 [API 계약](api.md)을 따른다. 원거래 의미는 [M4 결제·환불 계약](customer-sales-api.md)과 [M6 공간 운영 계약](space-operations-api.md)을, 홈 카드의 원본은 [M5 좌석](seat-usage-api.md)·[M7 협업](collaboration-api.md)·[M8 근무](workforce-api.md) 계약을 따른다. 자연어 질의·동적 시각화는 [ADR-M10-001](../../db/ADR-M10-001.md)의 M10 범위다.
 
-2026-11-05: 이 문서의 operation은 모두 설계 계약(`design-target`)이며 아직 서버에 구현되어 있지 않다. 스키마는 바꾸지 않는다. 원거래(`payments`, `refunds`, `passes`, `product_revisions`)와 M5·M7·M8 원본 테이블에서 직접 계산한다. 인덱스가 부족하면 #89가 실행 계획을 확인한 뒤 새 버전 마이그레이션으로 인덱스만 추가한다.
+2026-11-05: 이 문서의 operation은 모두 설계 계약(`design-target`)으로 정했다. 2026-11-05: 매출·지점 비교·최소 원장 operation 3개(`GET /sales/revenue`, `GET /sales/revenue/branches`, `GET /sales/ledger`)는 #87에서 구현됐다(`implemented`). 나머지 이용권 판매량·상품 순위·추세(#88)와 홈 요약(#90) operation 4개는 설계 계약이며 아직 서버에 구현되어 있지 않다. 스키마는 바꾸지 않는다. 원거래(`payments`, `refunds`, `passes`, `product_revisions`)와 M5·M7·M8 원본 테이블에서 직접 계산한다. 인덱스가 부족하면 #89가 실행 계획을 확인한 뒤 새 버전 마이그레이션으로 인덱스만 추가한다.
 
 ## 제공 범위
 
@@ -505,7 +505,7 @@ M9-D08의 "직원"은 OWNER가 아닌 모든 사용자로 해석했다. MANAGER�
 
 ## 로컬 샘플과의 관계
 
-`LocalPreviewController`(local 프로필 전용)에 `GET /api/home` 샘플이 있다. 이 계약의 홈은 `GET /home/summary`라 경로가 겹치지 않는다. 샘플은 지금 그대로 두고, #90이 운영 API를 구현하면서 Frontend 전환에 맞춰 정리한다. 샘플 목록 경로 `/api/payments`는 M4에서 이미 운영 경로와 겹쳐 있으며 이 계약과 무관하다. `/api/sales/*` 샘플 경로는 없다. `modules/home`과 `modules/sales`는 구조 설명(`package-info.java`)만 있고 구현이 없다.
+`LocalPreviewController`(local 프로필 전용)에 `GET /api/home` 샘플이 있다. 이 계약의 홈은 `GET /home/summary`라 경로가 겹치지 않는다. 샘플은 지금 그대로 두고, #90이 운영 API를 구현하면서 Frontend 전환에 맞춰 정리한다. 샘플 목록 경로 `/api/payments`는 M4에서 이미 운영 경로와 겹쳐 있으며 이 계약과 무관하다. `/api/sales/*` 샘플 경로는 없다. `modules/home`은 구조 설명(`package-info.java`)만 있고 구현이 없다. `modules/sales`에는 #87의 공통 집계 기반과 매출·지점 비교·최소 원장이 있다.
 
 ## 범위 밖(M10·M13)
 
