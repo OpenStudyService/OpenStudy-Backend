@@ -101,7 +101,8 @@ class WorkforceContractTests {
     }
 
     @Test void theContractIsSplitBetweenTheScheduleAndAttendanceIssues() {
-        assertThat(spec.at("/info/version").asString()).isEqualTo("0.1.10-m8-workforce");
+        // M8 was published in 0.1.10-m8-workforce; later contracts raise the version (0.1.11-m9-aggregation, #86).
+        assertThat(Integer.parseInt(spec.at("/info/version").asString().split("[.-]")[2])).isGreaterThanOrEqualTo(10);
         OPERATIONS.keySet().forEach(id -> {
             String issue = SHIFT_OPERATIONS.contains(id) ? "#83" : "#84";
             assertThat(operation(id).get("x-implementation-issue").asString()).as(id).isEqualTo(issue);

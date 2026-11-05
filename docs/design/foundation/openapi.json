@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "OpenStudy 1차 기반 기능 API 설계",
-    "version": "0.1.10-m8-workforce",
-    "description": "검토 완료 8중분류/61요구사항의 구현 전 목표 계약. Q1~Q12의 2026-10-23 당시 사용자 답변을 기록하되 Q8은 SRS v1.1 정책으로 대체됨. decisions.md 참고. 기존 서버 전체 구현 명세가 아니다. ID문자열·API version=DB+1. 상태 변경은 CSRF, 지점과 행위 인가를 함께 검증한다. Issue #27의 /me/profile 및 CurrentUser는 구현된 M1 닉네임 계약이다. 나머지 operation의 구현 상태는 각각의 표기를 따른다. SRS v1.1 확정 상품 정책: 거래 유무와 무관하게 물리 삭제 미제공; 판매 중지·재개 및 기존 상품·거래·revision 보존. 이전 Q8 조건부 삭제안은 적용하지 않는다. /lookups와 /workspace/events는 단일 인스턴스 기반 workspace 구현 계약이다. 상품/분류 선택 데이터는 관련 업무 API 구현 전까지 빈 배열이다. M4 고객·Mock 결제·발급 이용권·환불 operation은 Issue #55의 설계 계약(customer-sales-api.md, ADR-M4-002)이며 구현은 #56~#58에서 진행한다. 결제·환불 요청에는 금액 필드가 없고 Idempotency-Key가 필수다. M5 좌석·입퇴실·차감·정확 일치 조회·수동 조정 operation은 Issue #60의 설계 계약(seat-usage-api.md, ADR-M5-001)이며 구현은 #61~#64에서 진행한다. 입실·퇴실·이동·조정은 Idempotency-Key가 필수이고, 퇴실·조정 요청에 차감량 필드는 없다. M7 업무·채널·메시지·업무 카드·시설·문의·공지 operation은 Issue #74의 설계 계약(collaboration-api.md, ADR-M7-001)이며 구현은 #75~#80에서 진행한다. 메시지 전송은 clientMessageKey가 필수이고 업무에는 삭제 API가 없다. 업무 operation과 담당자 후보는 #75에서, 시설 operation은 #78에서, 고객 문의 operation은 #79에서, 공지 operation은 #80에서 구현됐다. 채널·메시지 operation은 #76에서, 업무 카드 공유 operation은 #77에서 구현됐다. 좌석 목록·상세·등록·수정·운영 중단/재개·배치도·현황 operation은 #61에서 구현됐다. 입실용 정확 일치 조회·입실·이용 기록 상세·퇴실 operation은 #62에서, 이용 중 좌석 이동 operation은 #63에서, 입퇴실 이력·이용권 수동 조정·고객 구매·사용 내역 operation은 #64에서 구현됐다. M6 룸·예약·사물함·배정·타 지점 요약 operation은 Issue #67의 설계 계약(space-operations-api.md, ADR-M6-001)이며 구현은 #68~#72에서 진행한다. 예약·배정·연장·취소는 Idempotency-Key가 필수이고 요청에 금액 필드가 없다. 룸 등록·조회·수정·운영 중단/재개와 예약 생성·목록·달력·상세 operation은 #69에서, 예약 취소와 이용 시작·완료 operation은 #70에서 구현됐다. 사물함 목록·등록·현황·상세·수정·운영 중단/재개·지점 요금 일괄 적용과 배정 목록·생성·상세·연장·반납 operation은 #71에서 구현됐다. 타 지점 고객 최소 요약과 고객의 룸·사물함 이력 operation은 #72에서 구현됐다. 본문·스레드별 독립 읽음은 Issue #155에서 계약·구현됐다(collaboration-api.md, ADR-M7-001 M7-D08·D09). POST /channels/{id}/read는 본문 위치 전용으로 바뀌어 답글 ID를 받지 않고, POST /channels/{id}/messages/{messageId}/read가 원문별 스레드 위치를 갱신한다. M8 근무표·출퇴근·근태 operation은 Issue #82의 설계 계약(workforce-api.md, ADR-M8-001)이며 구현은 근무표 #83, 근태 #84에서 진행한다. 근무 등록과 출근은 Idempotency-Key가 필수이고, 근태 명령은 /me/attendance 아래에서 경로·본문에 직원·근태 ID 없이 본인의 진행 중 근태만 바꾼다. 근무 충돌은 409 SHIFT_CONFLICT와 ShiftConflictError의 겹친 구간으로 알리고, 요청자가 볼 수 없는 지점의 근무는 \"다른 지점 근무\"로만 표시한다. 주간 근무표·근무 목록·등록·상세·수정·취소 operation은 #83에서 구현됐다. 현재 근태·출근·휴게 시작·휴게 종료·퇴근·근태 목록·근태 상세 operation은 #84에서 구현됐다."
+    "version": "0.1.11-m9-aggregation",
+    "description": "검토 완료 8중분류/61요구사항의 구현 전 목표 계약. Q1~Q12의 2026-10-23 당시 사용자 답변을 기록하되 Q8은 SRS v1.1 정책으로 대체됨. decisions.md 참고. 기존 서버 전체 구현 명세가 아니다. ID문자열·API version=DB+1. 상태 변경은 CSRF, 지점과 행위 인가를 함께 검증한다. Issue #27의 /me/profile 및 CurrentUser는 구현된 M1 닉네임 계약이다. 나머지 operation의 구현 상태는 각각의 표기를 따른다. SRS v1.1 확정 상품 정책: 거래 유무와 무관하게 물리 삭제 미제공; 판매 중지·재개 및 기존 상품·거래·revision 보존. 이전 Q8 조건부 삭제안은 적용하지 않는다. /lookups와 /workspace/events는 단일 인스턴스 기반 workspace 구현 계약이다. 상품/분류 선택 데이터는 관련 업무 API 구현 전까지 빈 배열이다. M4 고객·Mock 결제·발급 이용권·환불 operation은 Issue #55의 설계 계약(customer-sales-api.md, ADR-M4-002)이며 구현은 #56~#58에서 진행한다. 결제·환불 요청에는 금액 필드가 없고 Idempotency-Key가 필수다. M5 좌석·입퇴실·차감·정확 일치 조회·수동 조정 operation은 Issue #60의 설계 계약(seat-usage-api.md, ADR-M5-001)이며 구현은 #61~#64에서 진행한다. 입실·퇴실·이동·조정은 Idempotency-Key가 필수이고, 퇴실·조정 요청에 차감량 필드는 없다. M7 업무·채널·메시지·업무 카드·시설·문의·공지 operation은 Issue #74의 설계 계약(collaboration-api.md, ADR-M7-001)이며 구현은 #75~#80에서 진행한다. 메시지 전송은 clientMessageKey가 필수이고 업무에는 삭제 API가 없다. 업무 operation과 담당자 후보는 #75에서, 시설 operation은 #78에서, 고객 문의 operation은 #79에서, 공지 operation은 #80에서 구현됐다. 채널·메시지 operation은 #76에서, 업무 카드 공유 operation은 #77에서 구현됐다. 좌석 목록·상세·등록·수정·운영 중단/재개·배치도·현황 operation은 #61에서 구현됐다. 입실용 정확 일치 조회·입실·이용 기록 상세·퇴실 operation은 #62에서, 이용 중 좌석 이동 operation은 #63에서, 입퇴실 이력·이용권 수동 조정·고객 구매·사용 내역 operation은 #64에서 구현됐다. M6 룸·예약·사물함·배정·타 지점 요약 operation은 Issue #67의 설계 계약(space-operations-api.md, ADR-M6-001)이며 구현은 #68~#72에서 진행한다. 예약·배정·연장·취소는 Idempotency-Key가 필수이고 요청에 금액 필드가 없다. 룸 등록·조회·수정·운영 중단/재개와 예약 생성·목록·달력·상세 operation은 #69에서, 예약 취소와 이용 시작·완료 operation은 #70에서 구현됐다. 사물함 목록·등록·현황·상세·수정·운영 중단/재개·지점 요금 일괄 적용과 배정 목록·생성·상세·연장·반납 operation은 #71에서 구현됐다. 타 지점 고객 최소 요약과 고객의 룸·사물함 이력 operation은 #72에서 구현됐다. 본문·스레드별 독립 읽음은 Issue #155에서 계약·구현됐다(collaboration-api.md, ADR-M7-001 M7-D08·D09). POST /channels/{id}/read는 본문 위치 전용으로 바뀌어 답글 ID를 받지 않고, POST /channels/{id}/messages/{messageId}/read가 원문별 스레드 위치를 갱신한다. M8 근무표·출퇴근·근태 operation은 Issue #82의 설계 계약(workforce-api.md, ADR-M8-001)이며 구현은 근무표 #83, 근태 #84에서 진행한다. 근무 등록과 출근은 Idempotency-Key가 필수이고, 근태 명령은 /me/attendance 아래에서 경로·본문에 직원·근태 ID 없이 본인의 진행 중 근태만 바꾼다. 근무 충돌은 409 SHIFT_CONFLICT와 ShiftConflictError의 겹친 구간으로 알리고, 요청자가 볼 수 없는 지점의 근무는 \"다른 지점 근무\"로만 표시한다. 주간 근무표·근무 목록·등록·상세·수정·취소 operation은 #83에서 구현됐다. 현재 근태·출근·휴게 시작·휴게 종료·퇴근·근태 목록·근태 상세 operation은 #84에서 구현됐다. M9 정형 집계·최소 원장·홈 요약 operation은 Issue #86의 설계 계약(aggregation-api.md, ADR-M9-001)이며 구현은 매출·지점 비교·최소 원장 #87, 이용권 판매량·상품 순위·추세 #88, 홈 요약 #90에서 진행한다. 매출 집계는 요청한 모든 지점에 sales:read가 필요하고 하나라도 없으면 403이다. 기간이 없으면 이번 달 1일 0시~내일 0시 미만(Asia/Seoul), 366일 초과는 422 PERIOD_TOO_LONG이다. 지표 정의는 최상위 x-metric-definitions에 있고 M10이 같은 정의를 쓴다."
   },
   "servers": [
     {
@@ -99,6 +99,12 @@
     },
     {
       "name": "attendance"
+    },
+    {
+      "name": "sales"
+    },
+    {
+      "name": "home"
     }
   ],
   "x-source": {
@@ -14775,6 +14781,846 @@
           "M8-D07"
         ]
       }
+    },
+    "/sales/revenue": {
+      "get": {
+        "operationId": "getRevenueSummary",
+        "summary": "기간·지점 매출",
+        "tags": [
+          "sales"
+        ],
+        "description": "승인액·환불액·순매출과 용도별 소계를 반환한다. 이용권·스터디룸·사물함 결제를 모두 포함하고(M9-D03) 원결제 지점에 귀속하며, 환불도 처리 지점이 아니라 원결제 지점에서 차감한다(M9-D05). 실패 결제와 이용권 소비 차감은 포함하지 않는다. 기간은 Asia/Seoul 해석의 [from, to)이고 생략하면 이번 달 1일 0시~내일 0시 미만, 366일 초과는 422 PERIOD_TOO_LONG이다. 요청한 지점 중 하나라도 sales:read가 없으면 403이며 조용히 제외하지 않는다.",
+        "x-requirement-ids": [
+          "FR-AGG-01",
+          "FR-AGG-08",
+          "FR-AGG-09",
+          "FR-AGG-10",
+          "FR-AGG-11",
+          "FR-AGG-17",
+          "FR-UI-08"
+        ],
+        "x-permission": "요청한 모든 지점의 sales:read(M9-D07). branchIds 생략 시 sales:read가 있는 모든 지점이며 그런 지점이 없으면 403",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#87",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevenueSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AggregationBranchIds"
+          },
+          {
+            "$ref": "#/components/parameters/AggregationFrom"
+          },
+          {
+            "$ref": "#/components/parameters/AggregationTo"
+          },
+          {
+            "$ref": "#/components/parameters/RefundBasis"
+          },
+          {
+            "$ref": "#/components/parameters/SalesPurpose"
+          }
+        ],
+        "x-error-codes": [
+          "FORBIDDEN",
+          "VALIDATION_FAILED",
+          "PERIOD_TOO_LONG"
+        ],
+        "x-adr-decisions": [
+          "M9-D01",
+          "M9-D02",
+          "M9-D03",
+          "M9-D05",
+          "M9-D07",
+          "M9-D09"
+        ],
+        "x-metric-ids": [
+          "sales.approved_amount",
+          "sales.refund_amount",
+          "sales.net_amount",
+          "sales.approved_payment_count",
+          "sales.refund_count"
+        ]
+      }
+    },
+    "/sales/revenue/branches": {
+      "get": {
+        "operationId": "compareBranchRevenue",
+        "summary": "지점별 매출 비교",
+        "tags": [
+          "sales"
+        ],
+        "description": "적용 지점마다 한 행의 매출을 요청한 정렬로 반환한다. 거래가 없는 지점도 0과 dataStatus=noData로 담는다. sort=requested는 branchIds를 보낸 순서(생략 시 ID 오름차순)이고, 금액 정렬의 동률은 branchId를 같은 방향으로 정렬한다. 기간은 Asia/Seoul 해석의 [from, to)이고 생략하면 이번 달 1일 0시~내일 0시 미만, 366일 초과는 422 PERIOD_TOO_LONG이다. 요청한 지점 중 하나라도 sales:read가 없으면 403이며 조용히 제외하지 않는다.",
+        "x-requirement-ids": [
+          "FR-AGG-02",
+          "FR-AGG-08",
+          "FR-AGG-09",
+          "FR-AGG-10",
+          "FR-AGG-11",
+          "FR-AGG-17"
+        ],
+        "x-permission": "요청한 모든 지점의 sales:read(M9-D07). branchIds 생략 시 sales:read가 있는 모든 지점이며 그런 지점이 없으면 403",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#87",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BranchRevenueComparison"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AggregationBranchIds"
+          },
+          {
+            "$ref": "#/components/parameters/AggregationFrom"
+          },
+          {
+            "$ref": "#/components/parameters/AggregationTo"
+          },
+          {
+            "$ref": "#/components/parameters/RefundBasis"
+          },
+          {
+            "$ref": "#/components/parameters/SalesPurpose"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "netAmount",
+                "approvedAmount",
+                "refundAmount",
+                "branchId",
+                "requested"
+              ],
+              "default": "netAmount"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Direction"
+          }
+        ],
+        "x-error-codes": [
+          "FORBIDDEN",
+          "VALIDATION_FAILED",
+          "PERIOD_TOO_LONG"
+        ],
+        "x-adr-decisions": [
+          "M9-D01",
+          "M9-D02",
+          "M9-D03",
+          "M9-D05",
+          "M9-D07",
+          "M9-D09"
+        ],
+        "x-metric-ids": [
+          "sales.approved_amount",
+          "sales.refund_amount",
+          "sales.net_amount",
+          "sales.approved_payment_count",
+          "sales.refund_count"
+        ]
+      }
+    },
+    "/sales/ledger": {
+      "get": {
+        "operationId": "listSalesLedger",
+        "summary": "매출 최소 원장",
+        "tags": [
+          "sales"
+        ],
+        "description": "매출 집계의 근거가 되는 승인 항목과 환불 항목을 페이지로 반환한다. 고객 이름·연락처·고객 ID·결제 수단·처리자·환불 사유는 담지 않는다. 같은 조건의 GET /sales/revenue와 합계가 같다. 정렬은 basisAt, 같으면 승인 → 환불, 같으면 원천 ID이며 모두 direction(기본 desc)을 따른다. 결제 상세는 GET /payments/{id}에서 payments:read를 따로 확인한다. 기간은 Asia/Seoul 해석의 [from, to)이고 생략하면 이번 달 1일 0시~내일 0시 미만, 366일 초과는 422 PERIOD_TOO_LONG이다. 요청한 지점 중 하나라도 sales:read가 없으면 403이며 조용히 제외하지 않는다.",
+        "x-requirement-ids": [
+          "FR-AGG-18",
+          "FR-AGG-08",
+          "FR-AGG-09",
+          "FR-AGG-11",
+          "FR-AGG-17"
+        ],
+        "x-permission": "요청한 모든 지점의 sales:read(M9-D07). branchIds 생략 시 sales:read가 있는 모든 지점이며 그런 지점이 없으면 403. 결제 상세는 payments:read 별도",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#87",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesLedgerPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AggregationBranchIds"
+          },
+          {
+            "$ref": "#/components/parameters/AggregationFrom"
+          },
+          {
+            "$ref": "#/components/parameters/AggregationTo"
+          },
+          {
+            "$ref": "#/components/parameters/RefundBasis"
+          },
+          {
+            "$ref": "#/components/parameters/SalesPurpose"
+          },
+          {
+            "name": "entryType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "승인",
+                "환불"
+              ]
+            },
+            "description": "승인 또는 환불 항목만. 이 필터를 쓰면 totals는 그 항목만의 합이다."
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "$ref": "#/components/parameters/Direction"
+          }
+        ],
+        "x-error-codes": [
+          "FORBIDDEN",
+          "VALIDATION_FAILED",
+          "PERIOD_TOO_LONG"
+        ],
+        "x-adr-decisions": [
+          "M9-D01",
+          "M9-D02",
+          "M9-D03",
+          "M9-D05",
+          "M9-D07"
+        ],
+        "x-metric-ids": [
+          "sales.approved_amount",
+          "sales.refund_amount",
+          "sales.net_amount",
+          "sales.approved_payment_count",
+          "sales.refund_count"
+        ]
+      }
+    },
+    "/sales/passes/volume": {
+      "get": {
+        "operationId": "getPassSalesVolume",
+        "summary": "이용권 결제 건수·판매량·발급 건수",
+        "tags": [
+          "sales"
+        ],
+        "description": "이용권 결제만 대상으로 결제 건수(건), 판매 수량·환불 수량·순판매량(개), 발급 건수(개)를 따로 반환한다(M9-D06). 환불된 판매는 순판매량에서 빠지고 발급 건수에는 남는다. 실패 결제는 어느 지표에도 없다. 환불 수량은 refundBasis를 따른다. 기간은 Asia/Seoul 해석의 [from, to)이고 생략하면 이번 달 1일 0시~내일 0시 미만, 366일 초과는 422 PERIOD_TOO_LONG이다. 요청한 지점 중 하나라도 sales:read가 없으면 403이며 조용히 제외하지 않는다.",
+        "x-requirement-ids": [
+          "FR-PASS-05",
+          "FR-AGG-03",
+          "FR-AGG-08",
+          "FR-AGG-09",
+          "FR-AGG-10",
+          "FR-AGG-11"
+        ],
+        "x-permission": "요청한 모든 지점의 sales:read(M9-D07). branchIds 생략 시 sales:read가 있는 모든 지점이며 그런 지점이 없으면 403",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#88",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PassVolumeSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AggregationBranchIds"
+          },
+          {
+            "$ref": "#/components/parameters/AggregationFrom"
+          },
+          {
+            "$ref": "#/components/parameters/AggregationTo"
+          },
+          {
+            "$ref": "#/components/parameters/RefundBasis"
+          },
+          {
+            "$ref": "#/components/parameters/PassProductId"
+          },
+          {
+            "$ref": "#/components/parameters/PassCategoryCode"
+          }
+        ],
+        "x-error-codes": [
+          "FORBIDDEN",
+          "VALIDATION_FAILED",
+          "PERIOD_TOO_LONG"
+        ],
+        "x-adr-decisions": [
+          "M9-D01",
+          "M9-D02",
+          "M9-D03",
+          "M9-D05",
+          "M9-D06",
+          "M9-D07"
+        ],
+        "x-metric-ids": [
+          "pass.payment_count",
+          "pass.sold_quantity",
+          "pass.refunded_quantity",
+          "pass.net_sold_quantity",
+          "pass.issued_count"
+        ]
+      }
+    },
+    "/sales/passes/products": {
+      "get": {
+        "operationId": "listPassProductSales",
+        "summary": "이용권 상품별 판매량·순위",
+        "tags": [
+          "sales"
+        ],
+        "description": "판매 당시 상품 스냅샷(상품 ID·상품명·분류 코드·분류 이름)마다 판매량과 순위를 반환한다. 순서는 netSoldQuantity 내림차순, 같으면 productId·productName·categoryCode·categoryName 오름차순으로 고정한다. 기간에 원거래가 없는 상품은 행이 없다. 기간은 Asia/Seoul 해석의 [from, to)이고 생략하면 이번 달 1일 0시~내일 0시 미만, 366일 초과는 422 PERIOD_TOO_LONG이다. 요청한 지점 중 하나라도 sales:read가 없으면 403이며 조용히 제외하지 않는다.",
+        "x-requirement-ids": [
+          "FR-AGG-06",
+          "FR-AGG-07",
+          "FR-PASS-05",
+          "FR-AGG-08",
+          "FR-AGG-09",
+          "FR-AGG-10",
+          "FR-AGG-11"
+        ],
+        "x-permission": "요청한 모든 지점의 sales:read(M9-D07). branchIds 생략 시 sales:read가 있는 모든 지점이며 그런 지점이 없으면 403",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#88",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PassProductSalesPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AggregationBranchIds"
+          },
+          {
+            "$ref": "#/components/parameters/AggregationFrom"
+          },
+          {
+            "$ref": "#/components/parameters/AggregationTo"
+          },
+          {
+            "$ref": "#/components/parameters/RefundBasis"
+          },
+          {
+            "$ref": "#/components/parameters/PassProductId"
+          },
+          {
+            "$ref": "#/components/parameters/PassCategoryCode"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          }
+        ],
+        "x-error-codes": [
+          "FORBIDDEN",
+          "VALIDATION_FAILED",
+          "PERIOD_TOO_LONG"
+        ],
+        "x-adr-decisions": [
+          "M9-D01",
+          "M9-D02",
+          "M9-D03",
+          "M9-D06",
+          "M9-D07"
+        ],
+        "x-metric-ids": [
+          "pass.payment_count",
+          "pass.sold_quantity",
+          "pass.refunded_quantity",
+          "pass.net_sold_quantity",
+          "pass.issued_count"
+        ]
+      }
+    },
+    "/sales/trend": {
+      "get": {
+        "operationId": "getSalesTrend",
+        "summary": "매출·이용권 판매량 추세",
+        "tags": [
+          "sales"
+        ],
+        "description": "기간 안의 모든 일·주·월 구간을 시간 오름차순으로 반환하고 거래가 없는 구간은 0과 noData로 채운다. 주는 월요일 0시(Asia/Seoul)에 시작한다. 경계에 걸친 첫·마지막 구간은 기간 안의 부분만 집계하고 partial과 aggregation.partial로 표시한다(M9-D04). 구간 합은 totals와 같다. measure=revenue는 purpose 필터를, measure=passes는 productId·categoryCode 필터를 받는다. 기간은 Asia/Seoul 해석의 [from, to)이고 생략하면 이번 달 1일 0시~내일 0시 미만, 366일 초과는 422 PERIOD_TOO_LONG이다. 요청한 지점 중 하나라도 sales:read가 없으면 403이며 조용히 제외하지 않는다.",
+        "x-requirement-ids": [
+          "FR-AGG-14",
+          "FR-AGG-08",
+          "FR-AGG-09",
+          "FR-AGG-10",
+          "FR-AGG-11",
+          "FR-AGG-17"
+        ],
+        "x-permission": "요청한 모든 지점의 sales:read(M9-D07). branchIds 생략 시 sales:read가 있는 모든 지점이며 그런 지점이 없으면 403",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#88",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesTrend"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AggregationBranchIds"
+          },
+          {
+            "$ref": "#/components/parameters/AggregationFrom"
+          },
+          {
+            "$ref": "#/components/parameters/AggregationTo"
+          },
+          {
+            "$ref": "#/components/parameters/RefundBasis"
+          },
+          {
+            "name": "granularity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "default": "day"
+            }
+          },
+          {
+            "name": "measure",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "revenue",
+                "passes"
+              ],
+              "default": "revenue"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/SalesPurpose"
+          },
+          {
+            "$ref": "#/components/parameters/PassProductId"
+          },
+          {
+            "$ref": "#/components/parameters/PassCategoryCode"
+          }
+        ],
+        "x-error-codes": [
+          "FORBIDDEN",
+          "VALIDATION_FAILED",
+          "PERIOD_TOO_LONG"
+        ],
+        "x-adr-decisions": [
+          "M9-D01",
+          "M9-D02",
+          "M9-D03",
+          "M9-D04",
+          "M9-D05",
+          "M9-D06",
+          "M9-D07",
+          "M9-D09"
+        ],
+        "x-metric-ids": [
+          "sales.approved_amount",
+          "sales.refund_amount",
+          "sales.net_amount",
+          "sales.approved_payment_count",
+          "sales.refund_count",
+          "pass.payment_count",
+          "pass.sold_quantity",
+          "pass.refunded_quantity",
+          "pass.net_sold_quantity",
+          "pass.issued_count"
+        ]
+      }
+    },
+    "/home/summary": {
+      "get": {
+        "operationId": "getHomeSummary",
+        "summary": "운영 홈 요약",
+        "tags": [
+          "home"
+        ],
+        "description": "현재 이용 좌석·오늘의 업무와 완료율·미처리 문의·점검 필요·오늘의 근무 계획·최근 공지·읽지 않은 메시지를 원본 기능(M5·M7·M8)의 같은 조건 집계로 묶어 반환한다. 오늘은 Asia/Seoul 날짜다. 업무는 OWNER면 선택 범위, 그 외 직원이면 본인 담당이 기본이고 mine·assigneeId로 바꿀 수 있다. 근무 카드는 M8-D02 조회 범위(OWNER 전체, 기록 지점 MANAGER, 그 외 본인)를 넘지 않는다. 매출 정보는 담지 않는다.",
+        "x-requirement-ids": [
+          "FR-DASH-02",
+          "FR-DASH-03",
+          "FR-DASH-05",
+          "FR-DASH-06",
+          "FR-UI-08"
+        ],
+        "x-permission": "OWNER 또는 scope 지점의 유효 소속. 카드마다 원본 기능의 권한·범위를 따른다(근무는 M8-D02, 공지는 M7 공지 공개 범위, 메시지는 본인 참여 채널)",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#90",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Scope"
+          },
+          {
+            "name": "mine",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "true면 본인 담당 업무. 생략하면 OWNER는 false, 그 외는 true(M9-D08)."
+          },
+          {
+            "name": "assigneeId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            },
+            "description": "이 담당자의 업무. mine=true와 함께 보내면 422."
+          }
+        ],
+        "x-error-codes": [
+          "FORBIDDEN",
+          "VALIDATION_FAILED"
+        ],
+        "x-adr-decisions": [
+          "M9-D08",
+          "M9-D09",
+          "M8-D02"
+        ],
+        "x-metric-ids": [
+          "home.task.today_count",
+          "home.task.completed_today_count",
+          "home.task.completion_rate"
+        ]
+      }
     }
   },
   "components": {
@@ -14863,6 +15709,90 @@
           ]
         },
         "description": "기본 desc. 최종 id tie-breaker도 같은 방향 적용."
+      },
+      "AggregationBranchIds": {
+        "name": "branchIds",
+        "in": "query",
+        "required": false,
+        "style": "form",
+        "explode": true,
+        "schema": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "description": "집계할 지점(branchIds=1&branchIds=2). 생략하면 요청자에게 sales:read가 있는 모든 지점이다. 지정한 지점 중 하나라도 sales:read가 없거나 없는 지점이면 403이며 조용히 제외하지 않는다(M9-D07). 중복은 422."
+      },
+      "AggregationFrom": {
+        "name": "from",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "description": "집계 시작(포함). 시간대 오프셋 필수. to와 함께 보내거나 함께 생략한다. 생략하면 이번 달 1일 0시(Asia/Seoul)."
+      },
+      "AggregationTo": {
+        "name": "to",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "description": "집계 종료(제외). 시간대 오프셋 필수. from보다 늦어야 하고 from과의 차이가 366일 이하. 생략하면 내일 0시(Asia/Seoul)."
+      },
+      "RefundBasis": {
+        "name": "refundBasis",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": [
+            "processedDate",
+            "paymentDate"
+          ],
+          "default": "processedDate"
+        },
+        "description": "환불을 어느 구간에서 차감할지. processedDate=환불 처리 시각(기본, M9-D02), paymentDate=원결제 승인 시각."
+      },
+      "SalesPurpose": {
+        "name": "purpose",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": [
+            "이용권",
+            "스터디룸",
+            "사물함"
+          ]
+        },
+        "description": "결제 용도(payments.purpose) 필터. 생략하면 세 용도 모두(M9-D03)."
+      },
+      "PassProductId": {
+        "name": "productId",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "$ref": "#/components/schemas/Id"
+        },
+        "description": "이용권 상품(passes.product_id) 필터. 판매 당시 이름이 다른 행도 모두 포함한다."
+      },
+      "PassCategoryCode": {
+        "name": "categoryCode",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "description": "판매 당시 분류 코드(passes.snapshot_category_code) 필터. 정확 일치."
       }
     },
     "responses": {
@@ -23292,6 +24222,1688 @@
         ],
         "additionalProperties": false,
         "description": "근무 등록·수정의 409 본문. ApiError 필드에 conflicts를 더한다. code=SHIFT_CONFLICT일 때만 conflicts가 있고 overlapStartsAt 오름차순이다."
+      },
+      "MetricUnit": {
+        "type": "string",
+        "enum": [
+          "원",
+          "건",
+          "개",
+          "%"
+        ],
+        "description": "원=원화 정수 금액, 건=결제·환불·업무 건수, 개=이용권 수량, %=백분율(소수 첫째 자리)."
+      },
+      "DataStatus": {
+        "type": "string",
+        "enum": [
+          "hasData",
+          "noData"
+        ],
+        "description": "noData=조건에 맞는 원거래 행이 없음. 합계는 0으로 채우지만 '계산 결과 0'(hasData)과 구분한다(M9-D09)."
+      },
+      "Ratio": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "value",
+              "notApplicable"
+            ],
+            "description": "notApplicable=분모가 0(해당 없음). 이때 percent는 null이다."
+          },
+          "percent": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "nullable": true,
+            "description": "numerator ÷ denominator × 100을 소수 첫째 자리 HALF_UP으로 반올림. 0.0은 값이 있는 0이다."
+          },
+          "numerator": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "denominator": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "state",
+          "percent",
+          "numerator",
+          "denominator"
+        ],
+        "additionalProperties": false,
+        "description": "비율의 공통 표현(M9-D09). state=value ⇔ denominator>0 ⇔ percent≠null."
+      },
+      "MetricRef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z]+(\\.[a-z_]+)+$"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/MetricUnit"
+          }
+        },
+        "required": [
+          "id",
+          "unit"
+        ],
+        "additionalProperties": false,
+        "description": "이 응답에 담긴 지표. id는 최상위 x-metric-definitions의 id다."
+      },
+      "AggregationCondition": {
+        "type": "object",
+        "properties": {
+          "branchIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Id"
+            },
+            "description": "실제로 집계한 지점, ID 오름차순."
+          },
+          "allBranches": {
+            "type": "boolean",
+            "description": "branchIds를 생략해 sales:read가 있는 모든 지점을 집계했으면 true."
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time",
+            "description": "적용한 시작(포함), UTC.",
+            "nullable": true
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time",
+            "description": "적용한 종료(제외), UTC.",
+            "nullable": true
+          },
+          "refundBasis": {
+            "type": "string",
+            "enum": [
+              "processedDate",
+              "paymentDate"
+            ]
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "이용권",
+              "스터디룸",
+              "사물함"
+            ],
+            "nullable": true,
+            "description": "용도 필터. 이용권 지표 operation은 항상 이용권이다."
+          },
+          "productId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Id"
+              }
+            ],
+            "nullable": true
+          },
+          "categoryCode": {
+            "type": "string",
+            "maxLength": 40,
+            "nullable": true
+          },
+          "granularity": {
+            "type": "string",
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ],
+            "nullable": true,
+            "description": "추세에서만 값이 있다."
+          }
+        },
+        "required": [
+          "branchIds",
+          "allBranches",
+          "from",
+          "to",
+          "refundBasis",
+          "purpose",
+          "productId",
+          "categoryCode",
+          "granularity"
+        ],
+        "additionalProperties": false,
+        "description": "집계에 실제 적용한 조건. M10이 같은 조건 객체로 공통 집계 기반을 호출한다(M10-D05). from·to는 null이 아니다."
+      },
+      "AggregationPartial": {
+        "type": "object",
+        "properties": {
+          "periodOpen": {
+            "type": "boolean",
+            "description": "to > asOf. 기간이 아직 끝나지 않아 asOf 이후 거래가 더 들어올 수 있다."
+          },
+          "firstBucketPartial": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "추세의 첫 구간이 from에서 잘렸으면 true. 추세가 아니면 null."
+          },
+          "lastBucketPartial": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "추세의 마지막 구간이 to에서 잘렸으면 true. 추세가 아니면 null."
+          }
+        },
+        "required": [
+          "periodOpen",
+          "firstBucketPartial",
+          "lastBucketPartial"
+        ],
+        "additionalProperties": false,
+        "description": "부분 구간 표시(M9-D04, FR-AGG-09)."
+      },
+      "AggregationMeta": {
+        "type": "object",
+        "properties": {
+          "condition": {
+            "$ref": "#/components/schemas/AggregationCondition"
+          },
+          "defaultPeriod": {
+            "type": "boolean",
+            "description": "from·to를 생략해 기본 기간(이번 달)을 적용했으면 true(M9-D01)."
+          },
+          "timeZone": {
+            "type": "string",
+            "enum": [
+              "Asia/Seoul"
+            ]
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "KRW"
+            ]
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time",
+            "description": "결과 기준 시각(UTC). 이 시각까지 커밋된 원거래로 계산했다."
+          },
+          "rowCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "결과 행 수(페이지가 아닌 전체). operation마다 정의가 aggregation-api.md에 있다."
+          },
+          "sourceRowCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "계산에 쓴 원거래 항목 수(승인 항목 + 환불 항목). 같은 조건의 최소 원장 total과 같다."
+          },
+          "dataStatus": {
+            "$ref": "#/components/schemas/DataStatus"
+          },
+          "partial": {
+            "$ref": "#/components/schemas/AggregationPartial"
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricRef"
+            }
+          }
+        },
+        "required": [
+          "condition",
+          "defaultPeriod",
+          "timeZone",
+          "currency",
+          "asOf",
+          "rowCount",
+          "sourceRowCount",
+          "dataStatus",
+          "partial",
+          "metrics"
+        ],
+        "additionalProperties": false,
+        "description": "모든 매출·이용권 집계 응답의 공통 메타정보(FR-AGG-09). 카드·표·차트·원장이 같은 값을 쓴다. dataStatus=noData ⇔ sourceRowCount=0."
+      },
+      "RevenueAmounts": {
+        "type": "object",
+        "properties": {
+          "approvedAmountKrw": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-metric-id": "sales.approved_amount"
+          },
+          "refundAmountKrw": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-metric-id": "sales.refund_amount"
+          },
+          "netAmountKrw": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "x-metric-id": "sales.net_amount",
+            "description": "approvedAmountKrw − refundAmountKrw. 환불 처리일 기준에서는 음수일 수 있다."
+          },
+          "approvedPaymentCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-metric-id": "sales.approved_payment_count"
+          },
+          "refundCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-metric-id": "sales.refund_count"
+          },
+          "dataStatus": {
+            "$ref": "#/components/schemas/DataStatus"
+          }
+        },
+        "required": [
+          "approvedAmountKrw",
+          "refundAmountKrw",
+          "netAmountKrw",
+          "approvedPaymentCount",
+          "refundCount",
+          "dataStatus"
+        ],
+        "additionalProperties": false,
+        "description": "매출 지표 묶음(원 정수·건). 정의는 x-metric-definitions."
+      },
+      "PurposeRevenue": {
+        "type": "object",
+        "properties": {
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "이용권",
+              "스터디룸",
+              "사물함"
+            ]
+          },
+          "approvedAmountKrw": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-metric-id": "sales.approved_amount"
+          },
+          "refundAmountKrw": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-metric-id": "sales.refund_amount"
+          },
+          "netAmountKrw": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "x-metric-id": "sales.net_amount",
+            "description": "approvedAmountKrw − refundAmountKrw. 환불 처리일 기준에서는 음수일 수 있다."
+          },
+          "approvedPaymentCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-metric-id": "sales.approved_payment_count"
+          },
+          "refundCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-metric-id": "sales.refund_count"
+          },
+          "dataStatus": {
+            "$ref": "#/components/schemas/DataStatus"
+          }
+        },
+        "required": [
+          "purpose",
+          "approvedAmountKrw",
+          "refundAmountKrw",
+          "netAmountKrw",
+          "approvedPaymentCount",
+          "refundCount",
+          "dataStatus"
+        ],
+        "additionalProperties": false,
+        "description": "한 용도의 매출 소계."
+      },
+      "RevenueSummary": {
+        "type": "object",
+        "properties": {
+          "aggregation": {
+            "$ref": "#/components/schemas/AggregationMeta"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/RevenueAmounts"
+          },
+          "byPurpose": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PurposeRevenue"
+            },
+            "description": "이용권·스터디룸·사물함 순서로 항상 세 행(purpose 필터가 있으면 그 한 행). 거래가 없는 용도도 0과 noData로 담는다."
+          }
+        },
+        "required": [
+          "aggregation",
+          "totals",
+          "byPurpose"
+        ],
+        "additionalProperties": false,
+        "description": "기간·지점 매출(FR-AGG-01·17). totals = byPurpose 합."
+      },
+      "BranchRevenue": {
+        "type": "object",
+        "properties": {
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "branchName": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "approvedAmountKrw": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-metric-id": "sales.approved_amount"
+          },
+          "refundAmountKrw": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-metric-id": "sales.refund_amount"
+          },
+          "netAmountKrw": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "x-metric-id": "sales.net_amount",
+            "description": "approvedAmountKrw − refundAmountKrw. 환불 처리일 기준에서는 음수일 수 있다."
+          },
+          "approvedPaymentCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-metric-id": "sales.approved_payment_count"
+          },
+          "refundCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-metric-id": "sales.refund_count"
+          },
+          "dataStatus": {
+            "$ref": "#/components/schemas/DataStatus"
+          },
+          "byPurpose": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PurposeRevenue"
+            }
+          }
+        },
+        "required": [
+          "branchId",
+          "branchName",
+          "approvedAmountKrw",
+          "refundAmountKrw",
+          "netAmountKrw",
+          "approvedPaymentCount",
+          "refundCount",
+          "dataStatus",
+          "byPurpose"
+        ],
+        "additionalProperties": false,
+        "description": "한 지점의 매출. 거래가 없는 지점도 0과 noData로 담는다."
+      },
+      "BranchRevenueComparison": {
+        "type": "object",
+        "properties": {
+          "aggregation": {
+            "$ref": "#/components/schemas/AggregationMeta"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/RevenueAmounts"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BranchRevenue"
+            },
+            "description": "적용한 지점마다 한 행. 요청한 정렬을 따른다."
+          }
+        },
+        "required": [
+          "aggregation",
+          "totals",
+          "items"
+        ],
+        "additionalProperties": false,
+        "description": "지점별 매출 비교(FR-AGG-02). totals = items 합 = 같은 조건의 GET /sales/revenue totals."
+      },
+      "PassVolume": {
+        "type": "object",
+        "properties": {
+          "paymentCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-metric-id": "pass.payment_count"
+          },
+          "soldQuantity": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-metric-id": "pass.sold_quantity"
+          },
+          "refundedQuantity": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-metric-id": "pass.refunded_quantity"
+          },
+          "netSoldQuantity": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "x-metric-id": "pass.net_sold_quantity",
+            "description": "soldQuantity − refundedQuantity. 환불 처리일 기준에서는 음수일 수 있다."
+          },
+          "issuedCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-metric-id": "pass.issued_count"
+          },
+          "dataStatus": {
+            "$ref": "#/components/schemas/DataStatus"
+          }
+        },
+        "required": [
+          "paymentCount",
+          "soldQuantity",
+          "refundedQuantity",
+          "netSoldQuantity",
+          "issuedCount",
+          "dataStatus"
+        ],
+        "additionalProperties": false,
+        "description": "이용권 결제 건수·판매 수량·발급 건수(M9-D06). 세 지표는 단위가 다르다(건·개·개)."
+      },
+      "PassVolumeSummary": {
+        "type": "object",
+        "properties": {
+          "aggregation": {
+            "$ref": "#/components/schemas/AggregationMeta"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/PassVolume"
+          }
+        },
+        "required": [
+          "aggregation",
+          "totals"
+        ],
+        "additionalProperties": false,
+        "description": "이용권 판매량(FR-PASS-05, FR-AGG-03)."
+      },
+      "PassProductSales": {
+        "type": "object",
+        "properties": {
+          "rank": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991,
+            "description": "netSoldQuantity 내림차순 경쟁 순위(같은 값은 같은 순위, 다음 순위는 건너뜀)."
+          },
+          "productId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "productName": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "판매 당시 상품명(passes.snapshot_product_name)."
+          },
+          "categoryCode": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "판매 당시 분류 코드."
+          },
+          "categoryName": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "판매 당시 분류 이름."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "시간권",
+              "기간권",
+              "정액권"
+            ]
+          },
+          "paymentCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-metric-id": "pass.payment_count"
+          },
+          "soldQuantity": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-metric-id": "pass.sold_quantity"
+          },
+          "refundedQuantity": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-metric-id": "pass.refunded_quantity"
+          },
+          "netSoldQuantity": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "x-metric-id": "pass.net_sold_quantity",
+            "description": "soldQuantity − refundedQuantity. 환불 처리일 기준에서는 음수일 수 있다."
+          },
+          "issuedCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-metric-id": "pass.issued_count"
+          },
+          "dataStatus": {
+            "$ref": "#/components/schemas/DataStatus"
+          }
+        },
+        "required": [
+          "rank",
+          "productId",
+          "productName",
+          "categoryCode",
+          "categoryName",
+          "kind",
+          "paymentCount",
+          "soldQuantity",
+          "refundedQuantity",
+          "netSoldQuantity",
+          "issuedCount",
+          "dataStatus"
+        ],
+        "additionalProperties": false,
+        "description": "판매 당시 상품 스냅샷 하나의 판매량(FR-AGG-06·07)."
+      },
+      "PassProductSalesPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PassProductSales"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          },
+          "aggregation": {
+            "$ref": "#/components/schemas/AggregationMeta"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/PassVolume"
+          }
+        },
+        "required": [
+          "items",
+          "meta",
+          "aggregation",
+          "totals"
+        ],
+        "additionalProperties": false,
+        "description": "상품별 판매량·순위. totals는 페이지가 아닌 전체 합이며 같은 조건의 GET /sales/passes/volume totals와 같다."
+      },
+      "SalesTrendBucket": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "day=YYYY-MM-DD, week=그 주 월요일 YYYY-MM-DD, month=YYYY-MM(Asia/Seoul)."
+          },
+          "bucketStart": {
+            "type": "string",
+            "format": "date-time",
+            "description": "잘리기 전 구간 시작(UTC)."
+          },
+          "bucketEnd": {
+            "type": "string",
+            "format": "date-time",
+            "description": "잘리기 전 구간 종료(제외, UTC)."
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time",
+            "description": "실제로 집계한 시작 = max(bucketStart, from)."
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time",
+            "description": "실제로 집계한 종료 = min(bucketEnd, to)."
+          },
+          "partial": {
+            "type": "boolean",
+            "description": "start≠bucketStart 또는 end≠bucketEnd."
+          },
+          "revenue": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RevenueAmounts"
+              }
+            ],
+            "nullable": true
+          },
+          "passes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PassVolume"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "label",
+          "bucketStart",
+          "bucketEnd",
+          "start",
+          "end",
+          "partial",
+          "revenue",
+          "passes"
+        ],
+        "additionalProperties": false,
+        "description": "추세의 한 구간. measure=revenue면 revenue만, measure=passes면 passes만 값이 있다. 거래가 없는 구간도 0과 noData로 담는다."
+      },
+      "SalesTrend": {
+        "type": "object",
+        "properties": {
+          "aggregation": {
+            "$ref": "#/components/schemas/AggregationMeta"
+          },
+          "measure": {
+            "type": "string",
+            "enum": [
+              "revenue",
+              "passes"
+            ]
+          },
+          "granularity": {
+            "type": "string",
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ]
+          },
+          "totals": {
+            "type": "object",
+            "properties": {
+              "revenue": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/RevenueAmounts"
+                  }
+                ],
+                "nullable": true
+              },
+              "passes": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PassVolume"
+                  }
+                ],
+                "nullable": true
+              }
+            },
+            "required": [
+              "revenue",
+              "passes"
+            ],
+            "additionalProperties": false
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SalesTrendBucket"
+            },
+            "description": "기간 안의 모든 구간, 시간 오름차순(M9-D04)."
+          }
+        },
+        "required": [
+          "aggregation",
+          "measure",
+          "granularity",
+          "totals",
+          "items"
+        ],
+        "additionalProperties": false,
+        "description": "일·주·월 추세(FR-AGG-14). 구간 합 = totals = 같은 조건의 합계 operation 값."
+      },
+      "SalesLedgerEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^(payment|refund)-[1-9][0-9]{0,19}$",
+            "description": "payment-{결제 ID} 또는 refund-{환불 ID}."
+          },
+          "entryType": {
+            "type": "string",
+            "enum": [
+              "승인",
+              "환불"
+            ]
+          },
+          "paymentId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "refundId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Id"
+              }
+            ],
+            "nullable": true
+          },
+          "branchId": {
+            "$ref": "#/components/schemas/Id",
+            "description": "판매(원결제) 지점. 매출 귀속 지점이다(M9-D05)."
+          },
+          "processingBranchId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Id",
+                "description": "환불 처리 지점(refunds.processing_branch_id). 승인 항목은 null."
+              }
+            ],
+            "nullable": true
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "이용권",
+              "스터디룸",
+              "사물함"
+            ]
+          },
+          "productId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Id"
+              }
+            ],
+            "nullable": true
+          },
+          "productName": {
+            "type": "string",
+            "maxLength": 120,
+            "nullable": true,
+            "description": "이용권은 판매 당시 상품명. 스터디룸·사물함은 null."
+          },
+          "categoryCode": {
+            "type": "string",
+            "maxLength": 40,
+            "nullable": true
+          },
+          "categoryName": {
+            "type": "string",
+            "maxLength": 100,
+            "nullable": true
+          },
+          "passQuantity": {
+            "type": "integer",
+            "minimum": -1,
+            "maximum": 1,
+            "description": "이용권 승인 +1, 이용권 환불 −1, 그 외 0."
+          },
+          "amountKrw": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "승인 +원결제 금액, 환불 −환불 금액."
+          },
+          "approvedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "원결제 승인 시각."
+          },
+          "refundedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "환불 처리 시각. 승인 항목은 null.",
+            "nullable": true
+          },
+          "basisAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "이 항목을 기간·구간에 넣은 시각. 승인=approvedAt, 환불=processedDate면 refundedAt, paymentDate면 approvedAt."
+          },
+          "canViewPayment": {
+            "type": "boolean",
+            "description": "요청자에게 branchId의 payments:read가 있으면 true. GET /payments/{id} 이동 안내용이며 서버가 다시 검사한다."
+          }
+        },
+        "required": [
+          "id",
+          "entryType",
+          "paymentId",
+          "refundId",
+          "branchId",
+          "processingBranchId",
+          "purpose",
+          "productId",
+          "productName",
+          "categoryCode",
+          "categoryName",
+          "passQuantity",
+          "amountKrw",
+          "approvedAt",
+          "refundedAt",
+          "basisAt",
+          "canViewPayment"
+        ],
+        "additionalProperties": false,
+        "description": "최소 원장 한 항목(FR-AGG-18). 고객 이름·연락처·고객 ID·결제 수단·처리자·환불 사유는 담지 않는다(M9-D07)."
+      },
+      "SalesLedgerPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SalesLedgerEntry"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          },
+          "aggregation": {
+            "$ref": "#/components/schemas/AggregationMeta"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/RevenueAmounts"
+          }
+        },
+        "required": [
+          "items",
+          "meta",
+          "aggregation",
+          "totals"
+        ],
+        "additionalProperties": false,
+        "description": "최소 원장. totals는 전체 항목의 합이며 같은 조건의 GET /sales/revenue totals와 같다. meta.total = aggregation.sourceRowCount."
+      },
+      "HomeLink": {
+        "type": "object",
+        "properties": {
+          "screen": {
+            "type": "string",
+            "enum": [
+              "seat-board",
+              "task-list",
+              "task-detail",
+              "inquiry-list",
+              "inquiry-detail",
+              "facility-list",
+              "facility-detail",
+              "shift-list",
+              "shift-detail",
+              "notice-list",
+              "notice-detail",
+              "channel"
+            ]
+          },
+          "branchId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Id",
+                "description": "이동할 화면의 지점. null이면 선택 범위 전체(또는 전체 공지·전체 채널)."
+              }
+            ],
+            "nullable": true
+          },
+          "targetId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Id",
+                "description": "상세 화면의 대상 ID. 목록이면 null."
+              }
+            ],
+            "nullable": true
+          },
+          "query": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "목록 화면 주소에 복원할 조건(FR-DASH-06)."
+          }
+        },
+        "required": [
+          "screen",
+          "branchId",
+          "targetId",
+          "query"
+        ],
+        "additionalProperties": false,
+        "description": "홈 항목의 이동 대상(FR-DASH-06)."
+      },
+      "HomeSource": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string"
+          },
+          "query": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "clientFilter": {
+            "type": "string",
+            "nullable": true,
+            "description": "원본 목록 결과에 더할 조건이 있으면 그 설명. 없으면 null."
+          }
+        },
+        "required": [
+          "operationId",
+          "query",
+          "clientFilter"
+        ],
+        "additionalProperties": false,
+        "description": "카드 수치를 재현하는 원본 API와 조건. 같은 요청자·같은 시점이면 같은 수치가 나온다."
+      },
+      "HomeMeta": {
+        "type": "object",
+        "properties": {
+          "branchIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Id"
+            },
+            "description": "집계한 지점, ID 오름차순."
+          },
+          "allBranches": {
+            "type": "boolean"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "description": "오늘(Asia/Seoul, M9-D08)."
+          },
+          "dayStart": {
+            "type": "string",
+            "format": "date-time",
+            "description": "오늘 0시(Asia/Seoul)의 UTC."
+          },
+          "dayEnd": {
+            "type": "string",
+            "format": "date-time",
+            "description": "내일 0시(Asia/Seoul)의 UTC. 제외."
+          },
+          "timeZone": {
+            "type": "string",
+            "enum": [
+              "Asia/Seoul"
+            ]
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "taskFilter": {
+            "type": "object",
+            "properties": {
+              "mine": {
+                "type": "boolean"
+              },
+              "assigneeId": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Id"
+                  }
+                ],
+                "nullable": true
+              },
+              "defaulted": {
+                "type": "boolean",
+                "description": "요청에 mine·assigneeId가 없어 역할 기본값을 적용했으면 true."
+              }
+            },
+            "required": [
+              "mine",
+              "assigneeId",
+              "defaulted"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "branchIds",
+          "allBranches",
+          "date",
+          "dayStart",
+          "dayEnd",
+          "timeZone",
+          "asOf",
+          "taskFilter"
+        ],
+        "additionalProperties": false,
+        "description": "홈 요약의 적용 범위. 매출 집계 메타(AggregationMeta)와 달리 기간·환불 기준·통화가 없다."
+      },
+      "HomeTaskCounts": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-metric-id": "home.task.today_count"
+          },
+          "open": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "오늘의 업무 중 완료가 아닌 것."
+          },
+          "overdue": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "오늘의 업무 중 dueAt < asOf이고 완료가 아닌 것."
+          },
+          "completedToday": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "x-metric-id": "home.task.completed_today_count"
+          },
+          "completionRate": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Ratio"
+              }
+            ],
+            "x-metric-id": "home.task.completion_rate",
+            "description": "completedToday ÷ total. total=0이면 notApplicable."
+          }
+        },
+        "required": [
+          "total",
+          "open",
+          "overdue",
+          "completedToday",
+          "completionRate"
+        ],
+        "additionalProperties": false,
+        "description": "오늘의 업무(M9-D08). total = open + completedToday."
+      },
+      "HomeTaskItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/TaskPriority"
+          },
+          "dueAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "assignee": {
+            "$ref": "#/components/schemas/ActorSummary"
+          },
+          "overdue": {
+            "type": "boolean"
+          },
+          "link": {
+            "$ref": "#/components/schemas/HomeLink"
+          }
+        },
+        "required": [
+          "id",
+          "branchId",
+          "title",
+          "status",
+          "priority",
+          "dueAt",
+          "assignee",
+          "overdue",
+          "link"
+        ],
+        "additionalProperties": false
+      },
+      "HomeTaskCard": {
+        "type": "object",
+        "properties": {
+          "today": {
+            "$ref": "#/components/schemas/HomeTaskCounts"
+          },
+          "mine": {
+            "$ref": "#/components/schemas/HomeTaskCounts"
+          },
+          "items": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+              "$ref": "#/components/schemas/HomeTaskItem"
+            },
+            "description": "taskFilter의 오늘의 업무 중 완료가 아닌 것, dueAt 오름차순·id 오름차순 5개."
+          },
+          "link": {
+            "$ref": "#/components/schemas/HomeLink"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HomeSource"
+            }
+          }
+        },
+        "required": [
+          "today",
+          "mine",
+          "items",
+          "link",
+          "sources"
+        ],
+        "additionalProperties": false,
+        "description": "today는 taskFilter 조건, mine은 항상 요청자 본인 담당 업무다(FR-DASH-05의 오늘의 업무·내 업무 구분)."
+      },
+      "HomeSeatBranch": {
+        "type": "object",
+        "properties": {
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "inUse": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "occupancy": {
+            "$ref": "#/components/schemas/Ratio"
+          }
+        },
+        "required": [
+          "branchId",
+          "total",
+          "inUse",
+          "occupancy"
+        ],
+        "additionalProperties": false
+      },
+      "HomeSeatCard": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "inUse": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "available": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "blocked": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "occupancy": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Ratio"
+              }
+            ],
+            "description": "Σ inUse ÷ Σ total. 좌석이 없으면 notApplicable."
+          },
+          "branches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HomeSeatBranch"
+            }
+          },
+          "link": {
+            "$ref": "#/components/schemas/HomeLink"
+          },
+          "source": {
+            "$ref": "#/components/schemas/HomeSource"
+          }
+        },
+        "required": [
+          "total",
+          "inUse",
+          "available",
+          "blocked",
+          "occupancy",
+          "branches",
+          "link",
+          "source"
+        ],
+        "additionalProperties": false,
+        "description": "현재 이용 좌석(M5 GET /seats/occupancy와 같은 값)."
+      },
+      "HomeInquiryItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "status": {
+            "$ref": "#/components/schemas/InquiryStatus"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "link": {
+            "$ref": "#/components/schemas/HomeLink"
+          }
+        },
+        "required": [
+          "id",
+          "branchId",
+          "subject",
+          "status",
+          "createdAt",
+          "link"
+        ],
+        "additionalProperties": false,
+        "description": "고객 정보는 담지 않는다."
+      },
+      "HomeInquiryCard": {
+        "type": "object",
+        "properties": {
+          "unresolved": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "received": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "inProgress": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "items": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+              "$ref": "#/components/schemas/HomeInquiryItem"
+            }
+          },
+          "link": {
+            "$ref": "#/components/schemas/HomeLink"
+          },
+          "source": {
+            "$ref": "#/components/schemas/HomeSource"
+          }
+        },
+        "required": [
+          "unresolved",
+          "received",
+          "inProgress",
+          "items",
+          "link",
+          "source"
+        ],
+        "additionalProperties": false,
+        "description": "미처리 문의(M7 GET /inquiries/summary의 unresolved와 같은 값)."
+      },
+      "HomeFacilityItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "status": {
+            "$ref": "#/components/schemas/FacilityStatus"
+          },
+          "nextInspectionOn": {
+            "type": "string",
+            "format": "date"
+          },
+          "link": {
+            "$ref": "#/components/schemas/HomeLink"
+          }
+        },
+        "required": [
+          "id",
+          "branchId",
+          "name",
+          "status",
+          "nextInspectionOn",
+          "link"
+        ],
+        "additionalProperties": false
+      },
+      "HomeFacilityCard": {
+        "type": "object",
+        "properties": {
+          "inspectionDue": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "items": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+              "$ref": "#/components/schemas/HomeFacilityItem"
+            }
+          },
+          "link": {
+            "$ref": "#/components/schemas/HomeLink"
+          },
+          "source": {
+            "$ref": "#/components/schemas/HomeSource"
+          }
+        },
+        "required": [
+          "inspectionDue",
+          "items",
+          "link",
+          "source"
+        ],
+        "additionalProperties": false,
+        "description": "점검 필요(M7 GET /facilities/summary의 inspectionDue와 같은 값)."
+      },
+      "HomeShiftItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "employee": {
+            "$ref": "#/components/schemas/ActorSummary"
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "link": {
+            "$ref": "#/components/schemas/HomeLink"
+          }
+        },
+        "required": [
+          "id",
+          "branchId",
+          "employee",
+          "startsAt",
+          "endsAt",
+          "link"
+        ],
+        "additionalProperties": false
+      },
+      "HomeShiftCard": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "items": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+              "$ref": "#/components/schemas/HomeShiftItem"
+            }
+          },
+          "link": {
+            "$ref": "#/components/schemas/HomeLink"
+          },
+          "source": {
+            "$ref": "#/components/schemas/HomeSource"
+          }
+        },
+        "required": [
+          "count",
+          "items",
+          "link",
+          "source"
+        ],
+        "additionalProperties": false,
+        "description": "오늘의 근무 계획(M9-D08). M8-D02 조회 범위 안의 근무만 센다."
+      },
+      "HomeNoticeItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "pinned": {
+            "type": "boolean"
+          },
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "link": {
+            "$ref": "#/components/schemas/HomeLink"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "pinned",
+          "publishedAt",
+          "link"
+        ],
+        "additionalProperties": false
+      },
+      "HomeNoticeCard": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+              "$ref": "#/components/schemas/HomeNoticeItem"
+            }
+          },
+          "link": {
+            "$ref": "#/components/schemas/HomeLink"
+          },
+          "source": {
+            "$ref": "#/components/schemas/HomeSource"
+          }
+        },
+        "required": [
+          "items",
+          "link",
+          "source"
+        ],
+        "additionalProperties": false,
+        "description": "최근 공지(M7 GET /notices?status=게시 중의 앞 5개)."
+      },
+      "HomeChannelItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "branchId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Id"
+              }
+            ],
+            "nullable": true
+          },
+          "unreadCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "lastMessageAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "link": {
+            "$ref": "#/components/schemas/HomeLink"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "branchId",
+          "unreadCount",
+          "lastMessageAt",
+          "link"
+        ],
+        "additionalProperties": false
+      },
+      "HomeMessageCard": {
+        "type": "object",
+        "properties": {
+          "unreadCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "channels": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+              "$ref": "#/components/schemas/HomeChannelItem"
+            }
+          },
+          "link": {
+            "$ref": "#/components/schemas/HomeLink"
+          },
+          "source": {
+            "$ref": "#/components/schemas/HomeSource"
+          }
+        },
+        "required": [
+          "unreadCount",
+          "channels",
+          "link",
+          "source"
+        ],
+        "additionalProperties": false,
+        "description": "읽지 않은 메시지(M7 GET /channels의 unreadCount 합)."
+      },
+      "HomeSummary": {
+        "type": "object",
+        "properties": {
+          "meta": {
+            "$ref": "#/components/schemas/HomeMeta"
+          },
+          "seats": {
+            "$ref": "#/components/schemas/HomeSeatCard"
+          },
+          "tasks": {
+            "$ref": "#/components/schemas/HomeTaskCard"
+          },
+          "inquiries": {
+            "$ref": "#/components/schemas/HomeInquiryCard"
+          },
+          "facilities": {
+            "$ref": "#/components/schemas/HomeFacilityCard"
+          },
+          "shifts": {
+            "$ref": "#/components/schemas/HomeShiftCard"
+          },
+          "notices": {
+            "$ref": "#/components/schemas/HomeNoticeCard"
+          },
+          "messages": {
+            "$ref": "#/components/schemas/HomeMessageCard"
+          }
+        },
+        "required": [
+          "meta",
+          "seats",
+          "tasks",
+          "inquiries",
+          "facilities",
+          "shifts",
+          "notices",
+          "messages"
+        ],
+        "additionalProperties": false,
+        "description": "운영 홈 요약(FR-DASH-02·03·05·06). 각 카드는 원본 기능의 권한·범위를 넘지 않는다."
       }
     }
   },
@@ -23392,6 +26004,380 @@
         "notices:write",
         "people:manage",
         "ai:read"
+      ]
+    }
+  ],
+  "x-metric-definitions": [
+    {
+      "id": "sales.approved_amount",
+      "name": "승인액",
+      "unit": "원",
+      "definition": "기간 안에 승인된 결제 금액의 합. 나중에 환불된 결제도 승인 시점의 구간에 승인액으로 남는다.",
+      "includes": "이용권·스터디룸·사물함 결제 중 payments.approved_at IS NOT NULL(status 승인·환불)",
+      "excludes": "실패 결제(FAILED), 이용권 소비 차감(pass_balance_events)",
+      "branchAttribution": "payments.branch_id(원결제 지점)",
+      "timeBasis": "payments.approved_at",
+      "refundBasisApplies": false,
+      "dimensions": [
+        "branch",
+        "purpose",
+        "period"
+      ],
+      "source": [
+        "payments"
+      ],
+      "operations": [
+        "getRevenueSummary",
+        "compareBranchRevenue",
+        "listSalesLedger",
+        "getSalesTrend"
+      ],
+      "adr": [
+        "M9-D03",
+        "M9-D05"
+      ]
+    },
+    {
+      "id": "sales.refund_amount",
+      "name": "환불액",
+      "unit": "원",
+      "definition": "선택한 환불 기준으로 기간에 속한 환불 금액의 합.",
+      "includes": "refunds 전체(이용권 환불, 스터디룸 예약 취소 환불)",
+      "excludes": "이용권 소비 차감",
+      "branchAttribution": "원결제의 payments.branch_id. refunds.processing_branch_id가 아니다",
+      "timeBasis": "processedDate=refunds.refunded_at, paymentDate=원결제 payments.approved_at",
+      "refundBasisApplies": true,
+      "dimensions": [
+        "branch",
+        "purpose",
+        "period"
+      ],
+      "source": [
+        "refunds",
+        "payments"
+      ],
+      "operations": [
+        "getRevenueSummary",
+        "compareBranchRevenue",
+        "listSalesLedger",
+        "getSalesTrend"
+      ],
+      "adr": [
+        "M9-D02",
+        "M9-D05"
+      ]
+    },
+    {
+      "id": "sales.net_amount",
+      "name": "순매출",
+      "unit": "원",
+      "definition": "승인액 − 환불액(같은 지점·기간·환불 기준). 음수일 수 있다.",
+      "includes": "sales.approved_amount, sales.refund_amount와 같다",
+      "excludes": "실패 결제, 이용권 소비 차감",
+      "branchAttribution": "payments.branch_id",
+      "timeBasis": "구성 지표를 따른다",
+      "refundBasisApplies": true,
+      "dimensions": [
+        "branch",
+        "purpose",
+        "period"
+      ],
+      "source": [
+        "payments",
+        "refunds"
+      ],
+      "operations": [
+        "getRevenueSummary",
+        "compareBranchRevenue",
+        "listSalesLedger",
+        "getSalesTrend"
+      ],
+      "adr": [
+        "M9-D02",
+        "M9-D03",
+        "M9-D05"
+      ]
+    },
+    {
+      "id": "sales.approved_payment_count",
+      "name": "승인 결제 건수",
+      "unit": "건",
+      "definition": "기간 안에 승인된 결제 행 수. 나중에 환불된 결제도 센다.",
+      "includes": "payments.approved_at IS NOT NULL(status 승인·환불)",
+      "excludes": "실패 결제",
+      "branchAttribution": "payments.branch_id",
+      "timeBasis": "payments.approved_at",
+      "refundBasisApplies": false,
+      "dimensions": [
+        "branch",
+        "purpose",
+        "period"
+      ],
+      "source": [
+        "payments"
+      ],
+      "operations": [
+        "getRevenueSummary",
+        "compareBranchRevenue",
+        "listSalesLedger",
+        "getSalesTrend"
+      ],
+      "adr": [
+        "M9-D03",
+        "M9-D06"
+      ]
+    },
+    {
+      "id": "sales.refund_count",
+      "name": "환불 건수",
+      "unit": "건",
+      "definition": "선택한 환불 기준으로 기간에 속한 환불 행 수.",
+      "includes": "refunds 전체",
+      "excludes": "",
+      "branchAttribution": "원결제의 payments.branch_id",
+      "timeBasis": "processedDate=refunds.refunded_at, paymentDate=원결제 payments.approved_at",
+      "refundBasisApplies": true,
+      "dimensions": [
+        "branch",
+        "purpose",
+        "period"
+      ],
+      "source": [
+        "refunds",
+        "payments"
+      ],
+      "operations": [
+        "getRevenueSummary",
+        "compareBranchRevenue",
+        "listSalesLedger",
+        "getSalesTrend"
+      ],
+      "adr": [
+        "M9-D02",
+        "M9-D05"
+      ]
+    },
+    {
+      "id": "pass.payment_count",
+      "name": "이용권 결제 건수",
+      "unit": "건",
+      "definition": "기간 안에 승인된 이용권 결제 행 수. sales.approved_payment_count에 purpose=이용권을 더한 값과 같다.",
+      "includes": "purpose=PASS이고 payments.approved_at IS NOT NULL(status 승인·환불)",
+      "excludes": "실패 결제, 스터디룸·사물함 결제",
+      "branchAttribution": "payments.branch_id",
+      "timeBasis": "payments.approved_at",
+      "refundBasisApplies": false,
+      "dimensions": [
+        "branch",
+        "product",
+        "category",
+        "period"
+      ],
+      "source": [
+        "payments",
+        "passes"
+      ],
+      "operations": [
+        "getPassSalesVolume",
+        "listPassProductSales",
+        "getSalesTrend"
+      ],
+      "adr": [
+        "M9-D03",
+        "M9-D06"
+      ]
+    },
+    {
+      "id": "pass.sold_quantity",
+      "name": "이용권 판매 수량",
+      "unit": "개",
+      "definition": "기간 안에 승인된 이용권 결제의 발급 수량(payments.issued_pass_quantity) 합. V1에서는 결제당 1이다.",
+      "includes": "purpose=PASS이고 payments.approved_at IS NOT NULL(status 승인·환불)",
+      "excludes": "실패 결제",
+      "branchAttribution": "payments.branch_id",
+      "timeBasis": "payments.approved_at",
+      "refundBasisApplies": false,
+      "dimensions": [
+        "branch",
+        "product",
+        "category",
+        "period"
+      ],
+      "source": [
+        "payments",
+        "passes"
+      ],
+      "operations": [
+        "getPassSalesVolume",
+        "listPassProductSales",
+        "getSalesTrend"
+      ],
+      "adr": [
+        "M9-D06"
+      ]
+    },
+    {
+      "id": "pass.refunded_quantity",
+      "name": "이용권 환불 수량",
+      "unit": "개",
+      "definition": "선택한 환불 기준으로 기간에 속한 이용권 환불의 원결제 발급 수량 합.",
+      "includes": "purpose=PASS 결제의 refunds",
+      "excludes": "스터디룸 환불",
+      "branchAttribution": "원결제의 payments.branch_id",
+      "timeBasis": "processedDate=refunds.refunded_at, paymentDate=원결제 payments.approved_at",
+      "refundBasisApplies": true,
+      "dimensions": [
+        "branch",
+        "product",
+        "category",
+        "period"
+      ],
+      "source": [
+        "refunds",
+        "payments",
+        "passes"
+      ],
+      "operations": [
+        "getPassSalesVolume",
+        "listPassProductSales",
+        "getSalesTrend"
+      ],
+      "adr": [
+        "M9-D02",
+        "M9-D06"
+      ]
+    },
+    {
+      "id": "pass.net_sold_quantity",
+      "name": "이용권 순판매량",
+      "unit": "개",
+      "definition": "판매 수량 − 환불 수량(같은 지점·기간·환불 기준). 음수일 수 있다. 상품 순위의 기준이다.",
+      "includes": "pass.sold_quantity, pass.refunded_quantity와 같다",
+      "excludes": "실패 결제, 무료·수동 발급(V1에는 없음)",
+      "branchAttribution": "payments.branch_id",
+      "timeBasis": "구성 지표를 따른다",
+      "refundBasisApplies": true,
+      "dimensions": [
+        "branch",
+        "product",
+        "category",
+        "period"
+      ],
+      "source": [
+        "payments",
+        "refunds",
+        "passes"
+      ],
+      "operations": [
+        "getPassSalesVolume",
+        "listPassProductSales",
+        "getSalesTrend"
+      ],
+      "adr": [
+        "M9-D02",
+        "M9-D06"
+      ]
+    },
+    {
+      "id": "pass.issued_count",
+      "name": "이용권 발급 건수",
+      "unit": "개",
+      "definition": "기간 안에 생성된 이용권 수. 이후 환불된 이용권도 포함한다. V1에서는 발급 시각을 원결제 승인 시각으로 본다.",
+      "includes": "passes 전체(V1은 모두 승인 결제와 연결)",
+      "excludes": "없음. 무료·수동 발급이 생기면 이 지표에만 더한다",
+      "branchAttribution": "passes.purchase_branch_id(= 원결제 지점)",
+      "timeBasis": "원결제 payments.approved_at",
+      "refundBasisApplies": false,
+      "dimensions": [
+        "branch",
+        "product",
+        "category",
+        "period"
+      ],
+      "source": [
+        "passes",
+        "payments"
+      ],
+      "operations": [
+        "getPassSalesVolume",
+        "listPassProductSales",
+        "getSalesTrend"
+      ],
+      "adr": [
+        "M9-D06"
+      ]
+    },
+    {
+      "id": "home.task.today_count",
+      "name": "오늘의 업무",
+      "unit": "건",
+      "definition": "기한이 내일 0시(Asia/Seoul) 이전인 완료 아닌 업무 + 오늘 완료한 업무.",
+      "includes": "work_tasks 중 (status≠DONE ∧ due_at < 내일 0시) ∨ (status=DONE ∧ completed_at ∈ 오늘)",
+      "excludes": "기한 없는 미완료 업무, 내일 이후 기한의 미완료 업무",
+      "branchAttribution": "work_tasks.branch_id",
+      "timeBasis": "Asia/Seoul 오늘, asOf 시점 상태",
+      "refundBasisApplies": false,
+      "dimensions": [
+        "branch",
+        "assignee"
+      ],
+      "source": [
+        "work_tasks"
+      ],
+      "operations": [
+        "getHomeSummary"
+      ],
+      "adr": [
+        "M9-D08"
+      ]
+    },
+    {
+      "id": "home.task.completed_today_count",
+      "name": "오늘 완료한 업무",
+      "unit": "건",
+      "definition": "status=DONE이고 completed_at이 오늘(Asia/Seoul)인 업무. 기한과 무관하다.",
+      "includes": "work_tasks",
+      "excludes": "",
+      "branchAttribution": "work_tasks.branch_id",
+      "timeBasis": "work_tasks.completed_at",
+      "refundBasisApplies": false,
+      "dimensions": [
+        "branch",
+        "assignee"
+      ],
+      "source": [
+        "work_tasks"
+      ],
+      "operations": [
+        "getHomeSummary"
+      ],
+      "adr": [
+        "M9-D08"
+      ]
+    },
+    {
+      "id": "home.task.completion_rate",
+      "name": "오늘의 업무 완료율",
+      "unit": "%",
+      "definition": "오늘 완료한 업무 ÷ 오늘의 업무 × 100, 소수 첫째 자리 HALF_UP. 분모 0이면 해당 없음.",
+      "includes": "home.task.today_count와 같다",
+      "excludes": "",
+      "branchAttribution": "work_tasks.branch_id",
+      "timeBasis": "Asia/Seoul 오늘",
+      "refundBasisApplies": false,
+      "dimensions": [
+        "branch",
+        "assignee"
+      ],
+      "source": [
+        "work_tasks"
+      ],
+      "operations": [
+        "getHomeSummary"
+      ],
+      "adr": [
+        "M9-D08",
+        "M9-D09"
       ]
     }
   ]
