@@ -1,59 +1,99 @@
 package com.openstudy.modules.auth.service;
 
-import java.time.Clock;
-import java.util.List;
-import java.util.Map;
+import com.openstudy.common.web.ApiVersion;
+import com.openstudy.modules.auth.dto.CurrentUser;
+import com.openstudy.modules.authorization.service.AuthorizationService;
+import com.openstudy.modules.branch.service.SessionBranchService;
+import com.openstudy.modules.employee.dto.EmployeeAccount;
+import com.openstudy.modules.employee.dto.EmployeeMembership;
+import com.openstudy.modules.employee.service.EmployeeAccountService;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.openstudy.modules.auth.dto.CurrentUser;
-import com.openstudy.common.web.ApiVersion;
-import com.openstudy.modules.branch.service.SessionBranchService;
-import com.openstudy.modules.employee.service.EmployeeAccountService;
-import com.openstudy.modules.authorization.service.AuthorizationService;
+import java.time.Clock;
+import java.util.List;
+import java.util.Map;
 
 @Service
+@RequiredArgsConstructor
 public class CurrentUserService {
-    private final EmployeeAccountService employees;
-    private final SessionBranchService branches;
+    private final EmployeeAccountService employeeAccountService;
+    private final SessionBranchService sessionBranchService;
     private final Clock clock;
 
-    public CurrentUserService(EmployeeAccountService employees, SessionBranchService branches, Clock clock) {
-        this.employees = employees;
-        this.branches = branches;
-        this.clock = clock;
-    }
-
-    @Transactional(readOnly = true)
-    public CurrentUser current(long employeeId) {
-        return current(employeeId, null);
-    }
-
     @Transactional
-    public CurrentUser updateProfile(long employeeId, String sessionMode, Map<String, Object> body, String requestId) {
-        if (!SessionBoundaryPolicy.WORKSPACE.equals(sessionMode)) throw AuthorizationService.forbidden();
-        employees.updateProfile(employeeId, body, requestId);
-        return current(employeeId, sessionMode);
+    public CurrentUser updateProfile(
+            long employeeId,
+            String sessionMode,
+            Map<String, Object> body,
+            String requestId
+    ) {
+        if (!SessionBoundaryPolicy.WORKSPACE.equals(sessionMode)) {
+            throw AuthorizationService.forbidden();
+        }
+
+        employeeAccountService.updateProfile(employeeId, body, requestId);
+
+        return getCurrentUser(employeeId, sessionMode);
+
     }
 
     @Transactional(readOnly = true)
-    public CurrentUser current(long employeeId, String sessionMode) {
-        var account = employees.byId(employeeId);
-        if (!account.canLogin()) throw new DisabledException("Inactive account");
-        String mode = sessionMode == null
-                ? ("PENDING".equals(account.status()) ? SessionBoundaryPolicy.APPROVAL_ONLY : SessionBoundaryPolicy.WORKSPACE)
-                : sessionMode;
+    public CurrentUser getCurrentUser(long employeeId) {
+        return getCurrentUser(employeeId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public CurrentUser getCurrentUser(long employeeId, String sessionMode) {
+        EmployeeAccount account = employeeAccountService.byId(employeeId);
+
+        if (!account.canLogin()) {
+            throw new DisabledException("Inactive account");
+        }
+
+        String mode = sessionMode;
+        if (mode == null) {
+            mode = "PENDING".equals(account.status())
+                    ? SessionBoundaryPolicy.APPROVAL_ONLY
+                    : SessionBoundaryPolicy.WORKSPACE;
+        }
+
         boolean restricted = SessionBoundaryPolicy.APPROVAL_ONLY.equals(mode);
-        var memberships = restricted ? List.<com.openstudy.modules.employee.dto.EmployeeMembership>of() : employees.memberships(employeeId);
-        String status = "PENDING".equals(account.status()) ? "승인 대기" : "활성";
-        var user = new CurrentUser.User(Long.toString(account.id()),
-                memberships.isEmpty() ? "all" : memberships.getFirst().branchId(), ApiVersion.fromDatabase(account.version()),
-                account.createdAt().toString(), account.updatedAt().toString(), account.name(), account.email(),
-                status, restricted ? "" : account.nickname(), restricted || account.avatar() == null ? "" : account.avatar(), memberships,
-                !restricted && account.owner());
-        return new CurrentUser(user, restricted ? List.of() : branches.accessible(employeeId, account.owner()), clock.instant().toString(),
-                "employee-" + account.id() + "-" + account.version(), mode);
+
+        List<EmployeeMembership> memberships = restricted
+                ? List.of()
+                : employeeAccountService.memberships(employeeId);
+
+        String status = "PENDING".equals(account.status())
+                ? "승인 대기"
+                : "활성";
+
+        var user = CurrentUser.User.builder()
+                .id(Long.toString(account.id()))
+                .branchId(memberships.isEmpty() ? "all" : memberships.getFirst().branchId())
+                .version(ApiVersion.fromDatabase(account.version()))
+                .createdAt(account.createdAt().toString())
+                .updatedAt(account.updatedAt().toString())
+                .name(account.name())
+                .email(account.email())
+                .status(status)
+                .nickname(restricted ? "" : account.nickname())
+                .avatar(restricted || account.avatar() == null ? "" : account.avatar())
+                .memberships(memberships)
+                .owner(!restricted && account.owner())
+                .build();
+
+        return new CurrentUser(
+                user,
+                restricted
+                        ? List.of()
+                        : sessionBranchService.accessible(employeeId, account.owner()),
+                clock.instant().toString(),
+                "employee-" + account.id() + "-" + account.version(),
+                mode
+        );
     }
 }
