@@ -1,5 +1,7 @@
 # 기본 로그인
 
+> **2026-11-06 명시적 갱신 정책**: 다른 세션의 권한 회수·계정 제한은 다음 API부터 현재 상태로 거부한다. 감지된 401·접근 범위 변경·로그아웃·계정/지점 전환 후 비공개 캐시·초안·진행 요청을 정리한다. 요청 없는 화면의 즉시 삭제나 주기적 /me는 요구하지 않는다. 서버 세션 시간·무효화·CSRF는 유지한다. [ADR-COM-001](db/ADR-COM-001.md)과 [Backend #170](https://github.com/OpenStudyService/OpenStudy-Backend/issues/170)·[Frontend #77](https://github.com/OpenStudyService/OpenStudy-Frontend/issues/77)를 따른다. 문서 확정과 코드 제거 완료는 구분한다.
+
 프론트엔드의 이메일·비밀번호 폼과 `/api` 계약에 맞춘 쿠키 세션 인증이다. 기본 Spring Security 폼 로그인과 HTTP Basic을 사용하지 않는다.
 
 ## 로컬 최초 관리자 생성
@@ -36,7 +38,7 @@ npm run dev:live
 
 로그인 시 `sessionMode`를 JDBC 세션과 CurrentUser 응답에 저장한다. ACTIVE는 WORKSPACE, PENDING은 APPROVAL_ONLY다. 제한 세션은 본인 최소 정보·승인 상태·CSRF·로그아웃만 허용한다. 승인 후 실제 계정 상태는 활성으로 표시하되 제한 세션을 자동으로 승격하지 않는다. 프론트는 `requiresLogin=true` 또는 APPROVAL_ONLY+활성 상태에서 재로그인을 안내하고 새 로그인으로 세션 ID·CSRF를 교체한다. 기존 ACTIVE 직원이 추가 지점의 승인을 기다릴 때는 기존 WORKSPACE를 유지하며 미승인 소속은 업무 접근에 사용하지 않는다.
 
-JDBC 세션은 유효 활동 후 60분 또는 로그인 후 12시간 중 먼저 도달한 시각에 만료된다. 인증 시작 시각과 유효 활동 시각은 별도 세션 속성으로 저장하고 서버 Clock으로 경계 이상(`>=`)을 거부한다. 성공한 업무 API 요청(일반 GET 포함)은 활동으로 계산한다. 자동 조회인 `/api/me`, `/api/auth/csrf`, `/api/invitations/approval-status`, `/api/lookups`, SSE `/api/workspace/events`와 `Accept: text/event-stream` 연결·재접속, HEAD/OPTIONS 및 실패 응답은 유효 활동 시각을 갱신하지 않는다. Servlet/JDBC의 단순 접근 시각이 polling으로 늘어나도 업무 유휴 만료를 연장하지 못한다. 새 업무 API에 자동 polling을 도입할 때는 이 비활동 분류를 함께 추가해야 한다.
+JDBC 세션은 유효 활동 후 60분 또는 로그인 후 12시간 중 먼저 도달한 시각에 만료된다. 인증 시작 시각과 유효 활동 시각은 별도 세션 속성으로 저장하고 서버 Clock으로 경계 이상(`>=`)을 거부한다. 성공한 업무 API 요청(일반 GET 포함)은 활동으로 계산한다. 자동 조회인 `/api/me`, `/api/auth/csrf`, `/api/invitations/approval-status`, `/api/lookups`, SSE `/api/workspace/events`와 `Accept: text/event-stream` 연결·재접속, HEAD/OPTIONS 및 실패 응답은 유효 활동 시각을 갱신하지 않는다. Servlet/JDBC의 단순 접근 시각이 polling으로 늘어나도 업무 유휴 만료를 연장하지 못한다. 이 비활동 분류는 현재 구현의 설명이다. ADR-COM-001에 따라 새 화면 상태 polling은 도입하지 않고 명시적 조회로 전환한다.
 
 인증된 요청마다 직원 상태를 DB로 다시 확인하므로 정지·퇴사·삭제된 계정의 세션은 폐기된다. WORKSPACE 계정이 PENDING으로 바뀌는 경우도 기존 업무 세션을 폐기한다. `/api/me`는 업무 세션의 현재 소속과 권한을 재조회한다. 응답의 직원·지점 version은 프론트 계약에 맞춰 DB의 0 기반 version에 1을 더해 표시한다. 새 속성이 없는 배포 이전 로그인 세션은 안전하게 만료되어 재로그인이 필요하다.
 

@@ -1,5 +1,7 @@
 # 개발 단위·마일스톤·이슈
 
+> **2026-11-06 명시적 갱신 정책**: 초기 M3 실시간 재조회·SSE 운영 검증은 새 요구사항에서 제외한다. 명시적 갱신·본인 저장 반영·다음 API의 권한 검증으로 인수하며 과거 완료 증거는 보존한다. 결정은 [ADR-COM-001](../../db/ADR-COM-001.md), 구현은 [Backend #170](https://github.com/OpenStudyService/OpenStudy-Backend/issues/170)·[Frontend #77](https://github.com/OpenStudyService/OpenStudy-Frontend/issues/77)에서 추적한다. 이번 PR은 문서 변경이다.
+
 작성일: 2026-10-23. 갱신일: 2026-10-26. 이 문서는 **초기 기반 개발 작업 16개와 그 선행 관계**의 기록이다. 제목·참조는 GitHub 고유 이슈 번호로 통일한다. SRS v1.1 확정 이후 추가된 M1 작업은 실제 GitHub 마일스톤과 해당 이슈 본문을 우선하며, 이 초기 계획만으로 최신 전체 개발 범위를 판단하지 않는다.
 
 ## GitHub 작업 연결
@@ -175,3 +177,11 @@ SRS v1.1에 따라 상품 삭제 UI를 제공하지 않는다. 판매 중지·�
 - 적대 시나리오: scope/body 조작, 타 지점 total/이력/SSE 누출, STAFF의 관리자 전용 호출, 이중 수락/승인, 마지막 관리자 동시 제거, 같은 멱등 키 다른 입력, 낡은 version, 기존 구매 snapshot 변경 시도.
 - 증거: Testcontainers 이미지·버전, migration 전후 비교, HTTP 계약 결과, 실제 두 브라우저/메일 더블, 운영 프록시 쿠키·CSRF·SSE 결과. 실패·미검증·후속 배포 검증을 분리해 기록.
 - GitHub milestone 종료 조건은 관련 이슈·PR이 열렸다는 사실이 아니라 위 흐름의 검증 성공이다.
+
+## 명시적 갱신 전환 작업 (2026-11-06)
+
+1. Backend #170: 잔존 SSE·전달 전용 타이머와 workspace Outbox 생산/소비를 정리한다. SMTP·감사·서버 인가·거래 검증은 유지한다. 스키마 삭제는 확정하지 않았다.
+2. Frontend #77: EventSource·화면 polling·포커스/재연결 자동 조회를 제거하고 메뉴 재클릭·새로고침·조회 시각·본인 저장 결과 반영을 구현한다.
+3. Backend #104·Frontend #36: 다른 세션의 변경은 다음 명시적 조회에 보이고, 회수된 권한은 다음 API에서 거부되는지 실제 API·DB로 회귀한다. 기존 #17의 완료 증거는 재개발 범위가 아니다.
+
+정책 근거는 [ADR-COM-001](../../db/ADR-COM-001.md), SRS v1.15다. 두 구현 이슈는 문서 작성 시점에 미완료다.

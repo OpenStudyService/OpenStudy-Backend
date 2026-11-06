@@ -1,5 +1,7 @@
 # 1차 기반 기능 DB·API 설계
 
+> **2026-11-06 명시적 갱신 정책**: 현재 요구사항은 SRS v1.15 POL-52·53이다. 메뉴 진입·재클릭·새로고침·사용자 조건 변경으로 조회하고 본인 저장 결과를 반영한다. 아래의 과거 실시간 설계·구현 설명보다 이 결정을 우선한다. 결정은 [ADR-COM-001](../../db/ADR-COM-001.md), 구현은 [Backend #170](https://github.com/OpenStudyService/OpenStudy-Backend/issues/170)·[Frontend #77](https://github.com/OpenStudyService/OpenStudy-Frontend/issues/77)에서 추적한다. 이번 PR은 문서 변경이다.
+
 2026-10-27 변경: 개발 DB의 실행 기준은 [통합 V1](../../db/README.md)이다. 모든 기존 데이터가 재생성 가능한 테스트 데이터라는 사용자 확인에 따라 [새 DB 전환 방침](../../db/foundation-upgrade.md)을 채택했다. 아래 V2/V3 설명과 과거 검증·ERD PDF는 당시 설계 기록이며 현재 실행 SQL은 `src/main/resources/db/migration/`를 따른다.
 
 2026-10-29 추가: Issue #55의 M4 고객·Mock 결제·발급 이용권·환불 API는 [고객·판매 API 계약](customer-sales-api.md)과 OpenAPI `0.1.5-m4-customer-sales`의 설계 계약(`design-target`)을 따른다. 정책은 [ADR-M4-002](../../db/ADR-M4-002.md)이며 구현은 #56~#58에서 진행한다. 고객 등록 지점·응대 메모 열은 `V2__customer_branch_and_memo.sql`로 추가했다.

@@ -1,5 +1,7 @@
 # M1 본인 닉네임 저장 계약
 
+> **2026-11-06 명시적 갱신 정책**: 본인 저장 성공은 응답과 관련 화면에 반영한다. 다른 세션의 프로필 변경을 SSE로 즉시 전파하지 않고 다음 명시적 조회에 반영한다. version 충돌·현재 사용자 검증은 유지한다. 결정은 [ADR-COM-001](../../db/ADR-COM-001.md), 구현은 [Backend #170](https://github.com/OpenStudyService/OpenStudy-Backend/issues/170)·[Frontend #77](https://github.com/OpenStudyService/OpenStudy-Frontend/issues/77)에서 추적한다. 이번 PR은 문서 변경이다.
+
 Issue [#27](https://github.com/OpenStudyService/OpenStudy-Backend/issues/27)의 확정 계약은 [openapi.json](openapi.json)의 `PATCH /me/profile`이다. API 서버 접두사는 `/api`다. 사진은 M14이며 이 요청에 포함하지 않는다.
 
 ## 요청과 응답

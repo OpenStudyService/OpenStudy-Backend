@@ -1,5 +1,7 @@
 # 기반 선택 데이터와 단일 인스턴스 SSE
 
+> **2026-11-06 명시적 갱신 정책**: 이 문서의 SSE endpoint·Outbox·heartbeat·resync는 남아 있는 구현 설명이다. 전환 목표에서는 SSE·polling을 사용하지 않고 사용자 행동으로 REST 조회한다. 선택 데이터의 최소 응답·권한·빈 배열 계약은 유지한다. 결정은 [ADR-COM-001](../../db/ADR-COM-001.md), 구현은 [Backend #170](https://github.com/OpenStudyService/OpenStudy-Backend/issues/170)·[Frontend #77](https://github.com/OpenStudyService/OpenStudy-Frontend/issues/77)에서 추적한다. 이번 PR은 문서 변경이다.
+
 Issue [#17](https://github.com/OpenStudyService/OpenStudy-Backend/issues/17)의 현재 구현 계약은 OpenAPI `0.1.4-workspace`의 `GET /lookups`, `GET /workspace/events`다. 서버 접두사는 `/api`이며 WORKSPACE 세션의 현재 ACTIVE 계정만 허용한다.
 
 ## 선택 데이터

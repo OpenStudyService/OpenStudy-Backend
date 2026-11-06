@@ -1,5 +1,7 @@
 # 기반 기능 DB 설계
 
+> **2026-11-06 명시적 갱신 정책**: workspace_event_outbox는 현재 구현 스키마다. SSE 생산·소비 정리는 후속 작업이며 테이블 DROP이나 기존 Flyway 수정은 결정하지 않았다. SMTP 발송 큐·감사 원장은 별개로 유지한다. 결정은 [ADR-COM-001](../../db/ADR-COM-001.md), 구현은 [Backend #170](https://github.com/OpenStudyService/OpenStudy-Backend/issues/170)·[Frontend #77](https://github.com/OpenStudyService/OpenStudy-Frontend/issues/77)에서 추적한다. 이번 PR은 문서 변경이다.
+
 작성일: 2026-10-23. 갱신일: 2026-10-26. MySQL 8.4/InnoDB, 기존 V1 확장 설계. 실행 정본은 Flyway V2/V3이며 [전체 구축 SQL·ERD](../../db/README.md)와 [기존 DB 적용 절차](../../db/foundation-upgrade.md)를 제공한다. 사용자가 확정한 [Q1~Q12 정책](decisions.md)을 반영했다.
 
 ## 저장 규칙

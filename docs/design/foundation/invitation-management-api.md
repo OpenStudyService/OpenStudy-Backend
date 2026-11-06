@@ -1,5 +1,7 @@
 # 초대 관리 API
 
+> **2026-11-06 명시적 갱신 정책**: 초대 상태·발송 상태는 명시적 조회로 확인한다. 본인 명령의 성공은 관련 화면에 반영하고 다른 세션의 변경은 다음 조회 때 반영한다. 아래 SSE 연계 설명은 이전 구현의 근거다. 결정은 [ADR-COM-001](../../db/ADR-COM-001.md), 구현은 [Backend #170](https://github.com/OpenStudyService/OpenStudy-Backend/issues/170)·[Frontend #77](https://github.com/OpenStudyService/OpenStudy-Frontend/issues/77)에서 추적한다. 이번 PR은 문서 변경이다.
+
 Backend [#13](https://github.com/OpenStudyService/OpenStudy-Backend/issues/13)의 구현 범위다. 서버 접두사는 `/api`이며 기존 OpenAPI의 요청·응답 모델을 사용한다. WORKSPACE 세션의 현재 계정·소속·행위 권한을 검사한다.
 
 ## 제공 범위
