@@ -34,6 +34,11 @@ public class ApiException extends RuntimeException {
         return new ApiException(422, code, message, null, null, null);
     }
 
+    /** A 404 that does not say whether the item exists for someone else, e.g. another employee's AI conversation. */
+    public static ApiException notFound(String message) {
+        return new ApiException(404, "NOT_FOUND", message, null, null, null);
+    }
+
     public static ApiException conflict(String code, String message) {
         return new ApiException(409, code, message, null, null, null);
     }

@@ -42,6 +42,11 @@ public class AiConversationEntity {
         this.updatedAt = now;
     }
 
+    /** A title the employee set; the list order (updatedAt) stays with the last question. */
+    public void rename(String title) {
+        this.title = title;
+    }
+
     public void touch(String title, Instant now) {
         if (title != null && !title.isBlank()) {
             this.title = title;

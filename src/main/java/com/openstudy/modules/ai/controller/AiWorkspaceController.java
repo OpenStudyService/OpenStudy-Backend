@@ -11,10 +11,13 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -67,6 +70,39 @@ public class AiWorkspaceController {
                 body == null ? "all" : body.scope(),
                 body == null ? null : body.title()
         );
+    }
+
+    /** The signed-in employee's saved AI conversations, most recently asked first. */
+    @GetMapping("/api/ai/conversations")
+    public List<Map<String, Object>> listConversations(Authentication auth) {
+        return workspaceService.listConversations(auth);
+    }
+
+    /** Reopens one conversation: saved questions re-run under current permissions and a new as-of time (M10-D12). */
+    @GetMapping("/api/ai/conversations/{conversationId}")
+    public Map<String, Object> reopenConversation(
+            Authentication auth,
+            @PathVariable String conversationId,
+            @RequestParam(required = false) String scope
+    ) {
+        return workspaceService.reopenConversation(auth, conversationId, scope);
+    }
+
+    public record ConversationRenameRequest(String title) {}
+
+    @PatchMapping("/api/ai/conversations/{conversationId}")
+    public Map<String, Object> renameConversation(
+            Authentication auth,
+            @PathVariable String conversationId,
+            @RequestBody ConversationRenameRequest body
+    ) {
+        return workspaceService.renameConversation(auth, conversationId, body == null ? null : body.title());
+    }
+
+    @DeleteMapping("/api/ai/conversations/{conversationId}")
+    public ResponseEntity<Void> deleteConversation(Authentication auth, @PathVariable String conversationId) {
+        workspaceService.deleteConversation(auth, conversationId);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping({"/api/conversations/{conversationId}/requests", "/api/ai/conversations/{conversationId}/requests"})

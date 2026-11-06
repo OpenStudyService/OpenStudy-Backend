@@ -180,6 +180,135 @@ public class AiWorkspaceService {
         );
     }
 
+    /** The signed-in employee's AI conversations, most recently asked first (#168, M10-D12). */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> listConversations(Authentication auth) {
+        var actor = userResolver.resolve(auth, null);
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (var conversation : conversationRepository.findByEmployeeIdOrderByUpdatedAtDescIdDesc(actor.employeeId())) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", conversation.getId());
+            row.put("title", conversation.getTitle());
+            row.put("scope", conversation.getScopeKey());
+            row.put("createdAt", conversation.getCreatedAt().toString());
+            row.put("lastAskedAt", conversation.getUpdatedAt().toString());
+            list.add(row);
+        }
+        return list;
+    }
+
+    /**
+     * Reopens a saved conversation (M10-D12). Only the question, the validated analysis and its status were kept; each
+     * executed question is re-checked against the employee's current permissions and branch scope and run again under
+     * a new as-of time, without calling the model. A question that cannot run any more shows its reason instead of data,
+     * and questions that never ran (clarification, refusal) come back with their status only.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> reopenConversation(Authentication auth, String conversationId, String requestedScope) {
+        var actor = userResolver.resolve(auth, null);
+        var conversation = ownConversation(actor.employeeId(), conversationId);
+        String scope = requestedScope == null || requestedScope.isBlank() ? conversation.getScopeKey() : requestedScope.trim();
+        List<Map<String, Object>> turns = new ArrayList<>();
+        for (var execution : executionRepository.findByConversationIdOrderByCreatedAtAscIdAsc(conversation.getId())) {
+            Map<String, Object> turn = new LinkedHashMap<>();
+            turn.put("question", execution.getQuestion());
+            turn.put("askedAt", execution.getCreatedAt().toString());
+            turn.put("response", rerun(actor, scope, conversation.getId(), execution));
+            turns.add(turn);
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", conversation.getId());
+        result.put("title", conversation.getTitle());
+        result.put("scope", scope);
+        result.put("turns", turns);
+        return result;
+    }
+
+    @Transactional
+    public Map<String, Object> renameConversation(Authentication auth, String conversationId, String title) {
+        var actor = userResolver.resolve(auth, null);
+        var conversation = ownConversation(actor.employeeId(), conversationId);
+        String trimmed = title == null ? "" : title.trim();
+        if (trimmed.isEmpty() || trimmed.length() > 200) {
+            throw ApiException.validation("title", "대화 제목은 1~200자로 입력해 주세요.");
+        }
+        conversation.rename(trimmed);
+        return Map.of("id", conversation.getId(), "title", conversation.getTitle());
+    }
+
+    /**
+     * Deletes the conversation with its messages (FK cascade) and its saved questions. Diagnostic traces keep their own
+     * 30-day retention (M10-D04).
+     */
+    @Transactional
+    public void deleteConversation(Authentication auth, String conversationId) {
+        var actor = userResolver.resolve(auth, null);
+        var conversation = ownConversation(actor.employeeId(), conversationId);
+        executionRepository.deleteByConversationId(conversation.getId());
+        conversationRepository.delete(conversation);
+    }
+
+    private AiConversationEntity ownConversation(long employeeId, String conversationId) {
+        return conversationRepository.findById(conversationId == null ? "" : conversationId)
+                .filter(c -> c.getEmployeeId() == employeeId)
+                .orElseThrow(() -> ApiException.notFound("AI 대화를 찾을 수 없습니다."));
+    }
+
+    private AiQueryResponse rerun(
+            OpenStudyUserContextResolver.ResolvedActor actor,
+            String scope,
+            String conversationId,
+            AiExecutionEntity saved
+    ) {
+        String requestId = "req-" + UUID.randomUUID().toString().substring(0, 12);
+        if (!"READY".equals(saved.getStatus()) || saved.getAnalysisId() == null) {
+            String status = "CLARIFICATION".equals(saved.getStatus()) ? "CLARIFICATION" : "REFUSED";
+            String message = "CLARIFICATION".equals(saved.getStatus())
+                    ? "확인이 필요했던 질문이에요. 다시 질문해 주세요."
+                    : "이 질문은 당시 조회하지 않았어요. 필요하면 다시 질문해 주세요.";
+            return reopenedWithoutData(requestId, conversationId, status, 200, saved.getErrorCode(),
+                    saved.getResultCategory(), message, saved);
+        }
+        boolean sales = "sales".equals(saved.getIntentDomain());
+        var decision = userResolver.authorizeQuestion(actor, scope, saved.getQuestion(), sales);
+        if (!decision.allowed()) {
+            return reopenedWithoutData(requestId, conversationId, "REFUSED", decision.httpStatus(), decision.errorCode(),
+                    decision.resultCategory(), "지금 권한이나 지점 범위로는 다시 조회할 수 없어요. " + decision.message(), saved);
+        }
+        long started = System.nanoTime();
+        OpenStudyAnalyses.PocExecutionResult result;
+        try {
+            result = executeWithOverrides(saved.getAnalysisId(), decision.effectiveBranches(), null, false);
+        } catch (AccessDeniedException | IllegalArgumentException | IllegalStateException e) {
+            return reopenedWithoutData(requestId, conversationId, "REFUSED", 422, "REOPEN_NOT_EXECUTABLE",
+                    "REOPEN_NOT_EXECUTABLE", "저장된 조회를 지금 다시 실행할 수 없어요. 다시 질문해 주세요.", saved);
+        }
+        long executedMs = Math.max(1L, Duration.ofNanos(System.nanoTime() - started).toMillis());
+        List<StageSpan> stages = List.of(
+                new StageSpan("validating", "저장된 명세의 현재 권한·지점 범위 재검증", "COMPLETED", 1L,
+                        "허용 지점: " + decision.effectiveBranches()),
+                new StageSpan("executing", "데이터베이스 집계 재실행", "COMPLETED", executedMs,
+                        "모델 호출 없이 저장된 분석(" + saved.getAnalysisId() + ")을 새 기준 시각으로 실행"));
+        return new AiQueryResponse(
+                requestId, null, conversationId, null, "COMPLETED", 200, null, "REOPENED", "REOPEN",
+                "저장된 질문을 현재 권한과 기준 시각으로 다시 조회했어요.",
+                result.pocCode(), result.analysisId(), saved.getIntentDomain(), result.semanticStatus(),
+                playbackGateway.buildQuerySpec(saved.getAnalysisId()), result.envelope().view(), result.envelope(),
+                result.summary(), OpenStudyPlaybackGateway.TruncationInfo.defaultUntruncated(), List.of(), stages,
+                List.of(), Map.of("reopened", true), null);
+    }
+
+    private static AiQueryResponse reopenedWithoutData(
+            String requestId, String conversationId, String status, int httpStatus, String errorCode,
+            String resultCategory, String message, AiExecutionEntity saved
+    ) {
+        return new AiQueryResponse(
+                requestId, null, conversationId, null, status, httpStatus, errorCode, resultCategory, "REOPEN", message,
+                saved.getPocCode(), saved.getAnalysisId(), saved.getIntentDomain(), null, null, null, null, Map.of(),
+                OpenStudyPlaybackGateway.TruncationInfo.defaultUntruncated(), List.of(), List.of(), List.of(),
+                Map.of("reopened", true), null);
+    }
+
     /**
      * Executes the 6-stage DomainLens pipeline synchronously and persists conversation, execution, and trace artifacts.
      */
@@ -200,8 +329,14 @@ public class AiWorkspaceService {
                 ? request.conversationId().trim()
                 : "conv-" + UUID.randomUUID().toString().substring(0, 12);
 
-        if (!conversationRepository.existsById(convId)) {
+        // A conversation is its creator's only (M10-D12): a question never lands in another employee's conversation.
+        var existing = conversationRepository.findById(convId);
+        if (existing.isEmpty()) {
             conversationRepository.save(new AiConversationEntity(convId, actor.employeeId(), scope, summarizeTitle(rawQuestion), now));
+        } else if (existing.get().getEmployeeId() != actor.employeeId()) {
+            throw ApiException.notFound("AI 대화를 찾을 수 없습니다.");
+        } else {
+            existing.get().touch(null, now);
         }
 
         var plan = playbackGateway.planQuestion(
