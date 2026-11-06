@@ -23,7 +23,7 @@ public record AggregationScope(AuthorizationState requester, List<Long> branchId
         requestedOrder = List.copyOf(requestedOrder);
     }
 
-    public SourceFilter sourceFilter() { return new SourceFilter(branchIds, from, to, refundBasis, purpose); }
+    public SourceFilter sourceFilter() { return new SourceFilter(branchIds, from, to, refundBasis, purpose, productId, categoryCode); }
 
     public boolean periodOpen() { return to.isAfter(asOf); }
 }

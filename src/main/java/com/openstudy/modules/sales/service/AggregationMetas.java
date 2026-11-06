@@ -15,6 +15,10 @@ public final class AggregationMetas {
     public static final List<MetricRef> REVENUE_METRICS = List.of(new MetricRef("sales.approved_amount", "원"),
             new MetricRef("sales.refund_amount", "원"), new MetricRef("sales.net_amount", "원"),
             new MetricRef("sales.approved_payment_count", "건"), new MetricRef("sales.refund_count", "건"));
+    /** x-metric-ids of the pass operations and the passes trend (#88), with their units. */
+    public static final List<MetricRef> PASS_METRICS = List.of(new MetricRef("pass.payment_count", "건"),
+            new MetricRef("pass.sold_quantity", "개"), new MetricRef("pass.refunded_quantity", "개"),
+            new MetricRef("pass.net_sold_quantity", "개"), new MetricRef("pass.issued_count", "개"));
 
     private AggregationMetas() {}
 

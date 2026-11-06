@@ -18,25 +18,36 @@ import org.springframework.web.bind.annotation.RestController;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.web.ListQuery;
 import com.openstudy.modules.sales.dto.request.AggregationCondition;
+import com.openstudy.modules.sales.dto.request.AggregationGranularity;
 import com.openstudy.modules.sales.dto.request.BranchRevenueSort;
 import com.openstudy.modules.sales.dto.request.LedgerEntryType;
 import com.openstudy.modules.sales.dto.request.RefundBasis;
 import com.openstudy.modules.sales.dto.request.SalesPurpose;
+import com.openstudy.modules.sales.dto.request.TrendMeasure;
 import com.openstudy.modules.sales.dto.response.BranchRevenueComparison;
+import com.openstudy.modules.sales.dto.response.PassProductSalesPage;
+import com.openstudy.modules.sales.dto.response.PassVolumeSummary;
 import com.openstudy.modules.sales.dto.response.RevenueSummary;
 import com.openstudy.modules.sales.dto.response.SalesLedgerPage;
+import com.openstudy.modules.sales.dto.response.SalesTrend;
+import com.openstudy.modules.sales.service.PassSalesService;
 import com.openstudy.modules.sales.service.SalesRevenueService;
+import com.openstudy.modules.sales.service.SalesTrendService;
 
 /**
- * Revenue, branch comparison and minimal ledger (aggregation-api.md, #87). The controller only turns query strings into
- * an {@link AggregationCondition}; validation of the combination, defaults and authorization live in the service so M10
- * reaches the same rules without HTTP. There is no scope parameter: the branch selection is branchIds (M9-D07).
+ * Revenue, branch comparison and minimal ledger (#87), pass volume, product ranking and the trend (#88) of
+ * aggregation-api.md. The controller only turns query strings into an {@link AggregationCondition}; validation of the
+ * combination, defaults and authorization live in the services so M10 reaches the same rules without HTTP. There is no
+ * scope parameter: the branch selection is branchIds (M9-D07). Every operation reads purpose, productId and categoryCode
+ * so the service can refuse the ones it does not take with a 422 instead of ignoring them.
  */
 @RestController
 @RequestMapping("/api/sales")
 @RequiredArgsConstructor
 public class SalesController {
     private final SalesRevenueService service;
+    private final PassSalesService passes;
+    private final SalesTrendService trends;
 
     @GetMapping("/revenue")
     public RevenueSummary revenue(Authentication actor, HttpServletRequest request,
@@ -73,7 +84,41 @@ public class SalesController {
         return service.ledger(actor(actor), condition, type, query);
     }
 
-    /** productId and categoryCode are read only so the service can refuse them on a revenue operation (422). */
+    @GetMapping("/passes/volume")
+    public PassVolumeSummary passVolume(Authentication actor, HttpServletRequest request,
+            @RequestParam(required = false) String from, @RequestParam(required = false) String to,
+            @RequestParam(required = false) String refundBasis, @RequestParam(required = false) String purpose,
+            @RequestParam(required = false) String productId, @RequestParam(required = false) String categoryCode) {
+        return passes.volume(actor(actor), condition(request, from, to, refundBasis, purpose, productId, categoryCode));
+    }
+
+    @GetMapping("/passes/products")
+    public PassProductSalesPage passProducts(Authentication actor, HttpServletRequest request,
+            @RequestParam(required = false) String from, @RequestParam(required = false) String to,
+            @RequestParam(required = false) String refundBasis, @RequestParam(required = false) String purpose,
+            @RequestParam(required = false) String productId, @RequestParam(required = false) String categoryCode,
+            @RequestParam(defaultValue = "1") long page, @RequestParam(defaultValue = "20") int pageSize) {
+        var condition = condition(request, from, to, refundBasis, purpose, productId, categoryCode);
+        // The order and the rank are fixed by the contract; there is no sort or direction to choose.
+        var query = ListQuery.parse(page, pageSize, null, null, null, Set.of("netSoldQuantity"), "netSoldQuantity");
+        return passes.products(actor(actor), condition, query);
+    }
+
+    @GetMapping("/trend")
+    public SalesTrend trend(Authentication actor, HttpServletRequest request,
+            @RequestParam(required = false) String from, @RequestParam(required = false) String to,
+            @RequestParam(required = false) String refundBasis, @RequestParam(required = false) String granularity,
+            @RequestParam(required = false) String measure, @RequestParam(required = false) String purpose,
+            @RequestParam(required = false) String productId, @RequestParam(required = false) String categoryCode) {
+        AggregationGranularity bucket = granularity == null ? null : AggregationGranularity.fromWire(granularity);
+        if (granularity != null && bucket == null) throw ApiException.validation("granularity", "허용되지 않은 값입니다.");
+        TrendMeasure counted = measure == null ? null : TrendMeasure.fromWire(measure);
+        if (measure != null && counted == null) throw ApiException.validation("measure", "허용되지 않은 값입니다.");
+        var condition = condition(request, from, to, refundBasis, purpose, productId, categoryCode).withGranularity(bucket);
+        return trends.trend(actor(actor), condition, counted);
+    }
+
+    /** Every filter is parsed for every operation, so the service can refuse the ones the operation does not take (422). */
     private static AggregationCondition condition(HttpServletRequest request, String from, String to, String refundBasis,
             String purpose, String productId, String categoryCode) {
         RefundBasis basis = refundBasis == null ? null : RefundBasis.fromWire(refundBasis);

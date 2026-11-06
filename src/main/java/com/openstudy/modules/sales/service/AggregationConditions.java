@@ -19,6 +19,7 @@ import com.openstudy.modules.authorization.dto.BranchAction;
 import com.openstudy.modules.authorization.service.AuthorizationService;
 import com.openstudy.modules.sales.dto.request.AggregationCondition;
 import com.openstudy.modules.sales.dto.request.RefundBasis;
+import com.openstudy.modules.sales.dto.request.SalesPurpose;
 
 /**
  * The common condition rules of every sales aggregation (aggregation-api.md "공통 조건"), in one place for HTTP and M10:
@@ -78,9 +79,11 @@ public class AggregationConditions {
             authorization.require(state, new LinkedHashSet<>(requested), BranchAction.READ_SALES);
             applied = requested.stream().sorted().toList();
         }
+        // Pass metrics always count passes only: the applied condition says so (aggregation-api.md "공통 응답 메타정보").
+        var purpose = target == Target.PASSES ? SalesPurpose.PASS : condition.purpose();
         return new AggregationScope(state, applied, requested == null ? applied : requested, requested == null, from, to,
                 defaultPeriod, condition.refundBasis() == null ? RefundBasis.PROCESSED_DATE : condition.refundBasis(),
-                condition.purpose(), condition.productId(), condition.categoryCode(), condition.granularity(), asOf);
+                purpose, condition.productId(), condition.categoryCode(), condition.granularity(), asOf);
     }
 
     private static void filters(AggregationCondition condition, Target target, boolean trend) {
