@@ -322,6 +322,25 @@ abstract class SalesIntegrationSupport {
         assertThat(node.get("dataStatus").asString()).as("status %s", node).isEqualTo(status);
     }
 
+    /** paymentCount, soldQuantity, refundedQuantity, netSoldQuantity, issuedCount and dataStatus of a PassVolume node. */
+    static void volume(JsonNode node, long payments, long sold, long refunded, long net, long issued, String status) {
+        assertThat(node.get("paymentCount").asLong()).as("payments %s", node).isEqualTo(payments);
+        assertThat(node.get("soldQuantity").asLong()).as("sold %s", node).isEqualTo(sold);
+        assertThat(node.get("refundedQuantity").asLong()).as("refunded %s", node).isEqualTo(refunded);
+        assertThat(node.get("netSoldQuantity").asLong()).as("net %s", node).isEqualTo(net);
+        assertThat(node.get("issuedCount").asLong()).as("issued %s", node).isEqualTo(issued);
+        assertThat(node.get("dataStatus").asString()).as("status %s", node).isEqualTo(status);
+    }
+
+    /** Renames a product (and optionally moves it to another category) through the product service, as a manager would. */
+    void rename(long product, long version, String name, String categoryId) {
+        var body = new LinkedHashMap<String, Object>();
+        body.put("version", version);
+        body.put("name", token + " " + name);
+        if (categoryId != null) body.put("categoryId", categoryId);
+        products.update(owner, product, "all", body, "sales-fixture");
+    }
+
     static List<String> fields(JsonNode node) {
         var names = new ArrayList<String>();
         node.properties().forEach(entry -> names.add(entry.getKey()));

@@ -14,8 +14,9 @@ import java.util.List;
  *       {@code sort=requested}; a duplicate or an empty list is a 422.</li>
  *   <li>from/to: both or neither. Neither is this month in Asia/Seoul up to tomorrow 00:00 (M9-D01).</li>
  *   <li>refundBasis: processedDate (M9-D02).</li>
- *   <li>purpose: all three purposes (M9-D03). productId, categoryCode and granularity belong to #88's operations and are
- *       refused where the operation does not take them.</li>
+ *   <li>purpose: all three purposes (M9-D03). productId and categoryCode belong to the pass operations and granularity
+ *       to the trend (#88); each is refused where the operation does not take it.</li>
+ *   <li>granularity: day, on a trend.</li>
  * </ul>
  * Validation, defaults and authorization all happen behind the service boundary, so a caller that skips HTTP gets the
  * same 422 and 403 decisions.
@@ -31,5 +32,15 @@ public record AggregationCondition(List<Long> branchIds, Instant from, Instant t
     public static AggregationCondition revenue(List<Long> branchIds, Instant from, Instant to, RefundBasis refundBasis,
             SalesPurpose purpose) {
         return new AggregationCondition(branchIds, from, to, refundBasis, purpose, null, null, null);
+    }
+
+    /** Only the parameters of the pass operations (#88): never purpose or granularity. */
+    public static AggregationCondition passes(List<Long> branchIds, Instant from, Instant to, RefundBasis refundBasis,
+            Long productId, String categoryCode) {
+        return new AggregationCondition(branchIds, from, to, refundBasis, null, productId, categoryCode, null);
+    }
+
+    public AggregationCondition withGranularity(AggregationGranularity value) {
+        return new AggregationCondition(branchIds, from, to, refundBasis, purpose, productId, categoryCode, value);
     }
 }
