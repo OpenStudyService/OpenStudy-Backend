@@ -2,6 +2,10 @@ package com.openstudy.modules.ticket.entity;
 
 import java.time.Instant;
 
+import com.openstudy.domainlens.api.semantic.SemanticEntity;
+import com.openstudy.domainlens.api.semantic.SemanticField;
+import com.openstudy.domainlens.api.semantic.SemanticPolicy;
+import com.openstudy.domainlens.api.semantic.SemanticRelation;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -24,24 +28,45 @@ import org.hibernate.generator.EventType;
  */
 @Entity
 @Table(name = "passes")
+@SemanticEntity(
+        id = "pass",
+        name = "이용권",
+        description = "회원에게 발급된 기간권·시간권·충전권 원장",
+        aliases = {"기간권", "시간권", "보유 이용권", "만료 예정 이용권"},
+        domain = "passes"
+)
+@SemanticPolicy(
+        readPolicy = "openstudy.read.ai",
+        rowPolicy = "openstudy.branchScope",
+        fieldPolicy = "openstudy.field.public"
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Pass {
     private static final String INT_UNSIGNED = "int unsigned";
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @SemanticField(id = "pass.id", name = "이용권 ID", role = "ID", allowedOps = {"EQ", "NE", "IN"})
     private Long id;
     @Column(name = "customer_id", nullable = false, updatable = false)
+    @SemanticRelation(id = "pass.customer", targetEntity = "customer", targetField = "id", direction = "OUTGOING", joinUse = "APPROVED", meaning = "이용권 보유 회원")
     private long customerId;
     @Column(name = "product_id", nullable = false, updatable = false)
+    @SemanticField(id = "pass.product_id", name = "상품 ID", role = "FK", allowedOps = {"EQ", "NE", "IN"})
+    @SemanticRelation(id = "pass.product", targetEntity = "product", targetField = "id", direction = "OUTGOING", joinUse = "APPROVED", meaning = "발급된 이용권 상품")
     private long productId;
     @Column(name = "purchase_payment_id", nullable = false, updatable = false)
+    @SemanticField(id = "pass.payment_id", name = "결제 ID", role = "FK", allowedOps = {"EQ", "NE", "IN"})
+    @SemanticRelation(id = "pass.payment", targetEntity = "payment", targetField = "id", direction = "OUTGOING", joinUse = "APPROVED", meaning = "이용권 구매 원결제")
     private long purchasePaymentId;
     @Column(name = "purchase_branch_id", nullable = false, updatable = false)
+    @SemanticField(id = "pass.branch_id", name = "발급 지점 ID", role = "FK", allowedOps = {"EQ", "NE", "IN"})
+    @SemanticRelation(id = "pass.branch", targetEntity = "branch", targetField = "id", direction = "OUTGOING", joinUse = "APPROVED", meaning = "이용권 발급 지점")
     private long purchaseBranchId;
     @Column(name = "purchase_product_revision_id", nullable = false, updatable = false)
     private long purchaseProductRevisionId;
     @Enumerated(EnumType.STRING) @Column(nullable = false, updatable = false)
+    @SemanticField(id = "pass.pass_type", name = "이용권 구분", role = "CATEGORY", allowedValues = {"TIME", "PERIOD", "STORED_VALUE", "HOURS", "DAYS"}, aliases = {"시간권", "기간권"}, allowedOps = {"EQ", "NE", "IN"})
     private ProductKind kind;
     @Column(name = "snapshot_price_krw", nullable = false, updatable = false)
     private long snapshotPriceKrw;
@@ -62,14 +87,18 @@ public class Pass {
     @Column(name = "snapshot_valid_days", columnDefinition = INT_UNSIGNED, updatable = false)
     private Long snapshotValidDays;
     @Column(name = "remaining_minutes", columnDefinition = INT_UNSIGNED)
+    @SemanticField(id = "pass.remaining_minutes", name = "잔여 시간(분)", role = "MEASURE", unit = "minute", allowedOps = {"EQ", "GT", "GTE", "LT", "LTE", "BETWEEN"})
     private Long remainingMinutes;
     @Column(name = "remaining_credit_krw")
     private Long remainingCreditKrw;
     @Enumerated(EnumType.STRING) @Column(nullable = false)
+    @SemanticField(id = "pass.status", name = "이용권 상태", role = "STATUS", allowedValues = {"ACTIVE", "EXHAUSTED", "EXPIRED", "REFUNDED", "NOT_STARTED"}, allowedOps = {"EQ", "NE", "IN"})
     private PassStatus status;
     @Column(name = "started_at")
+    @SemanticField(id = "pass.issued_at", name = "발급 시각", role = "TIME", aliases = {"발행일", "시작일"}, allowedOps = {"EQ", "NE", "GT", "GTE", "LT", "LTE", "BETWEEN"})
     private Instant startedAt;
     @Column(name = "expires_at")
+    @SemanticField(id = "pass.expires_at", name = "만료 시각", role = "TIME", aliases = {"만료일", "유효기간 만료"}, allowedOps = {"EQ", "NE", "GT", "GTE", "LT", "LTE", "BETWEEN"})
     private Instant expiresAt;
     @Generated(event = EventType.INSERT) @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;

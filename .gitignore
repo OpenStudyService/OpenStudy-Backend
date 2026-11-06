@@ -113,3 +113,6 @@ Desktop.ini
 
 # Local graphify knowledge graph output
 /graphify-out/
+
+# Local ONNX embedding model (DomainLens). Not committed: place it under .models/koen-e5-tiny-q8 (see README).
+/.models/

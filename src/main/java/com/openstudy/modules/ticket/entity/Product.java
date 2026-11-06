@@ -5,6 +5,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+import com.openstudy.domainlens.api.semantic.SemanticEntity;
+import com.openstudy.domainlens.api.semantic.SemanticField;
+import com.openstudy.domainlens.api.semantic.SemanticPolicy;
+import com.openstudy.domainlens.api.semantic.SemanticRelation;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
@@ -30,21 +34,38 @@ import org.hibernate.generator.EventType;
  */
 @Entity
 @Table(name = "products")
+@SemanticEntity(
+        id = "product",
+        name = "이용권 상품",
+        description = "시간권·기간권·충전권 등 판매 중인 이용권 상품 원장",
+        aliases = {"이용권 종류", "판매 상품", "인기 이용권"},
+        domain = "passes"
+)
+@SemanticPolicy(
+        readPolicy = "openstudy.read.ai",
+        rowPolicy = "openstudy.globalScope",
+        fieldPolicy = "openstudy.field.public"
+)
 public class Product {
     private static final String INT_UNSIGNED = "int unsigned";
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @SemanticField(id = "product.id", name = "상품 ID", role = "ID", allowedOps = {"EQ", "NE", "IN"})
     private Long id;
     @Column(nullable = false, length = 40, updatable = false)
     private String code;
     @Column(nullable = false, length = 120)
+    @SemanticField(id = "product.name", name = "상품명", role = "LABEL", aliases = {"이용권명", "상품 이름"}, allowedOps = {"EQ", "NE", "IN"})
     private String name;
     @Enumerated(EnumType.STRING) @Column(nullable = false, updatable = false)
+    @SemanticField(id = "product.pass_type", name = "이용권 종류", role = "CATEGORY", allowedValues = {"TIME", "PERIOD", "STORED_VALUE", "HOURS", "DAYS"}, aliases = {"시간권", "기간권"}, allowedOps = {"EQ", "NE", "IN"})
     private ProductKind kind;
     @Column(name = "price_krw", nullable = false)
+    @SemanticField(id = "product.price_krw", name = "판매 가격", role = "AMOUNT", unit = "KRW", allowedOps = {"EQ", "GT", "GTE", "LT", "LTE", "BETWEEN", "SUM", "AVG", "MIN", "MAX"})
     private long priceKrw;
     // INT UNSIGNED reaches 4,294,967,295 (ProductInputs.U32_MAX), beyond Integer, so these stay Long.
     @Column(name = "included_minutes", columnDefinition = INT_UNSIGNED)
+    @SemanticField(id = "product.duration_value", name = "제공 기간/시간", role = "MEASURE", unit = "minute", allowedOps = {"EQ", "GT", "GTE", "LT", "LTE", "BETWEEN"})
     private Long includedMinutes;
     @Column(name = "period_days", columnDefinition = INT_UNSIGNED)
     private Long periodDays;
@@ -55,6 +76,7 @@ public class Product {
     @Column(name = "valid_days", columnDefinition = INT_UNSIGNED)
     private Long validDays;
     @Enumerated(EnumType.STRING) @Column(name = "sale_status", nullable = false)
+    @SemanticField(id = "product.status", name = "판매 상태", role = "STATUS", allowedValues = {"ON_SALE", "STOPPED"}, allowedOps = {"EQ", "NE", "IN"})
     private SaleStatus saleStatus;
     // Both timestamps are DB-maintained (DEFAULT / ON UPDATE CURRENT_TIMESTAMP(6)).
     @Generated(event = EventType.INSERT) @Column(name = "created_at", insertable = false, updatable = false)
@@ -65,6 +87,7 @@ public class Product {
     @Version
     private long version;
     @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "category_id", nullable = false)
+    @SemanticRelation(id = "product.category", direction = "OUTGOING", joinUse = "APPROVED", meaning = "이용권 상품 분류")
     private ProductCategory category;
     @Column(name = "created_by", updatable = false)
     private Long createdBy;

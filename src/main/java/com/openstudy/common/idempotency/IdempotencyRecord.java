@@ -2,6 +2,7 @@ package com.openstudy.common.idempotency;
 
 import java.time.Instant;
 
+import com.openstudy.domainlens.api.semantic.SemanticField;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -30,6 +31,7 @@ public class IdempotencyRecord {
     @Column(name = "idempotency_key", nullable = false, length = 128, updatable = false)
     private String idempotencyKey;
     @JdbcTypeCode(SqlTypes.BINARY) @Column(name = "request_hash", nullable = false, length = 32, updatable = false)
+    @SemanticField(id = "idempotency_record.request_hash", name = "멱등 요청 해시", exposed = false)
     private byte[] requestHash;
     @Enumerated(EnumType.STRING) @Column(nullable = false)
     private IdempotencyState state;

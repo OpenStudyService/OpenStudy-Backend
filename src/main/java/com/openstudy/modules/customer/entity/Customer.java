@@ -2,6 +2,9 @@ package com.openstudy.modules.customer.entity;
 
 import java.time.Instant;
 
+import com.openstudy.domainlens.api.semantic.SemanticEntity;
+import com.openstudy.domainlens.api.semantic.SemanticField;
+import com.openstudy.domainlens.api.semantic.SemanticPolicy;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -24,18 +27,34 @@ import org.hibernate.generator.EventType;
  */
 @Entity
 @Table(name = "customers")
+@SemanticEntity(
+        id = "customer",
+        name = "회원",
+        description = "OpenStudy 회원 원장 (개인식별정보 보호 대상)",
+        domain = "passes",
+        exposed = false
+)
+@SemanticPolicy(
+        readPolicy = "openstudy.read.pii.denied",
+        fieldPolicy = "openstudy.field.pii.denied"
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Customer {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @SemanticField(id = "customer.id", name = "회원 ID", role = "ID", exposed = false)
     private Long id;
     @Column(name = "member_no", nullable = false, length = 40, updatable = false)
+    @SemanticField(id = "customer.member_no", name = "회원 번호", role = "CODE", exposed = false)
     private String memberNo;
     @Column(nullable = false, length = 100)
+    @SemanticField(id = "customer.name", name = "회원 성명", exposed = false)
     private String name;
     @Column(length = 30)
+    @SemanticField(id = "customer.phone", name = "회원 전화번호", exposed = false)
     private String phone;
     @Column(length = 254)
+    @SemanticField(id = "customer.email", name = "회원 이메일", exposed = false)
     private String email;
     @Column(name = "registered_branch_id", updatable = false)
     private Long registeredBranchId;
@@ -44,6 +63,7 @@ public class Customer {
     @Column(name = "status_reason", length = 500)
     private String statusReason;
     @Column(length = 1000)
+    @SemanticField(id = "customer.memo", name = "회원 메모", exposed = false)
     private String memo;
     // Both timestamps are DB-maintained (DEFAULT / ON UPDATE CURRENT_TIMESTAMP(6)).
     @Generated(event = EventType.INSERT) @Column(name = "registered_at", insertable = false, updatable = false)

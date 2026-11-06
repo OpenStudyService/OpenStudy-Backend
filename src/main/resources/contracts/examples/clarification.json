@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "1.0",
+  "status": "NEEDS_CLARIFICATION",
+  "clarification": "기간을 선택하세요.",
+  "clarificationOptions": [
+    {
+      "id": "current",
+      "label": "현재 기간"
+    },
+    {
+      "id": "previous",
+      "label": "이전 기간"
+    }
+  ],
+  "unsupportedReason": null,
+  "queries": [],
+  "view": null,
+  "contextRefs": [
+    "demo.item"
+  ]
+}

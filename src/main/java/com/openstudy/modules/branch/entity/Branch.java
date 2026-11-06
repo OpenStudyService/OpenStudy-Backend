@@ -4,6 +4,9 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.openstudy.domainlens.api.semantic.SemanticEntity;
+import com.openstudy.domainlens.api.semantic.SemanticField;
+import com.openstudy.domainlens.api.semantic.SemanticPolicy;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -22,18 +25,35 @@ import org.hibernate.generator.EventType;
 /** Flyway owns the schema; this mapping only mirrors it and is checked by ddl-auto=validate. */
 @Entity
 @Table(name = "branches")
+@SemanticEntity(
+        id = "branch",
+        name = "지점",
+        description = "OpenStudy 운영 지점 원장",
+        aliases = {"매장", "센터", "강남점", "성수점", "신규점"},
+        domain = "branch"
+)
+@SemanticPolicy(
+        readPolicy = "openstudy.read.ai",
+        rowPolicy = "openstudy.branchScope",
+        fieldPolicy = "openstudy.field.public"
+)
 public class Branch {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @SemanticField(id = "branch.id", name = "지점 ID", role = "ID", allowedOps = {"EQ", "NE", "IN"})
     private Long id;
     @Column(nullable = false, length = 32)
+    @SemanticField(id = "branch.code", name = "지점 코드", role = "CODE", aliases = {"OSDEMO-GN", "OSDEMO-SS", "OSDEMO-NW"}, allowedOps = {"EQ", "NE", "IN"})
     private String code;
     @Column(nullable = false, length = 120)
+    @SemanticField(id = "branch.name", name = "지점명", role = "LABEL", aliases = {"지점 이름", "매장명", "강남점", "성수점", "신규점"}, allowedOps = {"EQ", "NE", "IN"})
     private String name;
     @Column(nullable = false, length = 300)
     private String address;
     @Column(length = 30)
+    @SemanticField(id = "branch.phone", name = "지점 전화번호", exposed = false)
     private String phone;
     @Enumerated(EnumType.STRING) @Column(nullable = false)
+    @SemanticField(id = "branch.status", name = "지점 운영 상태", role = "STATUS", allowedValues = {"ACTIVE", "INACTIVE"}, allowedOps = {"EQ", "NE", "IN"})
     private BranchStatus status;
     // Both timestamps are DB-maintained (DEFAULT / ON UPDATE CURRENT_TIMESTAMP(6)).
     @Generated(event = EventType.INSERT) @Column(name = "created_at", insertable = false, updatable = false)
