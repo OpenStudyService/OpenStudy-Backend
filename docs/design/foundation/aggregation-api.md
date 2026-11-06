@@ -372,6 +372,8 @@ M5의 `SeatCounts.occupancyRate`는 좌석이 없으면 null인 기존 표현이
 
 `GET /home/summary?scope=&mine=&assigneeId=`
 
+2026-11-06: **메시지 카드를 뺀다**([ADR-M10-002](../../db/ADR-M10-002.md) M10-D11, SRS v1.14 FR-DASH-05). 팀 채팅이 범위에서 빠져 그 자리는 Frontend의 데이터 없는 AI 채팅 바로가기로 바뀐다. 아래 표와 설명의 메시지 행, `messages`·`HomeMessageCard`·`HomeChannelItem`·`link.screen=channel`은 당시 계약으로 남기고, `openapi.json`과 계약 테스트에서 지우는 일은 #90 구현에서 함께 한다.
+
 홈은 원본 기능의 같은 조건 집계를 묶는다. 집계 로직을 다시 만들지 않고 M5·M7·M8의 서비스 진입점을 호출한다(#90 범위 제외 항목). 매출 정보는 담지 않으므로 `sales:read`가 필요 없다.
 
 ### 범위와 권한
