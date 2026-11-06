@@ -5,6 +5,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+import com.openstudy.domainlens.api.semantic.SemanticField;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
@@ -37,6 +38,7 @@ public class EmployeeInvitation {
     @Column(name = "branch_id", nullable = false)
     private Long branchId;
     @Column(name = "invitee_email", nullable = false, length = 254)
+    @SemanticField(id = "employee_invitation.invitee_email", name = "초대 이메일", exposed = false)
     private String inviteeEmail;
     @Column(name = "invitee_name", nullable = false, length = 100)
     private String inviteeName;
@@ -47,6 +49,7 @@ public class EmployeeInvitation {
     @Enumerated(EnumType.STRING) @Column(nullable = false)
     private InvitationStatus status;
     @JdbcTypeCode(SqlTypes.BINARY) @Column(name = "token_hash", length = 32)
+    @SemanticField(id = "employee_invitation.token_hash", name = "초대 토큰 해시", exposed = false)
     private byte[] tokenHash;
     @Column(nullable = false)
     private int revision;

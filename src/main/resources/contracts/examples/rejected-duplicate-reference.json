@@ -1,0 +1,69 @@
+{
+  "schemaVersion": "1.0",
+  "status": "READY",
+  "clarification": null,
+  "clarificationOptions": [],
+  "unsupportedReason": null,
+  "queries": [
+    {
+      "id": "items",
+      "source": "demo.item",
+      "grain": "item",
+      "mode": "DETAIL",
+      "dimensions": [
+        {
+          "field": "demo.item.id",
+          "alias": "id"
+        }
+      ],
+      "metrics": [],
+      "filter": null,
+      "orderBy": [
+        {
+          "alias": "id",
+          "direction": "ASC"
+        }
+      ],
+      "pagination": {
+        "page": 0,
+        "size": 10
+      },
+      "limit": 50,
+      "analysisId": null
+    }
+  ],
+  "view": {
+    "catalogVersion": "1",
+    "components": [
+      {
+        "id": "table",
+        "componentRef": {
+          "id": "DataTable",
+          "version": "1"
+        },
+        "datasetId": "items",
+        "bindings": {
+          "columns": [
+            "id"
+          ]
+        },
+        "options": {},
+        "events": []
+      }
+    ],
+    "layout": {
+      "kind": "stack",
+      "children": [
+        {
+          "componentId": "table"
+        },
+        {
+          "componentId": "table"
+        }
+      ]
+    }
+  },
+  "contextRefs": [
+    "demo.item"
+  ]
+}

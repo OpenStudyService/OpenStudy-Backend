@@ -2,6 +2,9 @@ package com.openstudy.modules.employee.entity;
 
 import java.time.Instant;
 
+import com.openstudy.domainlens.api.semantic.SemanticEntity;
+import com.openstudy.domainlens.api.semantic.SemanticField;
+import com.openstudy.domainlens.api.semantic.SemanticPolicy;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -20,22 +23,42 @@ import org.hibernate.generator.EventType;
  */
 @Entity
 @Table(name = "employees")
+@SemanticEntity(
+        id = "employee",
+        name = "직원",
+        description = "OpenStudy 운영 직원 계정",
+        aliases = {"근무자", "담당자", "매니저"},
+        domain = "attendance"
+)
+@SemanticPolicy(
+        readPolicy = "openstudy.read.ai",
+        rowPolicy = "openstudy.globalScope",
+        fieldPolicy = "openstudy.field.employee"
+)
 public class Employee {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @SemanticField(id = "employee.id", name = "직원 ID", role = "ID", allowedOps = {"EQ", "NE", "IN"})
     private Long id;
     @Column(nullable = false, length = 254, updatable = false)
+    @SemanticField(id = "employee.email", name = "직원 이메일", exposed = false)
+    @SemanticPolicy(fieldPolicy = "openstudy.field.pii.denied")
     private String email;
     @Column(name = "password_hash", nullable = false)
+    @SemanticField(id = "employee.password_hash", name = "비밀번호 해시", exposed = false)
+    @SemanticPolicy(fieldPolicy = "openstudy.field.pii.denied")
     private String passwordHash;
     @Column(nullable = false, length = 100)
+    @SemanticField(id = "employee.name", name = "직원명", role = "LABEL", aliases = {"직원 이름", "근무자명"}, allowedOps = {"EQ", "NE", "IN"})
     private String name;
     @Column(nullable = false, length = 100)
+    @SemanticField(id = "employee.nickname", name = "직원 닉네임", role = "LABEL", allowedOps = {"EQ", "NE", "IN"})
     private String nickname;
     @Column(name = "avatar_url", length = 500)
     private String avatarUrl;
     @Enumerated(EnumType.STRING) @Column(name = "global_role", nullable = false)
     private GlobalRole globalRole;
     @Enumerated(EnumType.STRING) @Column(nullable = false)
+    @SemanticField(id = "employee.status", name = "직원 상태", role = "STATUS", allowedValues = {"PENDING", "ACTIVE", "SUSPENDED", "LEFT"}, allowedOps = {"EQ", "NE", "IN"})
     private EmployeeStatus status;
     @Enumerated(EnumType.STRING) @Column(nullable = false)
     private Theme theme;

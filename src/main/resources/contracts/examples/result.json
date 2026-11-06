@@ -1,0 +1,64 @@
+{
+  "requestId": "demo-request",
+  "executionId": "demo-execution",
+  "status": "COMPLETED",
+  "datasets": [
+    {
+      "id": "items",
+      "columns": [
+        {
+          "alias": "id",
+          "type": "INTEGER",
+          "unit": null,
+          "precision": null
+        }
+      ],
+      "rows": [
+        {
+          "id": 1
+        },
+        {
+          "id": null
+        }
+      ],
+      "totalElements": 2,
+      "page": 0,
+      "size": 10,
+      "snapshotAt": "2020-01-01T00:00:00Z",
+      "asOf": "2020-01-01T00:00:00Z"
+    }
+  ],
+  "view": {
+    "catalogVersion": "1",
+    "components": [
+      {
+        "id": "table",
+        "componentRef": {
+          "id": "DataTable",
+          "version": "1"
+        },
+        "datasetId": "items",
+        "bindings": {
+          "columns": [
+            "id"
+          ]
+        },
+        "options": {},
+        "events": []
+      }
+    ],
+    "layout": {
+      "kind": "stack",
+      "children": [
+        {
+          "componentId": "table"
+        }
+      ]
+    }
+  },
+  "warnings": [],
+  "errorCode": null,
+  "asOf": "2020-01-01T00:00:00Z",
+  "snapshotVersion": "demo-snapshot",
+  "policyVersion": "demo-policy"
+}

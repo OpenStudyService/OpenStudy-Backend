@@ -114,6 +114,14 @@ Spring Boot가 실행 작업 디렉터리의 `.env`를 Java properties 형식으
 
 공통 설정과 `.env.example`은 Git에 포함하고, 실제 비밀값을 담은 `.env`는 Git과 배포 이미지에 포함하지 않습니다. `.env`는 이미 Git에서 제외되어 있습니다. 개인별 설정은 Git에서 제외하는 `application-local.yaml`, `application-*-local.yaml` 등에도 둘 수 있습니다. Gradle 캐시·빌드 결과·IDE 설정·로그·업로드 파일은 커밋하지 않습니다.
 
+### AI 채팅(DomainLens) 로컬 실행
+
+AI 채팅의 자연어 조회는 로컬 ONNX 임베딩 모델 `koen-e5-tiny-q8`을 씁니다. 모델 파일(약 40MB)은 Git에 포함하지 않으므로 `openstudy-backend/.models/koen-e5-tiny-q8/`에 `manifest.json`, `model_quint8_x86_64.onnx`, `tokenizer.json`을 직접 넣습니다. 모델이 없어도 서버는 정상 기동하고, 경고 로그를 남긴 뒤 AI 검색만 비활성화됩니다.
+
+- 모델 응답 기본값은 `playback`(저장된 응답 재생)입니다. 실제 Qwen을 호출하려면 Git에서 제외되는 `.env.qwen.local`에 `OPENSTUDY_AI_MODEL_MODE=live`, `DOMAINLENS_MODEL_MODE=live`, `QWEN_API_KEY`를 넣습니다. 키가 비어 있으면 `live`로 설정해도 `playback`으로 동작합니다.
+- `/api/ai/**`도 다른 API처럼 로그인 세션과 CSRF 토큰이 필요하며, 요청 본문의 `actor` 값은 무시하고 로그인한 직원으로만 조회합니다.
+- `com.openstudy.modules.ai`의 통합 테스트 4종은 모델, 시드된 docker-compose MySQL(127.0.0.1:3307), DomainLens 기대값 파일이 모두 있을 때만 `OPENSTUDY_AI_LOCAL_TESTS=true`와 `OPENSTUDY_AI_TEST_DB_PASSWORD`를 지정해 실행합니다. 그렇지 않으면 건너뜁니다.
+
 ### 실행 이미지와 운영 설정
 
 배포용 컨테이너 이미지(`Dockerfile`)와 `prod` 프로필의 빌드·환경 변수·프록시·DB 계약은 [운영 계약](docs/deployment/README.md)을 따릅니다. 로컬 TLS 프록시 검증 구성은 `deploy/local-https/`에 있습니다.

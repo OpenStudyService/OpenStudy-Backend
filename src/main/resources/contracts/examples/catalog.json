@@ -1,0 +1,51 @@
+{
+  "catalogVersion": "1",
+  "components": [
+    {
+      "id": "DataTable",
+      "version": "1",
+      "description": "합성 자료 표 / Table",
+      "dataSlots": {
+        "columns": {
+          "types": [
+            "INTEGER"
+          ],
+          "required": true,
+          "multiple": true,
+          "minRows": 0,
+          "maxRows": 100
+        }
+      },
+      "optionsSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "density": {
+            "type": "string",
+            "enum": [
+              "comfortable",
+              "compact"
+            ]
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "events": [],
+      "composition": {
+        "leaf": true,
+        "parents": [
+          "stack",
+          "grid",
+          "split"
+        ]
+      },
+      "limits": {
+        "maxRows": 100
+      },
+      "accessibility": "열 머리글과 표 설명을 제공한다."
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "modelId": "exp-models/dragonkue-KoEn-E5-Tiny-ONNX",
+  "revision": "5cf599a8cd6577f2f12a026130ad50132e472cfd",
+  "dimensions": 384,
+  "maxTokens": 512,
+  "sha256": {
+    "model_quint8_x86_64.onnx": "ef00d6227284038a3338a92273ca0e89971f93f966ab5eabfd6a8fc0bea9459e",
+    "tokenizer.json": "a6dd38d692ac1caa6d5dbc195d92f1f978b5c74ec60e02ed15fdf04404742fe3"
+  },
+  "queryPrefix": "query: ",
+  "documentPrefix": "passage: "
+}

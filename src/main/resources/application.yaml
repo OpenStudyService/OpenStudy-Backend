@@ -1,6 +1,9 @@
 spring:
   config:
-    import: "optional:file:./.env[.properties]"
+    import:
+      - "optional:file:./.env[.properties]"
+      - "optional:file:./.env.qwen.local[.properties]"
+      - "optional:file:../.env.qwen.local[.properties]"
   application:
     name: openstudy-backend
   jackson:
@@ -50,3 +53,20 @@ openstudy:
         max-attempts: 30
         window-minutes: 15
       capacity: 10000
+  ai:
+    fixed-as-of: ${OPENSTUDY_AI_FIXED_AS_OF:2026-11-02T05:00:00Z}
+    # playback replays recorded model answers; live calls Qwen and needs QWEN_API_KEY (e.g. in .env.qwen.local).
+    model-mode: ${OPENSTUDY_AI_MODEL_MODE:playback}
+    rate-limit:
+      max-concurrent: ${OPENSTUDY_AI_RATE_LIMIT_MAX_CONCURRENT:10}
+      max-per-minute: ${OPENSTUDY_AI_RATE_LIMIT_MAX_PER_MINUTE:120}
+domainlens:
+  embedding:
+    provider: ${DOMAINLENS_EMBEDDING_PROVIDER:onnx}
+    directory: ${DOMAINLENS_EMBEDDING_DIRECTORY:.models/koen-e5-tiny-q8}
+  model:
+    mode: ${DOMAINLENS_MODEL_MODE:playback}
+    base-url: ${QWEN_BASE_URL:https://token-plan.maas.qwencloudapi.com/compatible-mode/v1}
+    api-key: ${QWEN_API_KEY:}
+    name: ${QWEN_MODEL:qwen3.8-flash}
+    enable-thinking: false
