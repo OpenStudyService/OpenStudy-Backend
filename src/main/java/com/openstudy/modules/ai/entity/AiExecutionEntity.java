@@ -60,11 +60,18 @@ public class AiExecutionEntity {
     @Column(name = "view_spec_json", columnDefinition = "text")
     private String viewSpecJson;
 
-    @Column(name = "envelope_json", columnDefinition = "mediumtext")
-    private String envelopeJson;
 
-    @Column(name = "legacy_execution_json", columnDefinition = "mediumtext")
-    private String legacyExecutionJson;
+
+    /**
+     * Conditions of the question that the analysis ID alone does not carry, kept so a reopened question keeps its
+     * meaning (M10-D12 keeps the validated spec, not the result): the refund basis it asked for, or null for the default
+     * processed-date basis, and whether it asked for zero-filled days.
+     */
+    @Column(name = "refund_basis", length = 40)
+    private String refundBasis;
+
+    @Column(name = "zero_fill_requested", nullable = false)
+    private boolean zeroFillRequested;
 
     @Column(name = "as_of_utc", nullable = false)
     private Instant asOfUtc;
@@ -94,12 +101,12 @@ public class AiExecutionEntity {
             String errorCode,
             String querySpecJson,
             String viewSpecJson,
-            String envelopeJson,
-            String legacyExecutionJson,
             Instant asOfUtc,
             String snapshotVersion,
             String policyVersion,
-            Instant createdAt
+            Instant createdAt,
+            String refundBasis,
+            boolean zeroFillRequested
     ) {
         this.id = id;
         this.requestRef = requestRef;
@@ -116,12 +123,12 @@ public class AiExecutionEntity {
         this.errorCode = errorCode;
         this.querySpecJson = querySpecJson;
         this.viewSpecJson = viewSpecJson;
-        this.envelopeJson = envelopeJson;
-        this.legacyExecutionJson = legacyExecutionJson;
         this.asOfUtc = asOfUtc;
         this.snapshotVersion = snapshotVersion;
         this.policyVersion = policyVersion;
         this.createdAt = createdAt;
+        this.refundBasis = refundBasis;
+        this.zeroFillRequested = zeroFillRequested;
     }
 
     public void markCanceled() {

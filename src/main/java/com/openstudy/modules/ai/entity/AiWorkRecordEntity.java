@@ -45,8 +45,6 @@ public class AiWorkRecordEntity {
     @Column(nullable = false)
     private boolean archived;
 
-    @Column(name = "snapshot_json", columnDefinition = "mediumtext", nullable = false)
-    private String snapshotJson;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -64,7 +62,6 @@ public class AiWorkRecordEntity {
             String scopeKey,
             String branchIdsCsv,
             boolean pinned,
-            String snapshotJson,
             Instant now
     ) {
         this.id = id;
@@ -77,7 +74,6 @@ public class AiWorkRecordEntity {
         this.branchIdsCsv = branchIdsCsv;
         this.pinned = pinned;
         this.archived = false;
-        this.snapshotJson = snapshotJson;
         this.createdAt = now;
         this.updatedAt = now;
     }
