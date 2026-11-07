@@ -187,8 +187,8 @@ public class AiWorkspaceController {
     }
 
     @PostMapping({"/api/requests/{requestId}/cancel", "/api/ai/requests/{requestId}/cancel"})
-    public Map<String, Object> cancelRequest(@PathVariable String requestId) {
-        return workspaceService.cancelRequest(requestId);
+    public Map<String, Object> cancelRequest(Authentication auth, @PathVariable String requestId) {
+        return workspaceService.cancelRequest(auth, requestId);
     }
 
     @GetMapping({"/api/executions/{executionId}", "/api/ai/executions/{executionId}"})
