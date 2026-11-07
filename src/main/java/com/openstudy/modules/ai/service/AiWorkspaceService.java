@@ -276,7 +276,8 @@ public class AiWorkspaceService {
         long started = System.nanoTime();
         OpenStudyAnalyses.PocExecutionResult result;
         try {
-            result = executeWithOverrides(saved.getAnalysisId(), decision.effectiveBranches(), null, false);
+            result = executeWithOverrides(saved.getAnalysisId(), decision.effectiveBranches(),
+                    saved.getRefundBasis(), saved.isZeroFillRequested());
         } catch (AccessDeniedException | IllegalArgumentException | IllegalStateException e) {
             return reopenedWithoutData(requestId, conversationId, "REFUSED", 422, "REOPEN_NOT_EXECUTABLE",
                     "REOPEN_NOT_EXECUTABLE", "저장된 조회를 지금 다시 실행할 수 없어요. 다시 질문해 주세요.", saved);
@@ -383,8 +384,9 @@ public class AiWorkspaceService {
                     rawQuestion == null ? "" : rawQuestion,
                     null, plan.analysisId(), plan.intentDomain(),
                     plan.outcome(), plan.resultCategory(), plan.errorCode(),
-                    null, null, null, null,
-                    totalMs, stages, plan.retrievedCandidates(), securityGate, now
+                    null, null,
+                    totalMs, stages, plan.retrievedCandidates(), securityGate, now,
+                    plan.refundBasisOverride(), plan.zeroFillOverrideRequested()
             );
 
             return new AiQueryResponse(
@@ -464,8 +466,9 @@ public class AiWorkspaceService {
                 rawQuestion,
                 pocResult.pocCode(), pocResult.analysisId(), plan.intentDomain(),
                 "READY", plan.resultCategory(), null,
-                querySpec, pocResult.envelope().view(), pocResult.envelope(), legacyExecution,
-                totalMs, stages, plan.retrievedCandidates(), securityGate, now
+                querySpec, pocResult.envelope().view(),
+                totalMs, stages, plan.retrievedCandidates(), securityGate, now,
+                plan.refundBasisOverride(), plan.zeroFillOverrideRequested()
         );
 
         messageRepository.save(new AiMessageEntity(convId, "USER", rawQuestion, executionId, now));
@@ -507,23 +510,21 @@ public class AiWorkspaceService {
         return Map.of("ok", true, "requestId", requestId, "status", "CANCELED");
     }
 
+    /**
+     * An execution looked up again. No result is stored (ADR-M10-002 M10-D12): the saved analysis is re-checked against
+     * the current permissions and run again over the same branches under a new as-of time.
+     */
     @Transactional(readOnly = true)
-    @SuppressWarnings("unchecked")
     public Map<String, Object> getExecution(Authentication auth, String executionId) {
         var actor = userResolver.resolve(auth, null);
         AiExecutionEntity entity = executionRepository.findById(executionId)
                 .or(() -> executionRepository.findByRequestRef(executionId))
                 .orElseThrow(() -> ApiException.unprocessable("NOT_FOUND", "요청한 실행 결과를 찾을 수 없습니다."));
 
-        verifyBranchReaccess(actor, parseBranchCsv(entity.getBranchIdsCsv()), "sales".equals(entity.getIntentDomain()));
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        if (entity.getLegacyExecutionJson() != null) {
-            try {
-                result.putAll(json.readValue(entity.getLegacyExecutionJson(), Map.class));
-            } catch (Exception ignored) {
-            }
-        }
+        Set<Long> branches = parseBranchCsv(entity.getBranchIdsCsv());
+        var rerun = rerunSaved(actor, entity);
+        Map<String, Object> result = new LinkedHashMap<>(
+                buildLegacyExecutionContract(entity.getId(), rerun, branches, entity.getRefundBasis()));
         result.put("id", entity.getId());
         result.put("requestId", entity.getRequestRef());
         result.put("conversationId", entity.getConversationId());
@@ -532,12 +533,7 @@ public class AiWorkspaceService {
         result.put("analysisId", entity.getAnalysisId());
         result.put("intentDomain", entity.getIntentDomain());
         result.put("resultCategory", entity.getResultCategory());
-        if (entity.getEnvelopeJson() != null) {
-            try {
-                result.put("envelope", json.readValue(entity.getEnvelopeJson(), Object.class));
-            } catch (Exception ignored) {
-            }
-        }
+        result.put("envelope", rerun.envelope());
         if (entity.getQuerySpecJson() != null) {
             try {
                 result.put("querySpec", json.readValue(entity.getQuerySpecJson(), Object.class));
@@ -545,6 +541,22 @@ public class AiWorkspaceService {
             }
         }
         return result;
+    }
+
+    /**
+     * Runs a saved, executed question again over its own branches after re-checking the current permissions for them.
+     * Questions that never ran (clarification, refusal) have nothing to run.
+     */
+    private OpenStudyAnalyses.PocExecutionResult rerunSaved(
+            OpenStudyUserContextResolver.ResolvedActor actor,
+            AiExecutionEntity saved
+    ) {
+        if (!"READY".equals(saved.getStatus()) || saved.getAnalysisId() == null) {
+            throw ApiException.unprocessable("NOT_EXECUTABLE", "실행된 조회가 아니어서 다시 실행할 수 없습니다.");
+        }
+        Set<Long> branches = parseBranchCsv(saved.getBranchIdsCsv());
+        verifyBranchReaccess(actor, branches, "sales".equals(saved.getIntentDomain()));
+        return executeWithOverrides(saved.getAnalysisId(), branches, saved.getRefundBasis(), saved.isZeroFillRequested());
     }
 
     // =========================================================================
@@ -568,7 +580,6 @@ public class AiWorkspaceService {
         String recordId = "rec-" + UUID.randomUUID().toString().substring(0, 12);
         Instant now = clock.asOf();
         String effectiveTitle = (title != null && !title.isBlank()) ? title.trim() : summarizeTitle(exec.getQuestion());
-        String snapshot = exec.getEnvelopeJson() != null ? exec.getEnvelopeJson() : "{}";
 
         var record = new AiWorkRecordEntity(
                 recordId,
@@ -580,11 +591,10 @@ public class AiWorkspaceService {
                 exec.getScopeKey(),
                 exec.getBranchIdsCsv(),
                 pinned,
-                snapshot,
                 now
         );
         workRecordRepository.save(record);
-        return toWorkRecordDto(record, false);
+        return toWorkRecordDto(record);
     }
 
     @Transactional(readOnly = true)
@@ -593,7 +603,7 @@ public class AiWorkspaceService {
         List<AiWorkRecordEntity> entities = actor.owner()
                 ? workRecordRepository.findAllByOrderByPinnedDescCreatedAtDesc()
                 : workRecordRepository.findByEmployeeIdOrderByPinnedDescCreatedAtDesc(actor.employeeId());
-        return entities.stream().map(r -> toWorkRecordDto(r, false)).toList();
+        return entities.stream().map(r -> toWorkRecordDto(r)).toList();
     }
 
     @Transactional(readOnly = true)
@@ -604,7 +614,7 @@ public class AiWorkspaceService {
 
         // Re-verify permissions on reopen (ADR-M10-001 D06)
         verifyBranchReaccess(actor, parseBranchCsv(record.getBranchIdsCsv()), "sales".equals(record.getDomain()));
-        return toWorkRecordDto(record, true);
+        return withRerunResult(actor, record);
     }
 
     // =========================================================================
@@ -628,8 +638,7 @@ public class AiWorkspaceService {
 
         verifyBranchReaccess(actor, parseBranchCsv(exec.getBranchIdsCsv()), "sales".equals(exec.getIntentDomain()));
 
-        ResultEnvelope envelope = deserializeEnvelope(exec.getEnvelopeJson());
-        TypedDataset ds = selectDataset(envelope, datasetId);
+        TypedDataset ds = selectDataset(rerunSaved(actor, exec).envelope(), datasetId);
         String approvalId = "apr-" + UUID.randomUUID().toString().substring(0, 12);
         Instant now = clock.asOf();
 
@@ -694,8 +703,8 @@ public class AiWorkspaceService {
 
         AiExecutionEntity exec = executionRepository.findById(approval.getExecutionId())
                 .orElseThrow(() -> ApiException.unprocessable("NOT_FOUND", "원본 실행 스냅샷을 찾을 수 없습니다."));
-        ResultEnvelope envelope = deserializeEnvelope(exec.getEnvelopeJson());
-        TypedDataset dataset = selectDataset(envelope, approval.getDatasetId());
+        // The CSV holds the data as of the download, re-checked against the current permissions (M10-D12).
+        TypedDataset dataset = selectDataset(rerunSaved(actor, exec).envelope(), approval.getDatasetId());
 
         // Enforce PII column stripping before CSV generation
         List<TypedDataset.Column> safeColumns = dataset.columns().stream()
@@ -966,13 +975,13 @@ public class AiWorkspaceService {
             String errorCode,
             Object querySpec,
             Object viewSpec,
-            Object envelope,
-            Object legacyExecution,
             long totalDurationMs,
             List<StageSpan> stages,
             List<OpenStudyPlaybackGateway.RetrievalCandidate> candidates,
             Map<String, Object> securityGate,
-            Instant now
+            Instant now,
+            String refundBasisOverride,
+            boolean zeroFillRequested
     ) {
         String branchCsv = OpenStudyUserContextResolver.toCsv(branches);
         var execEntity = new AiExecutionEntity(
@@ -991,12 +1000,12 @@ public class AiWorkspaceService {
                 errorCode,
                 toJson(querySpec),
                 toJson(viewSpec),
-                toJson(envelope),
-                toJson(legacyExecution),
                 now,
                 OpenStudyCatalogConfiguration.VERSION,
                 OpenStudyPolicies.POLICY_VERSION,
-                now
+                now,
+                refundBasisOverride,
+                zeroFillRequested
         );
         executionRepository.save(execEntity);
 
@@ -1052,7 +1061,7 @@ public class AiWorkspaceService {
         return Set.copyOf(set);
     }
 
-    private Map<String, Object> toWorkRecordDto(AiWorkRecordEntity r, boolean includeSnapshot) {
+    private Map<String, Object> toWorkRecordDto(AiWorkRecordEntity r) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", r.getId());
         m.put("executionId", r.getExecutionId());
@@ -1065,11 +1074,29 @@ public class AiWorkspaceService {
         m.put("pinned", r.isPinned());
         m.put("archived", r.isArchived());
         m.put("createdAt", r.getCreatedAt().toString());
-        if (includeSnapshot && r.getSnapshotJson() != null) {
-            try {
-                m.put("snapshot", json.readValue(r.getSnapshotJson(), Object.class));
-            } catch (Exception ignored) {
-            }
+        return m;
+    }
+
+    /**
+     * A work record opened: its result is run again from the saved execution, never read from a stored copy
+     * (M10-D12). When the execution is gone (its conversation was deleted) or cannot run any more, the record says so.
+     */
+    private Map<String, Object> withRerunResult(
+            OpenStudyUserContextResolver.ResolvedActor actor,
+            AiWorkRecordEntity record
+    ) {
+        Map<String, Object> m = toWorkRecordDto(record);
+        var saved = executionRepository.findById(record.getExecutionId());
+        if (saved.isEmpty()) {
+            m.put("snapshot", null);
+            m.put("snapshotUnavailableReason", "원본 질문이 삭제되어 결과를 다시 조회할 수 없습니다.");
+            return m;
+        }
+        try {
+            m.put("snapshot", rerunSaved(actor, saved.get()).envelope());
+        } catch (ApiException e) {
+            m.put("snapshot", null);
+            m.put("snapshotUnavailableReason", e.getMessage());
         }
         return m;
     }
@@ -1115,16 +1142,6 @@ public class AiWorkspaceService {
         return m;
     }
 
-    private ResultEnvelope deserializeEnvelope(String rawJson) {
-        if (rawJson == null || rawJson.isBlank()) {
-            throw ApiException.unprocessable("INVALID_STATE", "저장된 결과 데이터셋이 없습니다.");
-        }
-        try {
-            return json.readValue(rawJson, ResultEnvelope.class);
-        } catch (Exception e) {
-            throw ApiException.unprocessable("INVALID_STATE", "저장된 결과 데이터셋을 읽을 수 없습니다.");
-        }
-    }
 
     private static TypedDataset selectDataset(ResultEnvelope envelope, String datasetId) {
         if (envelope.datasets().isEmpty()) {
