@@ -6,7 +6,7 @@ Backend [#86](https://github.com/OpenStudyService/OpenStudy-Backend/issues/86)�
 
 정책 근거는 [ADR-M9-001](../../db/ADR-M9-001.md)(M9-D01~D09)이다. 공통 요청·응답·오류·목록 규칙은 [API 계약](api.md)을 따른다. 원거래 의미는 [M4 결제·환불 계약](customer-sales-api.md)과 [M6 공간 운영 계약](space-operations-api.md)을, 홈 카드의 원본은 [M5 좌석](seat-usage-api.md)·[M7 협업](collaboration-api.md)·[M8 근무](workforce-api.md) 계약을 따른다. 자연어 질의·동적 시각화는 [ADR-M10-001](../../db/ADR-M10-001.md)의 M10 범위다.
 
-2026-11-05: 이 문서의 operation은 모두 설계 계약(`design-target`)으로 정했다. 2026-11-05: 매출·지점 비교·최소 원장 operation 3개(`GET /sales/revenue`, `GET /sales/revenue/branches`, `GET /sales/ledger`)는 #87에서 구현됐다(`implemented`). 2026-11-06: 이용권 판매량·상품 순위·추세 operation 3개(`GET /sales/passes/volume`, `GET /sales/passes/products`, `GET /sales/trend`)는 #88에서 구현됐다(`implemented`). 나머지 홈 요약(#90) operation은 설계 계약이며 아직 서버에 구현되어 있지 않다. 스키마는 바꾸지 않는다. 원거래(`payments`, `refunds`, `passes`, `product_revisions`)와 M5·M7·M8 원본 테이블에서 직접 계산한다. 인덱스가 부족하면 #89가 실행 계획을 확인한 뒤 새 버전 마이그레이션으로 인덱스만 추가한다.
+2026-11-05: 이 문서의 operation은 모두 설계 계약(`design-target`)으로 정했다. 2026-11-05: 매출·지점 비교·최소 원장 operation 3개(`GET /sales/revenue`, `GET /sales/revenue/branches`, `GET /sales/ledger`)는 #87에서 구현됐다(`implemented`). 2026-11-06: 이용권 판매량·상품 순위·추세 operation 3개(`GET /sales/passes/volume`, `GET /sales/passes/products`, `GET /sales/trend`)는 #88에서 구현됐다(`implemented`). 2026-11-07: 운영 홈 요약(`GET /home/summary`)은 #90에서 구현됐다(`implemented`). 메시지 카드(`messages`·`HomeMessageCard`·`HomeChannelItem`·`link.screen=channel`)는 같은 변경에서 계약에서 지웠다. 스키마는 바꾸지 않는다. 원거래(`payments`, `refunds`, `passes`, `product_revisions`)와 M5·M7·M8 원본 테이블에서 직접 계산한다. 인덱스가 부족하면 #89가 실행 계획을 확인한 뒤 새 버전 마이그레이션으로 인덱스만 추가한다.
 
 ## 제공 범위
 
@@ -557,7 +557,7 @@ M9-D08의 "직원"은 OWNER가 아닌 모든 사용자로 해석했다. MANAGER�
 ## 남은 작업
 
 - **400/422**: 2026-11-05 사용자가 422로 확정했고 ADR-M9-001을 고쳤다. **#87 이슈 본문의 인수 조건 "400" 문구를 422로 맞춰야 한다**(이 커밋에서는 이슈를 고치지 않았다).
-- **#90 업무 원본 필터**: "오늘 완료한 업무"를 원본 목록으로 재현할 조건이 `GET /tasks`·`GET /tasks/summary`에 없다(완료 시각 필터 없음, `status`는 한 값). 기존 operation은 바꾸지 않았다. #90에서 `completedFrom`·`completedTo` 같은 필터를 더할지(기존 M7 operation 변경), 홈 전용 수치로 두고 원본 대조를 서비스 테스트로 할지 정해야 한다.
-- **#90 근무 겹침 조건**: `GET /shifts`가 시작 날짜로만 거르므로 홈 근무 수치는 원본 목록 + 겹침 조건으로 재현된다. 원본에 겹침 필터를 더할지 #90에서 정한다.
+- **#90 업무 원본 필터(2026-11-07 결정)**: M7 operation은 바꾸지 않는다. "오늘 완료한 업무"는 홈 전용 수치이며, 같은 조건의 `listTasks`(`status=완료`)에 `completedAt ∈ [dayStart, dayEnd)`를 더한 결과로 재현된다고 `sources`의 `clientFilter`에 적는다. 원본 대조는 통합 테스트에서 DB로 한다.
+- **#90 근무 겹침 조건(2026-11-07 결정)**: `GET /shifts`에 겹침 필터를 더하지 않는다. 홈 근무 수치는 `listShifts`(`from=어제`, `to=오늘`)에 겹침 조건을 더한 결과이며 `source.clientFilter`에 적는다.
 - **#87 처리 지점이 다른 환불**: 현재 API는 처리 지점을 원결제 지점으로 고정한다(M4-D08). 귀속 규칙 테스트는 `refunds.processing_branch_id`를 다른 지점으로 둔 fixture로 해야 한다.
 - **#89**: 위 대표 질의의 실행 계획을 확인한다. 원결제일 기준 환불과 상품별 판매량이 ADR이 지목한 후보다.

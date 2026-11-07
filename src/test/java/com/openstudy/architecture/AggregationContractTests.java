@@ -113,14 +113,14 @@ class AggregationContractTests {
         assertThat(spec.at("/info/description").asString()).contains("Issue #86의 설계 계약(aggregation-api.md, ADR-M9-001)");
         OPERATIONS.keySet().forEach(id ->
                 assertThat(operation(id).get("x-implementation-issue").asString()).as(id).isEqualTo(ISSUES.get(id)));
-        assertThat(contract()).contains("`0.1.11-m9-aggregation`", "아직 서버에 구현되어 있지 않다", "스키마는 바꾸지 않는다");
+        assertThat(contract()).contains("`0.1.11-m9-aggregation`", "스키마는 바꾸지 않는다");
     }
 
-    @Test void issues87And88ImplementedTheSalesAggregationsAndTheHomeStaysADesignTarget() throws Exception {
+    @Test void issues87To90ImplementedEveryAggregationAndTheHome() throws Exception {
         OPERATIONS.keySet().forEach(id -> assertThat(operation(id).get("x-implementation-status").asString()).as(id)
-                .isEqualTo("#90".equals(ISSUES.get(id)) ? "design-target" : "implemented"));
+                .isEqualTo("implemented"));
         assertThat(spec.at("/info/description").asString()).contains("매출·지점 비교·최소 원장 operation은 #87에서 구현됐다",
-                "이용권 판매량·상품 순위·추세 operation은 #88에서 구현됐다");
+                "이용권 판매량·상품 순위·추세 operation은 #88에서 구현됐다", "운영 홈 요약 operation은 #90에서 구현됐다");
         assertThat(contract()).contains("매출·지점 비교·최소 원장 operation 3개(`GET /sales/revenue`, `GET /sales/revenue/branches`, "
                 + "`GET /sales/ledger`)는 #87에서 구현됐다(`implemented`)",
                 "이용권 판매량·상품 순위·추세 operation 3개(`GET /sales/passes/volume`, `GET /sales/passes/products`, "
@@ -363,10 +363,14 @@ class AggregationContractTests {
         assertThat(parameters("getHomeSummary")).containsExactly("scope", "mine", "assigneeId");
         assertThat(home.get("x-permission").asString()).contains("M8-D02").doesNotContain("sales:read");
         assertThat(home.get("x-adr-decisions").toString()).contains("M9-D08", "M8-D02");
+        // ADR-M10-002 M10-D11: team chat left the service, so the home has no message card.
         assertThat(names(schema("HomeSummary"))).containsExactlyInAnyOrder("meta", "seats", "tasks", "inquiries", "facilities",
-                "shifts", "notices", "messages");
+                "shifts", "notices");
+        assertThat(spec.at("/components/schemas/HomeMessageCard").isMissingNode()).isTrue();
+        assertThat(spec.at("/components/schemas/HomeChannelItem").isMissingNode()).isTrue();
+        assertThat(schema("HomeLink").at("/properties/screen/enum").toString()).doesNotContain("channel");
         assertThat(names(schema("HomeLink"))).containsExactlyInAnyOrder("screen", "branchId", "targetId", "query");
-        for (String card : List.of("HomeSeatCard", "HomeInquiryCard", "HomeFacilityCard", "HomeShiftCard", "HomeNoticeCard", "HomeMessageCard")) {
+        for (String card : List.of("HomeSeatCard", "HomeInquiryCard", "HomeFacilityCard", "HomeShiftCard", "HomeNoticeCard")) {
             assertThat(names(schema(card))).as(card).contains("link", "source");
         }
         assertThat(names(schema("HomeTaskCard"))).contains("today", "mine", "items", "link", "sources");
