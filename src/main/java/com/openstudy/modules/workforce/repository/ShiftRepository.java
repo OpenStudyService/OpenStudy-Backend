@@ -1,6 +1,7 @@
 package com.openstudy.modules.workforce.repository;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -14,6 +15,17 @@ import com.openstudy.modules.workforce.entity.Shift;
 import com.openstudy.modules.workforce.entity.ShiftStatus;
 
 public interface ShiftRepository extends JpaRepository<Shift, Long> {
+    /**
+     * Home card exception (2026-11-05 user decision, M9-D08): scheduled shifts at these branches that overlap [start, end),
+     * of employees who are active members of the shift's branch, the viewer's own left out. Native for the join with the
+     * membership table of the authorization module.
+     */
+    @Query(value = "SELECT s.id FROM shifts s JOIN branch_memberships m ON m.employee_id = s.employee_id "
+            + "AND m.branch_id = s.branch_id AND m.status = 'ACTIVE' WHERE s.branch_id IN (:branches) AND s.status = 'SCHEDULED' "
+            + "AND s.starts_at < :end AND s.ends_at > :start AND s.employee_id <> :viewer", nativeQuery = true)
+    List<Number> colleagueShiftIds(@Param("branches") Collection<Long> branches, @Param("viewer") long viewer,
+            @Param("start") Instant start, @Param("end") Instant end);
+
     /** SELECT ... FOR UPDATE, for a change or a cancellation, after the employee row. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT s FROM Shift s WHERE s.id = :id")

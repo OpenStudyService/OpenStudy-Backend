@@ -105,6 +105,17 @@ public class TaskService {
         return new TaskSummary(now, new TaskSummary.Counts(totals[0], totals[1], totals[2], totals[3], totals[4]), branches);
     }
 
+    /**
+     * Tasks of the same scope and filters completed in [from, to): the home's "오늘 완료한 업무" (M9-D08). The list has no
+     * completion time filter, so the home source names this as a client filter on {@code status=완료}.
+     */
+    @Transactional(readOnly = true)
+    public long completedBetween(long actor, String scope, TaskFilters filters, Instant from, Instant to) {
+        var state = policy.current(actor);
+        Instant now = clock.instant();
+        return search.countCompleted(filter(policy.scope(state, scope, BranchAction.READ), "", filters, actor, now), from, to);
+    }
+
     @Transactional(readOnly = true)
     public TaskDetail get(long actor, long id, String scope) {
         var state = policy.current(actor);
