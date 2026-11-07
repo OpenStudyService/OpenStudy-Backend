@@ -5,13 +5,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.context.TestPropertySource;
 import com.openstudy.support.database.MySqlIntegrationTest;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Issue #76: channels, members and the end of participation (collaboration-api.md, ADR-M7-001 M7-D04·D07). */
 @MySqlIntegrationTest
-@TestPropertySource(properties = "openstudy.workspace.scheduling.enabled=false")
 class ChannelIntegrationTests extends ChannelTestSupport {
 
     // ---- who manages ----------------------------------------------------------------------------------------

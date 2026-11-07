@@ -5,7 +5,6 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.modules.chat.repository.MessageRepository;
@@ -21,7 +20,6 @@ import static org.mockito.ArgumentMatchers.anyString;
  * insert into the constraint, which is the path a repeat takes the moment sends stop sharing one guard.
  */
 @MySqlIntegrationTest
-@TestPropertySource(properties = "openstudy.workspace.scheduling.enabled=false")
 class MessageDuplicateKeyTests extends ChannelTestSupport {
     @MockitoSpyBean MessageRepository messages;
     @Autowired MessageService service;

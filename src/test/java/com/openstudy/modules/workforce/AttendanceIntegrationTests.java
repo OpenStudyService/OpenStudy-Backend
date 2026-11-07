@@ -124,8 +124,6 @@ class AttendanceIntegrationTests extends ShiftIntegrationSupport {
         assertThat(fields(current)).containsExactlyInAnyOrder("attendance", "asOf");
         assertThat(current.at("/attendance/id").asLong()).isEqualTo(id);
         assertThat(current.get("asOf").asString()).isEqualTo("2026-11-04T00:00:30.789Z");
-        assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_type='attendance-records' AND entity_id=? AND branch_id=?",
-                id, first)).isEqualTo(1);
     }
 
     @Test void aClockInTakesNoTimeNoEmployeeAndNeedsARequestKey() throws Exception {

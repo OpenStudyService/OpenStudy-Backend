@@ -135,7 +135,6 @@ abstract class SalesIntegrationSupport {
         jdbc.update("DELETE FROM audit_events WHERE actor_employee_id IN (" + actors + ")");
         jdbc.update("DELETE FROM product_categories WHERE created_by IN (" + actors + ")");
         for (long id : branches) {
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE branch_id=?", id);
             jdbc.update("DELETE FROM audit_events WHERE branch_id=?", id);
             jdbc.update("DELETE FROM branch_memberships WHERE branch_id=?", id);
             jdbc.update("DELETE FROM branch_weekly_hours WHERE branch_id=?", id);

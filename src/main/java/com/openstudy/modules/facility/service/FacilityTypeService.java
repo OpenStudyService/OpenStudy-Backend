@@ -16,7 +16,6 @@ import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyStore;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.StrictInput;
 import com.openstudy.modules.authorization.service.AuthorizationService;
 import com.openstudy.modules.authorization.service.AuthorizedCommands;
@@ -38,7 +37,6 @@ public class FacilityTypeService {
     private final AuthorizedCommands commands;
     private final IdempotencyStore requests;
     private final AuditTrail audit;
-    private final WorkspaceOutbox outbox;
     private final ObjectMapper json;
     private final Clock clock;
 
@@ -74,7 +72,6 @@ public class FacilityTypeService {
             var result = view(type);
             String snapshot = json.writeValueAsString(result);
             audit.record(AuditEvent.change(actor, null, "facility_types", type.getId(), "CREATED", null, snapshot, requestId));
-            outbox.invalidateEveryBranch("facility-types", type.getId());
             requests.complete(actor, CREATE, "all", key, fingerprint, 201, snapshot, now.plus(Duration.ofHours(24)));
             return result;
         });

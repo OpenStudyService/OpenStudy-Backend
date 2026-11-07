@@ -473,7 +473,7 @@ V1에는 시간 구간 겹침을 막는 DB 제약이 없다(`shifts`의 설명: 
 
 ## workspace 이벤트
 
-`WorkspaceEvent.resource`에 `shifts`, `attendance-records`를 추가한다. 기존 관례대로 경로 이름과 같은 복수형 kebab-case다. 본문 없이 `invalidate`만 보낸다.
+`WorkspaceEvent.resource`에 `shifts`, `attendance-records`를 추가한다. 기존 관례대로 경로 이름과 같은 복수형 kebab-case다. 본문 없이 `invalidate`만 보낸다. (2026-11-07 SSE 제거로 더 이상 적용되지 않음, Backend #170)
 
 | 변경 | resource | entityId | branchId |
 | --- | --- | --- | --- |

@@ -26,7 +26,6 @@ import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyStore;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.ListQuery;
 import com.openstudy.common.web.PageResponse;
@@ -76,7 +75,6 @@ public class PaymentService {
     private final AuthorizedCommands commands;
     private final ObjectMapper json;
     private final AuditTrail audit;
-    private final WorkspaceOutbox outbox;
     private final IdempotencyStore requests;
     private final Clock clock;
 
@@ -117,7 +115,6 @@ public class PaymentService {
             after.put("passId", passId == null ? null : passId.toString());
             audit.record(AuditEvent.change(actor, branch, "payments", payment.getId(), approved ? "APPROVED" : "FAILED", null,
                     json.writeValueAsString(after), requestId));
-            outbox.invalidate(branch, "payments", payment.getId());
             var result = views(List.of(payment), state, now).getFirst();
             requests.complete(actor, CREATE, scopeKey, key, fingerprint, 201, json.writeValueAsString(result),
                     clock.instant().plus(Duration.ofHours(24)));
@@ -152,7 +149,6 @@ public class PaymentService {
         after.put("amountKrw", payment.getAmountKrw());
         audit.record(AuditEvent.change(actor, branch, "payments", payment.getId(), approved ? "APPROVED" : "FAILED", null,
                 json.writeValueAsString(after), requestId));
-        outbox.invalidate(branch, "payments", payment.getId());
         return payment.getId();
     }
 
@@ -211,7 +207,6 @@ public class PaymentService {
             audit.record(AuditEvent.change(actor, branch, "payments", id, "REFUNDED",
                     json.writeValueAsString(Map.of("status", PaymentStatus.APPROVED.name())), json.writeValueAsString(after),
                     requestId));
-            outbox.invalidate(branch, "payments", id);
             var result = views(List.of(payment), state, now).getFirst();
             requests.complete(actor, REFUND, scopeKey, key, fingerprint, 200, json.writeValueAsString(result),
                     clock.instant().plus(Duration.ofHours(24)));
@@ -237,7 +232,6 @@ public class PaymentService {
         after.put("amountKrw", refund.getAmountKrw());
         audit.record(AuditEvent.change(actor, payment.getBranchId(), "payments", paymentId, "REFUNDED",
                 json.writeValueAsString(Map.of("status", PaymentStatus.APPROVED.name())), json.writeValueAsString(after), requestId));
-        outbox.invalidate(payment.getBranchId(), "payments", paymentId);
         return refund.getId();
     }
 

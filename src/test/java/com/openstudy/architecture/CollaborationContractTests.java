@@ -225,9 +225,10 @@ class CollaborationContractTests {
         assertThat(schema("InquiryStatusChange").at("/properties/status/enum").toString()).doesNotContain("답변 완료");
     }
 
-    @Test void workspaceEventsCoverCollaborationButNotChatDelivery() {
-        var resources = spec.at("/components/schemas/WorkspaceEvent/properties/resource/enum").toString();
-        assertThat(resources).contains("\"tasks\"", "\"facilities\"", "\"inquiries\"", "\"notices\"");
-        assertThat(resources).doesNotContain("\"messages\"", "\"channels\"");
+    /** ADR-COM-001 COM-D01: screens re-read on request, so the contract offers no change-notification stream. */
+    @Test void theContractOffersNoChangeNotificationStream() {
+        assertThat(spec.at("/paths/~1workspace~1events").isMissingNode()).isTrue();
+        assertThat(spec.at("/components/schemas/WorkspaceEvent").isMissingNode()).isTrue();
+        assertThat(spec.toString()).doesNotContain("text/event-stream");
     }
 }

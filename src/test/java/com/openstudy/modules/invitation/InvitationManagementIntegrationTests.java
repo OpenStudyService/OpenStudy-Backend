@@ -72,17 +72,14 @@ class InvitationManagementIntegrationTests {
             jdbc.update("DELETE FROM invitation_send_jobs WHERE invitation_id IN (SELECT id FROM employee_invitations WHERE branch_id=?)", branch);
             jdbc.update("DELETE FROM employee_invitations WHERE branch_id=?", branch);
             jdbc.update("DELETE FROM audit_events WHERE branch_id=?", branch);
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE branch_id=?", branch);
             jdbc.update("DELETE FROM branch_memberships WHERE branch_id=?", branch);
         }
         for (long id : people) {
             jdbc.update("DELETE FROM SPRING_SESSION WHERE PRINCIPAL_NAME=?", Long.toString(id));
             jdbc.update("DELETE FROM audit_events WHERE actor_employee_id=?", id);
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE target_employee_id=?", id);
             jdbc.update("DELETE FROM idempotency_records WHERE actor_employee_id=?", id);
         }
         for (long id : presets) {
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE entity_type='permission-presets' AND entity_id=?", id);
             jdbc.update("DELETE FROM permission_presets WHERE id=?", id);
         }
         for (long id : people) jdbc.update("UPDATE employees SET created_by=NULL,updated_by=NULL WHERE id=?", id);
@@ -175,7 +172,6 @@ class InvitationManagementIntegrationTests {
             assertThat(count("SELECT COUNT(*) FROM employee_invitations WHERE id=? AND token_hash IS NULL", id)).isEqualTo(1);
             assertThat(count("SELECT COUNT(*) FROM invitation_send_jobs WHERE invitation_id=? AND revision=1 AND status='PENDING'", id)).isEqualTo(1);
             assertThat(count("SELECT COUNT(*) FROM audit_events WHERE request_id=?", response.headers().firstValue("X-Request-ID").orElseThrow())).isEqualTo(1);
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=?", first)).isPositive();
             var detail = s.call("GET", API + "/" + id, null);
             status(detail, 200);
             assertThat(json.readTree(detail.body())).isEqualTo(made);
@@ -501,7 +497,7 @@ class InvitationManagementIntegrationTests {
         }
     }
 
-    @Test void rollbackRemovesInvitationPlannedGrantsJobsAuditOutboxAndIdempotencyTogether() {
+    @Test void rollbackRemovesInvitationPlannedGrantsJobsAuditAndIdempotencyTogether() {
         String email = email(), key = UUID.randomUUID().toString(), request = "invitation-rollback-" + UUID.randomUUID();
         new TransactionTemplate(transactionManager).executeWithoutResult(tx -> {
             invitations.create(owner, "all", body(first, email, "staff", List.of("members:write")), key, request);
@@ -513,7 +509,6 @@ class InvitationManagementIntegrationTests {
         assertThat(count("SELECT COUNT(*) FROM invitation_send_jobs j JOIN employee_invitations i ON i.id=j.invitation_id WHERE i.branch_id=?", first)).isZero();
         assertThat(count("SELECT COUNT(*) FROM invitation_permission_grants g JOIN employee_invitations i ON i.id=g.invitation_id WHERE i.branch_id=?", first)).isZero();
         assertThat(count("SELECT COUNT(*) FROM audit_events WHERE request_id=?", request)).isZero();
-        assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=?", first)).isZero();
         assertThat(count("SELECT COUNT(*) FROM idempotency_records WHERE actor_employee_id=? AND idempotency_key=?", owner, key)).isZero();
     }
 }

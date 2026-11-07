@@ -115,7 +115,6 @@ abstract class PassUsageFixture {
         jdbc.update("DELETE FROM product_categories WHERE created_by IN (" + actors + ")");
         for (long id : branches) {
             jdbc.update("DELETE FROM seats WHERE branch_id=?", id);
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE branch_id=?", id);
             jdbc.update("DELETE FROM audit_events WHERE branch_id=?", id);
             jdbc.update("DELETE FROM membership_permission_grants WHERE membership_id IN (SELECT id FROM branch_memberships WHERE branch_id=?)", id);
             jdbc.update("DELETE FROM branch_memberships WHERE branch_id=?", id);

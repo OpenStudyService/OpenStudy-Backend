@@ -124,7 +124,7 @@ OWNER는 모든 권한 조건을 만족한다. 고객·결제·이용권의 삭�
 
 중간에 하나라도 실패하면 전체를 롤백한다. 승인 결제만 남거나 이용권만 남는 부분 성공은 없다(FR-PAY-08, FR-PAY-09). DB의 `ck_payments_issued_pass_quantity`, `uk_passes_1`, `fk_passes_3`, `uk_refunds_1`이 같은 불변식을 한 번 더 막는다.
 
-지점별 무효화 이벤트(`WorkspaceEvent.resource`)에 `customers`, `payments`, `passes`를 추가했다. 이벤트는 entityId·branchId만 담고 개인정보·금액을 담지 않는다. 고객 이벤트의 branchId는 등록 지점이다.
+지점별 무효화 이벤트(`WorkspaceEvent.resource`)에 `customers`, `payments`, `passes`를 추가했다. 이벤트는 entityId·branchId만 담고 개인정보·금액을 담지 않는다. 고객 이벤트의 branchId는 등록 지점이다. (2026-11-07 SSE 제거로 더 이상 적용되지 않음, Backend #170)
 
 ## 오류 코드
 

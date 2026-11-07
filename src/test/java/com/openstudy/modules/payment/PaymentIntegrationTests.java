@@ -96,7 +96,6 @@ class PaymentIntegrationTests {
         jdbc.update("DELETE FROM audit_events WHERE actor_employee_id IN (" + actors + ")");
         jdbc.update("DELETE FROM product_categories WHERE created_by IN (" + actors + ")");
         for (long id : branches) {
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE branch_id=?", id);
             jdbc.update("DELETE FROM audit_events WHERE branch_id=?", id);
             jdbc.update("DELETE FROM branch_memberships WHERE branch_id=?", id);
             jdbc.update("DELETE FROM branch_weekly_hours WHERE branch_id=?", id);
@@ -270,8 +269,6 @@ class PaymentIntegrationTests {
 
             assertThat(count("SELECT COUNT(*) FROM audit_events WHERE entity_type='payments' AND entity_id=? AND action='APPROVED'", id)).isEqualTo(1);
             assertThat(count("SELECT COUNT(*) FROM audit_events WHERE entity_type='passes' AND entity_id=? AND action='ISSUED'", passId)).isEqualTo(1);
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_type='payments' AND entity_id=? AND branch_id=?", id, first)).isEqualTo(1);
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_type='passes' AND entity_id=? AND branch_id=?", passId, first)).isEqualTo(1);
 
             var issued = node(get(s, "/api/passes/" + passId));
             assertThat(issued.get("kind").asString()).isEqualTo("시간권");
@@ -653,7 +650,6 @@ class PaymentIntegrationTests {
                     + "AND processed_by=? AND reason='고객 요청'", paymentId, first, seller)).isEqualTo(1);
             assertThat(count("SELECT COUNT(*) FROM audit_events WHERE entity_type='payments' AND entity_id=? AND action='REFUNDED'", paymentId)).isEqualTo(1);
             assertThat(count("SELECT COUNT(*) FROM audit_events WHERE entity_type='passes' AND entity_id=? AND action='REFUNDED'", passId)).isEqualTo(1);
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_type='payments' AND entity_id=?", paymentId)).isEqualTo(2);
 
             var pass = node(get(s, "/api/passes/" + passId));
             assertThat(pass.get("status").asString()).isEqualTo("환불");

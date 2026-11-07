@@ -87,14 +87,12 @@ class InvitationAcceptanceIntegrationTests {
             jdbc.update("DELETE FROM invitation_send_jobs WHERE invitation_id IN (SELECT id FROM employee_invitations WHERE branch_id=?)", branch);
             jdbc.update("DELETE FROM employee_invitations WHERE branch_id=?", branch);
             jdbc.update("DELETE FROM audit_events WHERE branch_id=?", branch);
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE branch_id=?", branch);
             jdbc.update("DELETE FROM membership_permission_grants WHERE membership_id IN (SELECT id FROM branch_memberships WHERE branch_id=?)", branch);
             jdbc.update("DELETE FROM branch_memberships WHERE branch_id=?", branch);
         }
         for (long id : people) {
             jdbc.update("DELETE FROM SPRING_SESSION WHERE PRINCIPAL_NAME=?", Long.toString(id));
             jdbc.update("DELETE FROM audit_events WHERE actor_employee_id=?", id);
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE target_employee_id=?", id);
             jdbc.update("DELETE FROM idempotency_records WHERE actor_employee_id=?", id);
         }
         for (long id : people) jdbc.update("UPDATE employees SET created_by=NULL,updated_by=NULL WHERE id=?", id);
@@ -235,7 +233,6 @@ class InvitationAcceptanceIntegrationTests {
             for (String audit : jdbc.queryForList("SELECT CONCAT(COALESCE(before_json,''),after_json) FROM audit_events WHERE request_id=?", String.class, requestId)) {
                 assertThat(audit).doesNotContain(invitation.token(), NEW_PASSWORD, "token", "hash");
             }
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type='invitations' AND entity_id=?", first, invitation.id())).isPositive();
 
             try (var waiting = new Session(invitation.email(), NEW_PASSWORD)) {
                 var me = waiting.call("GET", "/api/me", null);

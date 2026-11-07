@@ -274,11 +274,6 @@ class WorkforceContractTests {
                 "| 출근 | 409 `BRANCH_NOT_ACTIVE` |", "| 진행 중 근태의 휴게 시작·종료·퇴근 | 허용 |");
     }
 
-    @Test void workspaceEventsCoverShiftsAndAttendance() {
-        var resources = spec.at("/components/schemas/WorkspaceEvent/properties/resource/enum").toString();
-        assertThat(resources).contains("\"shifts\"", "\"attendance-records\"");
-    }
-
     @Test void leaveSwapsAndCorrectionsStayOutOfThisContract() {
         spec.get("paths").properties().forEach(entry -> assertThat(entry.getKey())
                 .doesNotContain("leave", "swap", "correction", "substitution"));

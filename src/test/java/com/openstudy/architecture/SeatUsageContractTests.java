@@ -104,8 +104,6 @@ class SeatUsageContractTests {
     @Test void sessionResponsesSeparatePurchaseAndUseBranches() {
         assertThat(spec.at("/components/schemas/SeatSession/properties").has("branchId")).isTrue();
         assertThat(spec.at("/components/schemas/SeatSessionPass/properties").has("purchaseBranchId")).isTrue();
-        assertThat(spec.at("/components/schemas/WorkspaceEvent/properties/resource/enum").toString())
-                .contains("\"seats\"", "\"seat-sessions\"");
     }
 
     List<String> propertyNames(JsonNode schema) {

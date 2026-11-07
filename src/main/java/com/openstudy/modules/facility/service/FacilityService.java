@@ -28,7 +28,6 @@ import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyStore;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.ListQuery;
 import com.openstudy.common.web.PageResponse;
@@ -77,7 +76,6 @@ public class FacilityService {
     private final AuthorizationService policy;
     private final AuthorizedCommands commands;
     private final ObjectMapper json;
-    private final WorkspaceOutbox outbox;
     private final IdempotencyStore requests;
     private final AuditTrail audit;
     private final Clock clock;
@@ -172,7 +170,6 @@ public class FacilityService {
             after.put("lastInspectedOn", lastOn == null ? null : lastOn.toString());
             after.put("assigneeId", assignee == null ? null : Long.toString(assignee));
             audit.record(AuditEvent.change(actor, branch, ENTITY, facility.getId(), "CREATED", null, json.writeValueAsString(after), requestId));
-            outbox.invalidate(branch, ENTITY, facility.getId());
             var result = detail(facility, state, today(now));
             requests.complete(actor, CREATE, scopeKey, key, fingerprint, 201, json.writeValueAsString(result), now.plus(Duration.ofHours(24)));
             return result;
@@ -227,7 +224,6 @@ public class FacilityService {
             persist(facility, facilityChanged);
             audit.record(AuditEvent.change(actor, branch, ENTITY, id, "UPDATED", null, json.writeValueAsString(before),
                     json.writeValueAsString(after), requestId));
-            outbox.invalidate(branch, ENTITY, id);
             return detail(current(id), state, today(clock.instant()));
         });
     }
@@ -280,7 +276,6 @@ public class FacilityService {
             after.put("workId", Long.toString(closed)); after.put("nextWorkId", next.getId().toString()); after.put("result", result);
             audit.record(AuditEvent.change(actor, branch, ENTITY, id, "INSPECTION_COMPLETED", null, json.writeValueAsString(before),
                     json.writeValueAsString(after), requestId));
-            outbox.invalidate(branch, ENTITY, id);
             var view = detail(current(id), state, today(now));
             requests.complete(actor, COMPLETE, scopeKey, key, fingerprint, 200, json.writeValueAsString(view), now.plus(Duration.ofHours(24)));
             return view;

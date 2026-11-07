@@ -24,7 +24,6 @@ import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.ObjectMapper;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyStore;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.ListQuery;
 import com.openstudy.common.web.PageResponse;
@@ -69,7 +68,6 @@ public class TaskService {
     private final AuthorizationService policy;
     private final AuthorizedCommands commands;
     private final ObjectMapper json;
-    private final WorkspaceOutbox outbox;
     private final IdempotencyStore requests;
     private final Clock clock;
 
@@ -166,7 +164,6 @@ public class TaskService {
                 checklist.save(new TaskChecklistItem(task.getId(), items.get(order), order, actor));
             record(task.getId(), actor, "CREATED", null, values("title", title, "assigneeId", Long.toString(assignee),
                     "status", TaskInputs.label(status)));
-            outbox.invalidate(branch, "tasks", task.getId());
             var result = detail(task, state);
             requests.complete(actor, CREATE, scopeKey, key, fingerprint, 201, json.writeValueAsString(result), now.plus(Duration.ofHours(24)));
             return result;
@@ -288,14 +285,12 @@ public class TaskService {
 
     private TaskDetail saved(WorkTask task, AuthorizationState state) {
         var result = repository.saveAndFlush(task);
-        outbox.invalidate(result.getBranchId(), "tasks", result.getId());
         return detail(result, state);
     }
 
     private TaskDetail advanced(long id, AuthorizationState state) {
         repository.incrementVersion(id);
         var task = repository.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
-        outbox.invalidate(task.getBranchId(), "tasks", id);
         return detail(task, state);
     }
 

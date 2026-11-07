@@ -22,7 +22,6 @@ import tools.jackson.databind.ObjectMapper;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyRecord;
 import com.openstudy.common.idempotency.IdempotencyStore;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.persistence.DuplicateKeys;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.ListQuery;
@@ -65,7 +64,6 @@ public class AttendanceService {
     private final AuthorizationService policy;
     private final AuthorizedCommands commands;
     private final ObjectMapper json;
-    private final WorkspaceOutbox outbox;
     private final IdempotencyStore requests;
     private final Clock clock;
 
@@ -135,7 +133,6 @@ public class AttendanceService {
             Instant now = now();
             Long shift = shifts.covering(actor, branch, ShiftStatus.SCHEDULED, now).stream().findFirst().map(found -> found.getId()).orElse(null);
             var record = translating(() -> records.saveAndFlush(new AttendanceRecord(actor, branch, shift, now)));
-            outbox.invalidate(branch, ENTITY, record.getId());
             var result = views.record(record);
             requests.complete(actor, CLOCK_IN, scopeKey, key, fingerprint, 201, json.writeValueAsString(result),
                     clock.instant().plus(Duration.ofHours(24)));
@@ -176,16 +173,6 @@ public class AttendanceService {
     }
 
     /**
-     * Whether a workspace stream may hear of this attendance: the OWNER, the MANAGER of its branch or its own employee,
-     * the readers of M8-D02. A branch event alone would reach every member of the branch (workforce-api.md "workspace 이벤트").
-     */
-    @Transactional(readOnly = true)
-    public boolean announcedTo(AuthorizationState state, long branch, long attendanceId) {
-        if (readers.manages(state, branch)) return true;
-        return records.findById(attendanceId).filter(record -> record.getEmployeeId() == state.employeeId()).isPresent();
-    }
-
-    /**
      * Shared frame of a break and a clock-out: the requester's attendance in progress FOR UPDATE, then its state, then
      * the version, so a repeated command learns what happened ("이미 퇴근") rather than that its version is old. The
      * state check returns the change to make once the version has matched.
@@ -200,7 +187,6 @@ public class AttendanceService {
             ApiVersion.requireCurrent(version, record.getVersion(), RELOAD);
             change.run();
             var saved = records.saveAndFlush(record);
-            outbox.invalidate(saved.getBranchId(), ENTITY, saved.getId());
             return views.record(saved);
         });
     }

@@ -94,11 +94,9 @@ class FacilityIntegrationTests {
 
     @AfterEach void clean() {
         clock.fixed = null;
-        jdbc.update("DELETE FROM workspace_event_outbox WHERE entity_type='facility-types' AND entity_id IN (SELECT id FROM facility_types WHERE name LIKE ?)", token + "%");
         for (long id : branches) {
             jdbc.update("DELETE w FROM facility_works w JOIN facilities f ON f.id=w.facility_id WHERE f.branch_id=?", id);
             jdbc.update("DELETE FROM facilities WHERE branch_id=?", id);
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE branch_id=?", id);
             jdbc.update("DELETE FROM audit_events WHERE branch_id=?", id);
             jdbc.update("DELETE FROM branch_memberships WHERE branch_id=?", id);
             jdbc.update("DELETE FROM branch_weekly_hours WHERE branch_id=?", id);
@@ -245,8 +243,6 @@ class FacilityIntegrationTests {
             assertThat(count("SELECT COUNT(*) FROM facility_types WHERE name=?", name)).isEqualTo(1);
             assertThat(count("SELECT COUNT(*) FROM audit_events WHERE entity_type='facility_types' AND entity_id=? AND action='CREATED' AND actor_employee_id=?",
                     created.get("id").asLong(), owner)).isEqualTo(1);
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_type='facility-types' AND entity_id=? AND branch_id=?",
-                    created.get("id").asLong(), first)).isEqualTo(1);
 
             // The same key with the same input replays; a different input under that key is refused.
             var replay = http(s.client(), "POST", "/api/facility-types", s.token(), Map.of("name", "  " + name + "  ", "defaultInspectionDays", 14), key);
@@ -342,7 +338,6 @@ class FacilityIntegrationTests {
             assertThat(openWorks(id)).isEqualTo(1);
             assertThat(count("SELECT COUNT(*) FROM facility_works WHERE facility_id=?", id)).isEqualTo(1);
             assertThat(jdbc.queryForObject("SELECT assigned_employee_id FROM facility_works WHERE facility_id=?", Long.class, id)).isEqualTo(assignee);
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type='facilities' AND entity_id=?", first, id)).isEqualTo(1);
             assertThat(count("SELECT COUNT(*) FROM audit_events WHERE entity_type='facilities' AND entity_id=? AND action='CREATED' AND actor_employee_id=? AND branch_id=?",
                     id, writer, first)).isEqualTo(1);
 
@@ -630,7 +625,6 @@ class FacilityIntegrationTests {
             // Fields that did not change are not in the record.
             assertThat(before.has("location")).isFalse();
             assertThat(after.has("typeId")).isFalse();
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type='facilities' AND entity_id=?", first, id)).isEqualTo(2);
         }
     }
 
@@ -684,7 +678,6 @@ class FacilityIntegrationTests {
             assertThat(json.readTree((String) audit.get("before_json")).get("status").asString()).isEqualTo("정상");
             assertThat(json.readTree((String) audit.get("after_json")).get("status").asString()).isEqualTo("점검 필요");
             assertThat(json.readTree((String) audit.get("after_json")).get("lastInspectedOn").asString()).isEqualTo(today.minusDays(1).toString());
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type='facilities' AND entity_id=?", first, id)).isEqualTo(2);
 
             // The next work is completed in the same way, so the history grows by one and the open work stays single.
             var again = complete(s, result, done("재점검", today, "정상"), key());

@@ -15,7 +15,6 @@ import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyStore;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.*;
 import com.openstudy.modules.authorization.dto.BranchAction;
 import com.openstudy.modules.authorization.service.AuthorizationService;
@@ -34,13 +33,12 @@ public class BranchService {
     private final AuthorizedCommands commands;
     private final ObjectMapper json;
     private final AuditTrail audit;
-    private final WorkspaceOutbox outbox;
     private final IdempotencyStore requests;
     private final Clock clock;
     public BranchService(BranchRepository repository,EntityManager entityManager,AuthorizationService policy,AuthorizedCommands commands,
-            ObjectMapper json,AuditTrail audit,WorkspaceOutbox outbox,IdempotencyStore requests,Clock clock) {
+            ObjectMapper json,AuditTrail audit,IdempotencyStore requests,Clock clock) {
         this.repository=repository;this.entityManager=entityManager;this.policy=policy;this.commands=commands;this.json=json;
-        this.audit=audit;this.outbox=outbox;this.requests=requests;this.clock=clock;
+        this.audit=audit;this.requests=requests;this.clock=clock;
     }
     @Transactional(readOnly=true)
     public PageResponse<Branch> list(long actor,String scope,ListQuery query,String status) {
@@ -128,7 +126,6 @@ public class BranchService {
     }
     private void recordChange(long actor,long id,String action,String before,String after,String requestId) {
         audit.record(AuditEvent.change(actor,id,"branches",id,action,before,after,requestId));
-        outbox.invalidate(id,"branches",id);
     }
     private static void checkVersion(Branch branch,long supplied) {
         if(branch.version()!=supplied) throw ApiException.versionConflict(branch.version(),"/api/branches/"+branch.id());

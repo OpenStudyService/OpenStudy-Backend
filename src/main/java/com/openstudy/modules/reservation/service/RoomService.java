@@ -17,7 +17,6 @@ import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyStore;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.ListQuery;
 import com.openstudy.common.web.PageResponse;
@@ -49,7 +48,6 @@ public class RoomService {
     private final AuthorizedCommands commands;
     private final AuditTrail audit;
     private final ObjectMapper json;
-    private final WorkspaceOutbox outbox;
     private final IdempotencyStore requests;
     private final Clock clock;
 
@@ -98,7 +96,6 @@ public class RoomService {
             var room = RoomConflicts.translating(() -> repository.saveAndFlush(new Room(branch, roomNo, name, capacity, rate, stored)));
             audit.record(AuditEvent.change(actor, branch, ENTITY, room.getId(), "CREATED", null, null,
                     json.writeValueAsString(snapshot(room)), requestId));
-            outbox.invalidate(branch, ENTITY, room.getId());
             var result = view(room);
             requests.complete(actor, CREATE, scopeKey, key, fingerprint, 201, json.writeValueAsString(result), now.plus(Duration.ofHours(24)));
             return result;
@@ -138,7 +135,6 @@ public class RoomService {
             RoomConflicts.translating(() -> repository.saveAndFlush(room));
             audit.record(AuditEvent.change(actor, branch, ENTITY, id, "UPDATED", null, json.writeValueAsString(before),
                     json.writeValueAsString(after), requestId));
-            outbox.invalidate(branch, ENTITY, id);
             return view(room);
         });
     }
@@ -162,7 +158,6 @@ public class RoomService {
             audit.record(AuditEvent.change(actor, branch, ENTITY, id, "STATUS_CHANGED", reason,
                     json.writeValueAsString(Map.of("status", previous.label())),
                     json.writeValueAsString(Map.of("status", next.label())), requestId));
-            outbox.invalidate(branch, ENTITY, id);
             return view(room);
         });
     }

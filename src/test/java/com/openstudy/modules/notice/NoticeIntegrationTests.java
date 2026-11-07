@@ -41,7 +41,6 @@ import tools.jackson.databind.ObjectMapper;
 import com.openstudy.modules.branch.dto.Branch.WeeklyHours;
 import com.openstudy.modules.branch.dto.BranchRequests;
 import com.openstudy.modules.branch.service.BranchService;
-import com.openstudy.modules.workspace.service.WorkspaceEventService;
 import com.openstudy.support.database.MySqlIntegrationTest;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -50,7 +49,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  * checked through the list and the detail for every kind of reader, and the races run real concurrent requests.
  */
 @MySqlIntegrationTest
-@TestPropertySource(properties = "openstudy.workspace.scheduling.enabled=false")
 class NoticeIntegrationTests {
     static final String PASSWORD = "notice-test-password";
 
@@ -58,7 +56,6 @@ class NoticeIntegrationTests {
     @Autowired PasswordEncoder passwords;
     @Autowired ObjectMapper json;
     @Autowired BranchService branchService;
-    @Autowired WorkspaceEventService events;
     @LocalServerPort int port;
 
     long owner, manager, managerWithoutGrant, writerA, writerB, writerAB, partial, staffA, staffB, dual;
@@ -84,12 +81,8 @@ class NoticeIntegrationTests {
     }
 
     @AfterEach void clean() {
-        events.tick();
-        jdbc.update("DELETE FROM workspace_event_outbox WHERE entity_type='notices' AND entity_id IN "
-                + "(SELECT id FROM announcements WHERE author_employee_id IN (" + marks(people) + "))", people.toArray());
         jdbc.update("DELETE FROM announcements WHERE author_employee_id IN (" + marks(people) + ")", people.toArray());
         for (long id : branches) {
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE branch_id=?", id);
             jdbc.update("DELETE FROM audit_events WHERE branch_id=?", id);
             jdbc.update("DELETE FROM branch_memberships WHERE branch_id=?", id);
             jdbc.update("DELETE FROM branch_weekly_hours WHERE branch_id=?", id);
@@ -755,100 +748,6 @@ class NoticeIntegrationTests {
             assertThat(createRaw(wa, body, key).statusCode()).isEqualTo(201);
             jdbc.update("DELETE FROM membership_permission_grants WHERE membership_id=(SELECT id FROM branch_memberships WHERE employee_id=? AND branch_id=?)", writerA, a);
             assertThat(createRaw(wa, body, key).statusCode()).isEqualTo(403);
-        }
-    }
-
-    // ---- outbox ----------------------------------------------------------------------------------------------
-
-    List<Long> eventBranches(long notice) {
-        return jdbc.queryForList("SELECT branch_id FROM workspace_event_outbox WHERE entity_type='notices' AND entity_id=? ORDER BY branch_id",
-                Long.class, notice);
-    }
-
-    @Test void everyChangeLeavesOneInvalidateRowPerAffectedBranchInTheSameTransaction() throws Exception {
-        try (var o = login(owner); var wab = login(writerAB)) {
-            var everyone = make(o, "전체 알림", "전체", null, "게시 중", null);
-            long all = count("SELECT COUNT(*) FROM branches");
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_type='notices' AND entity_id=?", id(everyone))).isEqualTo(all);
-            assertThat(eventBranches(id(everyone))).contains(a, b, c);
-
-            var two = make(wab, "두 지점 알림", "선택 지점", List.of(a, b), "게시 중", null);
-            assertThat(eventBranches(id(two))).containsExactly(a, b);
-            var moved = ok(patch(o, two, "branchIds", List.of(Long.toString(b), Long.toString(c))));
-            // The branch that lost the notice is told too, so it drops the notice from its list.
-            assertThat(eventBranches(id(two))).containsExactly(a, a, b, b, c);
-            long rows = eventBranches(id(two)).size();
-            ok(patch(o, moved, "title", moved.get("title").asString()));
-            assertThat(eventBranches(id(two))).hasSize((int) rows);
-            archived(wab, make(wab, "종료 알림", "선택 지점", List.of(a), "게시 중", null));
-            var toAll = ok(patch(o, moved, "target", "전체"));
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_type='notices' AND entity_id=?", id(toAll))).isEqualTo(rows + all);
-
-            long before = count("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_type='notices'");
-            assertThat(createRaw(wab, draft("롤백", "전체", null, null, null), key()).statusCode()).isEqualTo(403);
-            assertThat(patch(wab, toAll, "title", token + " x").statusCode()).isEqualTo(403);
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_type='notices'")).isEqualTo(before);
-        }
-    }
-
-    final class Stream implements AutoCloseable {
-        final InputStream body;
-        final BlockingQueue<String> frames = new LinkedBlockingQueue<>();
-        final List<String> received = java.util.Collections.synchronizedList(new ArrayList<>());
-        final Thread reader;
-        Stream(InputStream body) {
-            this.body = body;
-            reader = Thread.ofVirtual().start(() -> {
-                try (var lines = new BufferedReader(new InputStreamReader(body, StandardCharsets.UTF_8))) {
-                    String line;
-                    var frame = new StringBuilder();
-                    while ((line = lines.readLine()) != null) {
-                        if (line.isEmpty()) {
-                            if (!frame.isEmpty()) { received.add(frame.toString()); frames.add(frame.toString()); frame.setLength(0); }
-                        } else frame.append(line).append('\n');
-                    }
-                } catch (IOException ignored) {
-                } finally { frames.add("EOF"); }
-            });
-        }
-        String next() throws Exception {
-            String result = frames.poll(5, TimeUnit.SECONDS);
-            assertThat(result).as("SSE frame within five seconds").isNotNull();
-            return result;
-        }
-        void drain() throws Exception { while (frames.poll(300, TimeUnit.MILLISECONDS) != null) { /* collected in received */ } }
-        public void close() { try { body.close(); reader.join(500); } catch (IOException | InterruptedException ignored) { } }
-    }
-
-    Stream open(Session session, String scope) throws Exception {
-        var request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/workspace/events?scope=" + scope))
-                .header("Accept", "text/event-stream").GET().build();
-        var response = session.client().send(request, HttpResponse.BodyHandlers.ofInputStream());
-        assertThat(response.statusCode()).isEqualTo(200);
-        var stream = new Stream(response.body());
-        assertThat(stream.next()).contains("event:resync");
-        return stream;
-    }
-
-    @Test void theChangeStreamNeverCarriesAnotherBranchOrANoticeId() throws Exception {
-        events.tick();
-        try (var o = login(owner); var sa = login(staffA); var sb = login(staffB)) {
-            try (var streamA = open(sa, "all"); var streamB = open(sb, "all")) {
-                var wide = make(o, "넓은 임시", "선택 지점", List.of(a, b, c), null, null);
-                var everyone = make(o, "전체 임시", "전체", null, null, null);
-                events.tick();
-                streamA.drain(); streamB.drain();
-                for (var pair : List.of(Map.entry(streamA, a), Map.entry(streamB, b))) {
-                    var text = String.join("\n", pair.getKey().received);
-                    assertThat(text).contains("\"resource\":\"notices\"", "\"branchId\":\"" + pair.getValue() + "\"");
-                    for (long other : List.of(a, b, c))
-                        if (other != pair.getValue()) assertThat(text).doesNotContain("\"branchId\":\"" + other + "\"");
-                    // A draft is visible to its managers only, so its ID never reaches a stream.
-                    assertThat(text).doesNotContain("\"entityId\":\"" + id(wide) + "\"", "\"entityId\":\"" + id(everyone) + "\"");
-                    // One frame for the wide notice and one for the notice for everyone.
-                    assertThat(text.split("\"resource\":\"notices\"", -1).length - 1).isEqualTo(2);
-                }
-            }
         }
     }
 

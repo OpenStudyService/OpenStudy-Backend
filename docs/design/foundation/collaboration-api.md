@@ -95,7 +95,7 @@ Backend [#74](https://github.com/OpenStudyService/OpenStudy-Backend/issues/74)�
 - `canEdit` 같은 응답 필드는 화면 안내용이다. 서버는 쓰기마다 다시 검사한다.
 - **운영 중지 지점**: 이 문서의 기능은 내부 협업이라 FR-BR-08의 신규 운영 거래가 아니다. 지점이 운영 중지여도 조회·등록·수정을 모두 허용한다.
 - 업무·문의·시설의 담당자는 해당 지점의 활성 계정·유효 소속 직원만 지정할 수 있다. 아니면 422 `INVALID_ASSIGNEE`다. `work_tasks`의 담당자가 `branch_memberships`를 참조하므로 소속 행이 없는 OWNER는 담당자가 될 수 없다. 후보는 `GET /assignee-candidates`로 얻는다.
-- 변경 알림(`GET /workspace/events`)의 `resource`에 `tasks`·`facilities`·`inquiries`·`notices`를 추가했다. 본문 없이 `invalidate`만 보낸다. 채팅 실시간 전송은 M14다.
+- 변경 알림(`GET /workspace/events`)의 `resource`에 `tasks`·`facilities`·`inquiries`·`notices`를 추가했다. 본문 없이 `invalidate`만 보낸다. 채팅 실시간 전송은 M14다. (2026-11-07 SSE 제거로 더 이상 적용되지 않음, Backend #170)
 
 ### 추가 오류 코드
 

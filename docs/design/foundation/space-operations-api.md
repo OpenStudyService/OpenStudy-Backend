@@ -65,7 +65,7 @@ Backend [#67](https://github.com/OpenStudyService/OpenStudy-Backend/issues/67)�
 - **고객**: 예약·배정 대상 고객은 M4 판매와 같이 요청자의 고객 조회 범위 안이어야 하고(아니면 404), 정상 상태여야 한다(아니면 409 `CUSTOMER_NOT_ACTIVE`). 응답의 고객은 `CustomerSummary`만 담는다. 정확 일치 조회로 찾은 다른 지점 고객의 예약·배정은 범위 밖이다.
 - **운영 중지 지점(FR-BR-08)**: 신규 예약·배정·연장·이용 시작은 409 `BRANCH_NOT_ACTIVE`다. 취소 환불·이용 완료·반납과 조회는 허용한다. 룸·사물함 원장 수정은 운영 설정이므로 허용한다.
 - 수정은 `version`을 받고 충돌하면 409 `VERSION_CONFLICT`, `reloadUrl`은 해당 상세 주소다. `version` 외 항목이 없는 `PATCH`는 422다.
-- 변경 알림(`GET /workspace/events`)의 `resource`에 `rooms`, `room-reservations`, `lockers`, `locker-assignments`를 추가한다. 금액·고객 정보는 담지 않는다.
+- 변경 알림(`GET /workspace/events`)의 `resource`에 `rooms`, `room-reservations`, `lockers`, `locker-assignments`를 추가한다. 금액·고객 정보는 담지 않는다. (2026-11-07 SSE 제거로 더 이상 적용되지 않음, Backend #170)
 
 ### 추가 오류 코드
 

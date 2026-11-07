@@ -141,11 +141,6 @@ public class EmployeeAccountService {
         return repository.channelEligible(employee, branch).intValue() == 1;
     }
 
-    public boolean relatedToBranches(long employee, Set<Long> authorizedBranches) {
-        if (authorizedBranches.isEmpty()) return false;
-        return repository.relatedToBranches(employee, authorizedBranches).intValue() == 1;
-    }
-
     @Transactional
     public void updateProfile(long id, Map<String, Object> body, String requestId) {
         commands.selfAccountChange(id, () -> {

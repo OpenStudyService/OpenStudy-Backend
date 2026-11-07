@@ -1,6 +1,6 @@
 # Backend 실행 이미지와 운영 설정 계약
 
-> **2026-11-06 명시적 갱신 정책**: SSE buffering·heartbeat·연결 유지·fan-out 인수는 SSE 제거 전환 후 적용하지 않는다. 아래 SSE 설정은 현재 구현을 운영하는 동안의 참고다. 일반 HTTP·AI 장시간 응답의 timeout·HTTPS·쿠키·CSRF·서버 세션 보안 검증은 유지한다. [ADR-COM-001](../db/ADR-COM-001.md)과 [Backend #170](https://github.com/OpenStudyService/OpenStudy-Backend/issues/170)·[Frontend #77](https://github.com/OpenStudyService/OpenStudy-Frontend/issues/77)를 따른다. 문서 확정과 코드 제거 완료는 구분한다.
+> **2026-11-07 SSE 제거**: Backend는 SSE endpoint를 제공하지 않는다([Backend #170](https://github.com/OpenStudyService/OpenStudy-Backend/issues/170), [ADR-COM-001](../db/ADR-COM-001.md)). SSE buffering·heartbeat·연결 유지·fan-out 인수는 적용하지 않는다. 일반 HTTP·AI 장시간 응답의 timeout·HTTPS·쿠키·CSRF·서버 세션 보안 검증은 유지한다. Frontend 전환은 [Frontend #77](https://github.com/OpenStudyService/OpenStudy-Frontend/issues/77)에서 진행한다.
 
 [Backend #29](https://github.com/OpenStudyService/OpenStudy-Backend/issues/29)의 Backend 측 계약이다. 이미지 빌드·실행·환경 변수·프록시·DB 계약을 정리하고 Infra에 전달할 값을 모은다.
 
@@ -43,7 +43,7 @@ docker build --platform linux/amd64 \
 | 종료 | SIGTERM → graceful shutdown, 최대 20초. 종료 코드 143 |
 
 - 이미지 `HEALTHCHECK`는 ECS 태스크 정의의 health 명령과 같다.
-- 열린 SSE 연결은 graceful shutdown을 20초 제한까지 붙잡는다. ECS 기본 종료 대기 30초 안에 끝난다.
+- 처리 중인 요청(오래 걸리는 AI 조회 포함)은 graceful shutdown을 20초 제한까지 붙잡는다. ECS 기본 종료 대기 30초 안에 끝난다.
 - 기동 시 DB에 연결할 수 없거나 스키마가 엔터티와 맞지 않으면 프로세스가 종료 코드 1로 끝난다. ECS가 태스크를 다시 시작한다.
 
 ## 3. 환경 변수
@@ -100,12 +100,11 @@ Nginx `/api` 위치는 `Host`, `X-Forwarded-For`(`$proxy_add_x_forwarded_for`), 
 - 기본 bridge 대역 `172.17.0.0/16`이 후보다. 실제 값은 Infra #2에서 앱 로그나 측정으로 확인한 뒤 정한다.
 - 클라이언트가 직접 닿을 수 있는 대역은 넣지 않는다. 현재 보안 그룹은 외부에 80·443만 연다.
 
-### SSE
+### 장시간 요청
 
-- `/api/workspace/events` 응답은 `text/event-stream`, `Cache-Control: no-store`, `X-Accel-Buffering: no`를 보낸다.
-- `X-Accel-Buffering`은 Nginx가 소비하므로 브라우저에는 보이지 않는다.
-- 15초마다 heartbeat 주석을 보낸다. Infra Nginx의 `proxy_buffering off`, `proxy_read_timeout 300s`와 맞는다.
-- outbox 발행 표시는 프로세스 하나 기준이다. 현재 `desired_count=1`에서만 맞다. 여러 태스크로 늘리기 전 #17·#18에서 별도로 설계한다.
+- SSE endpoint는 없다. Nginx에 SSE 전용 `proxy_buffering off`를 둘 필요가 없다.
+- AI 조회는 일반 JSON 요청이지만 모델 호출 때문에 오래 걸릴 수 있다. Infra Nginx의 `proxy_read_timeout 300s`가 이를 덮는지 운영 값으로 확인한다.
+- 화면 갱신용 이벤트 발행이 없어졌으므로 이 경로의 `desired_count=1` 제약은 사라졌다. 여러 태스크 운영 전에는 세션·초대 메일 큐 등 다른 공유 상태를 별도로 확인한다.
 
 ## 6. Infra Gateway·Service 계약과의 차이
 
@@ -214,4 +213,4 @@ docker compose --profile tools down -v
 - [ ] `service_secret_parameters`: `DB_PASSWORD` → `/<name_prefix>/apps/` 아래 SSM ARN
 - [ ] 앱 계정 생성·권한 부여, Flyway SQL 출처를 Backend 커밋으로 교체(Infra #1)
 - [ ] OWNER 초기화 실행 위치와 비밀값 전달 방법
-- [ ] 공개 HTTPS에서 `smoke.sh`와 브라우저로 쿠키·로그아웃·CSRF·SSE 확인 결과
+- [ ] 공개 HTTPS에서 `smoke.sh`와 브라우저로 쿠키·로그아웃·CSRF 확인 결과

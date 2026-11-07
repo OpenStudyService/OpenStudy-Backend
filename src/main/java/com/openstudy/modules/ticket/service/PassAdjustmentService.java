@@ -22,7 +22,6 @@ import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyStore;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.persistence.DuplicateKeys;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.StrictInput;
@@ -55,7 +54,6 @@ public class PassAdjustmentService {
     private final AuthorizationService policy;
     private final AuthorizedCommands commands;
     private final AuditTrail audit;
-    private final WorkspaceOutbox outbox;
     private final IdempotencyStore requests;
     private final ObjectMapper json;
     private final Clock clock;
@@ -163,7 +161,6 @@ public class PassAdjustmentService {
         pass.adjust(minutes, credit, expiry, now);
         repository.saveAndFlush(pass);
         audit.record(AuditEvent.change(actor, branch, "passes", pass.getId(), "ADJUSTED", reason, before, snapshot(pass), requestId));
-        outbox.invalidate(branch, "passes", pass.getId());
     }
 
     /** The ledger has no expiry column, so the audit row is where the values before and after stay (contract). */

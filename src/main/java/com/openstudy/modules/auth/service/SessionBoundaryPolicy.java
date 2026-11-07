@@ -2,7 +2,6 @@ package com.openstudy.modules.auth.service;
 
 import java.time.Clock;
 import java.util.Set;
-import java.util.Locale;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 
@@ -56,12 +55,9 @@ public final class SessionBoundaryPolicy {
 
     public boolean effectiveActivity(HttpServletRequest request) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
-        String accept = request.getHeader("Accept");
-        // Streaming connections, reconnects and status/token refresh never count as user activity.
-        if (path.equals("/api/events") || path.equals("/api/workspace/events") || path.equals("/api/me")
-                || path.equals("/api/lookups")
-                || path.equals("/api/invitations/approval-status") || path.equals("/api/auth/csrf")
-                || (accept != null && accept.toLowerCase(Locale.ROOT).contains("text/event-stream"))) return false;
+        // Status and token refresh never count as user activity.
+        if (path.equals("/api/me") || path.equals("/api/lookups")
+                || path.equals("/api/invitations/approval-status") || path.equals("/api/auth/csrf")) return false;
         return !Set.of("HEAD", "OPTIONS").contains(request.getMethod());
     }
 }

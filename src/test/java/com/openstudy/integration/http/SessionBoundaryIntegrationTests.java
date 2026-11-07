@@ -166,14 +166,10 @@ class SessionBoundaryIntegrationTests {
         assertThat(get("/api/session-test/activity").statusCode()).isEqualTo(401);
     }
 
-    @Test void streamReconnectAndDeniedRequestsDoNotCountAsActivity() throws Exception {
+    @Test void deniedRequestsDoNotCountAsActivity() throws Exception {
         activate(); login();
         clock.advance(3599);
         assertThat(get("/api/session-test/denied").statusCode()).isEqualTo(403);
-        var stream = client.send(HttpRequest.newBuilder(uri("/api/session-test/activity"))
-                .header("Accept", "text/event-stream").GET().build(), HttpResponse.BodyHandlers.ofString());
-        // A reconnect cannot extend the idle clock even if the endpoint rejects its representation.
-        assertThat(stream.statusCode()).isBetween(200, 499);
         clock.advance(1);
         assertThat(get("/api/me").statusCode()).isEqualTo(401);
     }

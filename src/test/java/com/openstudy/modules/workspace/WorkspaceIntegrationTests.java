@@ -1,11 +1,9 @@
 package com.openstudy.modules.workspace;
 
-import java.io.*;
 import java.net.*;
 import java.net.http.*;
 import java.time.*;
 import java.util.*;
-import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,30 +15,22 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.session.SessionRepository;
-import org.springframework.test.context.TestPropertySource;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 import com.openstudy.support.database.MySqlIntegrationTest;
-import com.openstudy.modules.workspace.service.WorkspaceEventService;
 import com.openstudy.modules.auth.service.SessionBoundaryPolicy;
 import static org.assertj.core.api.Assertions.*;
 
 @MySqlIntegrationTest
 @Import(WorkspaceIntegrationTests.TimeConfiguration.class)
-@TestPropertySource(properties={"openstudy.workspace.scheduling.enabled=false","openstudy.workspace.heartbeat-millis=1000"})
 class WorkspaceIntegrationTests {
     @Autowired JdbcTemplate jdbc;
     @Autowired PasswordEncoder passwords;
     @Autowired ObjectMapper json;
-    @Autowired WorkspaceEventService events;
-    @Autowired PlatformTransactionManager transactions;
     @Autowired SessionRepository<? extends org.springframework.session.Session> sessions;
     @Autowired MutableClock clock;
     @LocalServerPort int port;
     final List<Long> people=new ArrayList<>(),branches=new ArrayList<>();
     final List<Client> clients=new ArrayList<>();
-    final List<Stream> streams=new ArrayList<>();
     long owner,manager,staff,other,pending,limited,unassigned,first,second,stopped;
     String passwordHash;
     static final String PASSWORD="workspace-test-password";
@@ -69,18 +59,14 @@ class WorkspaceIntegrationTests {
     }
     @AfterEach void cleanup() {
         for(long id:people) jdbc.update("DELETE FROM SPRING_SESSION WHERE PRINCIPAL_NAME=?",Long.toString(id));
-        events.tick();
-        streams.forEach(Stream::close);streams.clear();
         clients.forEach(Client::close);clients.clear();
         for(long id:people) {
             jdbc.update("DELETE FROM audit_events WHERE actor_employee_id=?",id);
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE target_employee_id=? OR (entity_type IN ('employee','employees') AND entity_id=?)",id,id);
             jdbc.update("DELETE FROM branch_memberships WHERE employee_id=?",id);
             jdbc.update("UPDATE employees SET created_by=NULL,updated_by=NULL WHERE id=?",id);
         }
         for(long id:people) jdbc.update("DELETE FROM employees WHERE id=?",id);
         for(long id:branches) {
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE branch_id=? OR (entity_type='branches' AND entity_id=?)",id,id);
             jdbc.update("DELETE FROM branches WHERE id=?",id);
         }
         people.clear();branches.clear();
@@ -117,38 +103,8 @@ class WorkspaceIntegrationTests {
             request.method(method,body==null?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)));
             return http.send(request.build(),HttpResponse.BodyHandlers.ofString());
         }
-        Stream stream(String scope)throws Exception {
-            var response=http.send(request("/api/workspace/events?scope="+scope).header("Accept","text/event-stream").GET().build(),HttpResponse.BodyHandlers.ofInputStream());
-            assertThat(response.statusCode()).isEqualTo(200);
-            assertThat(response.headers().firstValue("Content-Type").orElseThrow()).contains("text/event-stream");
-            assertThat(response.headers().firstValue("Cache-Control").orElseThrow()).contains("no-store");
-            assertThat(response.headers().firstValue("X-Accel-Buffering").orElseThrow()).isEqualTo("no");
-            var stream=new Stream(response.body());streams.add(stream);return stream;
-        }
         String sessionId(){String value=cookies.getCookieStore().getCookies().stream().filter(c->"SESSION".equals(c.getName())).findFirst().orElseThrow().getValue().replace("\"","");return new String(Base64.getDecoder().decode(value),java.nio.charset.StandardCharsets.UTF_8);}
         public void close(){http.close();}
-    }
-    final class Stream implements AutoCloseable {
-        final InputStream body;
-        final BlockingQueue<String> frames=new LinkedBlockingQueue<>();
-        final List<String> received=Collections.synchronizedList(new ArrayList<>());
-        final Thread reader;
-        Stream(InputStream body) {
-            this.body=body;
-            reader=Thread.ofVirtual().start(()->{
-                try(var lines=new BufferedReader(new InputStreamReader(body,java.nio.charset.StandardCharsets.UTF_8))) {
-                    String line;StringBuilder frame=new StringBuilder();
-                    while((line=lines.readLine())!=null){if(line.isEmpty()){if(!frame.isEmpty()){String value=frame.toString();received.add(value);frames.add(value);frame.setLength(0);}}else frame.append(line).append('\n');}
-                }catch(IOException ignored){}finally{frames.add("EOF");}
-            });
-        }
-        String next()throws Exception {String result=frames.poll(5,TimeUnit.SECONDS);assertThat(result).as("SSE frame within five seconds").isNotNull();return result;}
-        void resync()throws Exception {assertThat(next()).contains("event:resync","\"entityId\":null","\"branchId\":null");}
-        void none()throws Exception {assertThat(frames.poll(200,TimeUnit.MILLISECONDS)).isNull();}
-        public void close(){try{body.close();reader.join(500);}catch(IOException|InterruptedException ignored){}}
-    }
-    void event(long branch,String type,long entity) {
-        jdbc.update("INSERT INTO workspace_event_outbox(branch_id,entity_type,entity_id,event_type) VALUES (?,?,?,'INVALIDATE')",branch,type,entity);
     }
     @Test void lookupsAreCanonicalScopedAndMinimumAndPendingOrAnonymousAreDenied()throws Exception {
         var managerClient=client(manager);var staffClient=client(staff);
@@ -173,114 +129,68 @@ class WorkspaceIntegrationTests {
             assertThat(anonymous.send(HttpRequest.newBuilder(URI.create("http://localhost:"+port+"/api/lookups")).GET().build(),HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(401);
         }
     }
-    @Test void rollbackAndUncommittedEventsDoNotEscapeAndReconnectAlwaysResyncs()throws Exception {
-        var browser=client(staff);var stream=browser.stream(Long.toString(first));stream.resync();
-        var tx=new TransactionTemplate(transactions);
-        tx.execute(status->{event(first,"branches",first);events.tick();status.setRollbackOnly();return null;});
-        stream.none();
-        tx.execute(status->{event(first,"branches",first);events.tick();return null;});
-        stream.none();events.tick();
-        assertThat(stream.next()).contains("event:invalidate","\"branchId\":\""+first+"\"","\"resource\":\"branches\"");
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND published_at IS NOT NULL",Long.class,first)).isEqualTo(1);
-        var reconnected=browser.stream(Long.toString(first));reconnected.resync();
+    /** ADR-COM-001 COM-D01: no change-notification stream is served, for the workspace or for an AI request. */
+    @Test void noChangeNotificationStreamIsServed()throws Exception {
+        var browser=client(staff);
+        assertThat(browser.call("GET","/api/workspace/events?scope="+first,null).statusCode()).isEqualTo(404);
+        // The AI paths check AI access first, so an OWNER shows that no such route exists at all.
+        var administrator=client(owner);
+        assertThat(administrator.call("GET","/api/ai/requests/any/events",null).statusCode()).isEqualTo(404);
+        assertThat(administrator.call("GET","/api/requests/any/events",null).statusCode()).isEqualTo(404);
     }
-    @Test void branchEventsAndTargetedSignalsCannotLeakToOtherEmployeesOrScopes()throws Exception {
-        var ours=client(staff).stream(Long.toString(first));ours.resync();
-        var theirs=client(other).stream(Long.toString(second));theirs.resync();
-        event(first,"branches",first);event(second,"branches",second);events.tick();
-        assertThat(ours.next()).contains("\"branchId\":\""+first+"\"").doesNotContain("\"branchId\":\""+second+"\"");
-        assertThat(theirs.next()).contains("\"branchId\":\""+second+"\"");
-        jdbc.update("INSERT INTO workspace_event_outbox(target_employee_id,entity_type,entity_id,event_type) VALUES (?,'employee',?,'AUTHORIZATION_CHANGED')",staff,staff);
-        events.tick();
-        assertThat(ours.next()).contains("event:authorization.changed","\"entityId\":null","\"branchId\":null");
-        assertThat(ours.next()).isEqualTo("EOF");theirs.none();
-        assertThat(ours.received.toString()).doesNotContain("email","nickname",passwordHash);
+    /** A committed change leaves no refresh row behind: nothing reads them any more, so none may pile up. */
+    @Test void aCommittedChangeWritesNoRefreshRow()throws Exception {
+        long rows=jdbc.queryForObject("SELECT COUNT(*) FROM workspace_event_outbox",Long.class);
+        var administrator=client(owner);
+        var before=json.readTree(administrator.call("GET","/api/employees/"+manager+"?scope="+first,null).body());
+        var response=administrator.call("PUT","/api/employees/"+manager+"/memberships/"+first+"?scope="+first,
+                Map.of("employeeVersion",before.get("version").asLong(),"version",before.get("memberships").get(0).get("version").asLong(),
+                        "role","admin","status","회수","permissions",List.of()));
+        assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM workspace_event_outbox",Long.class)).isEqualTo(rows);
     }
-    @Test void aLowerOutboxIdThatCommitsLateIsNotLostAfterALaterIdWasPublished()throws Exception {
-        var stream=client(staff).stream(Long.toString(first));stream.resync();
-        var inserted=new CountDownLatch(1);var commit=new CountDownLatch(1);
-        try(var pool=Executors.newSingleThreadExecutor()) {
-            var earlier=pool.submit(()->new TransactionTemplate(transactions).execute(status->{
-                event(first,"branches",first);inserted.countDown();
-                try {if(!commit.await(10,TimeUnit.SECONDS))throw new IllegalStateException("commit timeout");}
-                catch(InterruptedException failure){Thread.currentThread().interrupt();throw new IllegalStateException(failure);}
-                return null;
-            }));
-            try {
-                assertThat(inserted.await(5,TimeUnit.SECONDS)).isTrue();
-                event(first,"branches",first);events.tick();
-                assertThat(stream.next()).contains("event:invalidate");stream.none();
-            } finally {commit.countDown();}
-            earlier.get(10,TimeUnit.SECONDS);
-        }
-        events.tick();assertThat(stream.next()).contains("event:invalidate");stream.none();
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND published_at IS NOT NULL",Long.class,first)).isEqualTo(2);
-    }
-    @Test void committedMembershipRevocationClosesAnOpenStreamBeforeAnyBranchEvent()throws Exception {
-        var browser=client(staff);var stream=browser.stream(Long.toString(first));stream.resync();
+    /** COM-D05: a membership revoked in another session refuses the next request with the current server state. */
+    @Test void aRevokedMembershipRefusesTheNextRequest()throws Exception {
+        var browser=client(staff);
+        assertThat(browser.call("GET","/api/lookups?scope="+first,null).statusCode()).isEqualTo(200);
         jdbc.update("UPDATE branch_memberships SET status='REVOKED',version=version+1 WHERE employee_id=? AND branch_id=?",staff,first);
-        event(first,"branches",first);events.tick();
-        assertThat(stream.next()).contains("event:authorization.changed","\"branchId\":null");assertThat(stream.next()).isEqualTo("EOF");
         assertThat(browser.call("GET","/api/lookups?scope="+first,null).statusCode()).isEqualTo(403);
-        assertThat(stream.received.toString()).doesNotContain("event:invalidate");
     }
-    @Test void branchEmployeeRevocationInvalidatesStaffWithoutRevealingTheRemovedEmployeeId()throws Exception {
+    /** COM-D05: choices read after a revocation no longer offer the removed employee. */
+    @Test void lookupsReadAfterARevocationDropTheRemovedEmployee()throws Exception {
         var administrator=client(owner);var viewer=client(staff);
         var before=json.readTree(administrator.call("GET","/api/employees/"+manager+"?scope="+first,null).body());
         var choices=json.readTree(viewer.call("GET","/api/lookups?scope="+first,null).body());
         assertThat(choices.get("employees")).anyMatch(employee->Long.toString(manager).equals(employee.get("id").asString()));
         assertThat(viewer.call("GET","/api/employees/"+manager+"?scope="+first,null).statusCode()).isEqualTo(403);
-        var stream=viewer.stream(Long.toString(first));stream.resync();
         var response=administrator.call("PUT","/api/employees/"+manager+"/memberships/"+first+"?scope="+first,
                 Map.of("employeeVersion",before.get("version").asLong(),"version",before.get("memberships").get(0).get("version").asLong(),
                         "role","admin","status","회수","permissions",List.of()));
         assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
-        events.tick();
-        var frame=stream.next();
-        assertThat(frame).contains("event:invalidate","\"resource\":\"employees\"","\"branchId\":\""+first+"\"","\"entityId\":null")
-                .doesNotContain("\"entityId\":\""+manager+"\"");
-        stream.none();
         var after=json.readTree(viewer.call("GET","/api/lookups?scope="+first,null).body());
         assertThat(after.get("employees")).noneMatch(employee->Long.toString(manager).equals(employee.get("id").asString()));
     }
-    @Test void logoutAndAccountRestrictionTerminateStreamsWithoutJsonAppending()throws Exception {
-        var browser=client(staff);var stream=browser.stream("all");stream.resync();
-        assertThat(browser.call("POST","/api/auth/logout",Map.of()).statusCode()).isEqualTo(200);events.tick();
-        assertThat(stream.next()).isEqualTo("EOF");
-        assertThat(stream.received.toString()).doesNotContain("SESSION_EXPIRED","FORBIDDEN","event:invalidate");
-        var restricted=client(manager);var another=restricted.stream(Long.toString(first));another.resync();
-        jdbc.update("UPDATE employees SET status='SUSPENDED' WHERE id=?",manager);events.tick();
-        assertThat(another.next()).isEqualTo("EOF");
+    /** COM-D05: logout and an account restricted elsewhere end the session at the next request. */
+    @Test void logoutAndAccountRestrictionRefuseTheNextRequest()throws Exception {
+        var browser=client(staff);
+        assertThat(browser.call("POST","/api/auth/logout",Map.of()).statusCode()).isEqualTo(200);
+        assertThat(browser.call("GET","/api/me",null).statusCode()).isEqualTo(401);
+        var restricted=client(manager);
+        assertThat(restricted.call("GET","/api/me",null).statusCode()).isEqualTo(200);
+        jdbc.update("UPDATE employees SET status='SUSPENDED' WHERE id=?",manager);
         assertThat(restricted.call("GET","/api/me",null).statusCode()).isEqualTo(401);
     }
-    @Test void heartbeatNeverExtendsIdleSessionAndMaximumAuthenticationAgeClosesStream()throws Exception {
-        var browser=client(staff);String id=browser.sessionId();
-        Long before=sessions.findById(id).getAttribute(SessionBoundaryPolicy.LAST_ACTIVITY_AT);
-        var stream=browser.stream("all");stream.resync();
-        clock.advance(2);events.tick();assertThat(stream.next()).contains(":heartbeat");
-        assertThat(sessions.findById(id).<Long>getAttribute(SessionBoundaryPolicy.LAST_ACTIVITY_AT)).isEqualTo(before);
-        clock.advance(SessionBoundaryPolicy.IDLE_SECONDS-2);events.tick();assertThat(stream.next()).isEqualTo("EOF");
-        assertThat(browser.call("GET","/api/me",null).statusCode()).isEqualTo(401);
-        clock.now.set(Instant.now());var active=client(manager);var max=active.stream("all");max.resync();
+    /** ADR-COM-001 keeps the session limits: an idle or too old session is refused at its next request. */
+    @Test void idleAndMaximumSessionLimitsStillApply()throws Exception {
+        var idle=client(staff);
+        clock.advance(SessionBoundaryPolicy.IDLE_SECONDS);
+        assertThat(idle.call("GET","/api/me",null).statusCode()).isEqualTo(401);
+        clock.now.set(Instant.now());var active=client(manager);
         clock.advance(SessionBoundaryPolicy.MAX_SECONDS);
         setActivity(sessions,active.sessionId(),clock.instant().getEpochSecond()-1);
-        events.tick();assertThat(max.next()).isEqualTo("EOF");
+        assertThat(active.call("GET","/api/me",null).statusCode()).isEqualTo(401);
     }
     private <S extends org.springframework.session.Session> void setActivity(SessionRepository<S> repository,String id,long at) {
         S session=repository.findById(id);session.setAttribute(SessionBoundaryPolicy.LAST_ACTIVITY_AT,at);repository.save(session);
-    }
-    @Test void globalEmployeeAndPresetInvalidationsRedactIdsAndRespectVisibility()throws Exception {
-        var employee=client(staff).stream(Long.toString(first));employee.resync();
-        var administrator=client(manager).stream(Long.toString(first));administrator.resync();
-        jdbc.update("INSERT INTO workspace_event_outbox(entity_type,entity_id,event_type) VALUES ('employees',?,'INVALIDATE')",other);
-        events.tick();employee.none();administrator.none();
-        jdbc.update("INSERT INTO workspace_event_outbox(entity_type,entity_id,event_type) VALUES ('employees',?,'INVALIDATE')",manager);
-        events.tick();
-        assertThat(employee.next()).contains("\"resource\":\"lookups\"","\"entityId\":null","\"branchId\":null");
-        assertThat(administrator.next()).contains("\"entityId\":null");
-        long preset=jdbc.queryForObject("SELECT MIN(id) FROM permission_presets",Long.class);
-        jdbc.update("INSERT INTO workspace_event_outbox(entity_type,entity_id,event_type) VALUES ('permission-presets',?,'INVALIDATE')",preset);
-        events.tick();employee.none();assertThat(administrator.next()).contains("\"resource\":\"permissions\"","\"entityId\":null");
-        jdbc.update("DELETE FROM workspace_event_outbox WHERE entity_type='permission-presets' AND entity_id=?",preset);
     }
 }

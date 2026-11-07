@@ -126,7 +126,6 @@ class SeatSessionIntegrationTests {
         jdbc.update("DELETE FROM product_categories WHERE created_by IN (" + actors + ")");
         for (long id : branches) {
             jdbc.update("DELETE FROM seats WHERE branch_id=?", id);
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE branch_id=?", id);
             jdbc.update("DELETE FROM audit_events WHERE branch_id=?", id);
             jdbc.update("DELETE FROM branch_memberships WHERE branch_id=?", id);
             jdbc.update("DELETE FROM branch_weekly_hours WHERE branch_id=?", id);
@@ -374,7 +373,7 @@ class SeatSessionIntegrationTests {
 
     // ---- check-in -------------------------------------------------------------------------------------------
 
-    @Test void checkInCreatesOneSessionWithActorReasonAuditAndEventsAndTheSameKeyReplaysIt() throws Exception {
+    @Test void checkInCreatesOneSessionWithActorReasonAuditAndTheSameKeyReplaysIt() throws Exception {
         long customer = customer(first, "입실 고객");
         long pass = timePass(customer, first);
         long seat = seat(first);
@@ -417,8 +416,6 @@ class SeatSessionIntegrationTests {
             assertThat(((Number) audit.get("actor_employee_id")).longValue()).isEqualTo(staff);
             assertThat(((Number) audit.get("branch_id")).longValue()).isEqualTo(first);
             assertThat(audit.get("reason")).isEqualTo("QR 미연동 현장 배정");
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type='seats' AND entity_id=?", first, seat)).isEqualTo(1);
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type='seat-sessions' AND entity_id=?", first, id)).isEqualTo(1);
 
             // The seat now shows the session; the detail agrees with the creation response.
             var shown = node(get(s, "/api/seats/" + seat));
@@ -432,7 +429,6 @@ class SeatSessionIntegrationTests {
             assertThat(node(replay)).isEqualTo(session);
             assertThat(count("SELECT COUNT(*) FROM seat_sessions WHERE customer_id=?", customer)).isEqualTo(1);
             assertThat(count("SELECT COUNT(*) FROM audit_events WHERE entity_type='seat-sessions' AND entity_id=?", id)).isEqualTo(1);
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_type='seat-sessions' AND entity_id=?", id)).isEqualTo(1);
 
             // Same key on the same seat, different input.
             var other = entry(seat, customer, pass);
@@ -680,12 +676,6 @@ class SeatSessionIntegrationTests {
             assertThat(get(s, "/api/customers").body()).doesNotContain(memberNo);
             assertThat(get(s, "/api/passes/" + pass).statusCode()).isEqualTo(404);
             assertThat(get(s, "/api/passes").body()).doesNotContain("\"" + pass + "\"");
-
-            // Events: seat and session go to the branch of use, the balance to the branch of purchase.
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type='seats' AND entity_id=?", first, seat)).isEqualTo(2);
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type='seat-sessions' AND entity_id=?", first, id)).isEqualTo(2);
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type='passes' AND entity_id=?", second, pass)).isEqualTo(2);
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type='passes'", first)).isZero();
         }
     }
 
@@ -909,7 +899,7 @@ class SeatSessionIntegrationTests {
 
     // ---- check-out ------------------------------------------------------------------------------------------
 
-    @Test void checkOutRecordsActorReasonAuditAndEventsAndReleasesTheSeat() throws Exception {
+    @Test void checkOutRecordsActorReasonAuditAndReleasesTheSeat() throws Exception {
         clock.fixed = TEN;
         long customer = customer(first, "퇴실 고객");
         long pass = pass(customer, first, time(120, null));
@@ -1003,7 +993,6 @@ class SeatSessionIntegrationTests {
             assertThat(count("SELECT remaining_minutes FROM passes WHERE id=?", pass)).isEqualTo(120);
             assertThat(count("SELECT COUNT(*) FROM audit_events WHERE entity_type='seat-sessions' AND entity_id=? AND action='CHECKED_OUT'", id)).isZero();
             assertThat(count("SELECT COUNT(*) FROM idempotency_records WHERE actor_employee_id=? AND operation='seat-sessions:check-out'", staff)).isZero();
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_type='passes' AND entity_id=? AND branch_id=?", pass, first)).isEqualTo(1);
         }
         assertThatThrownBy(() -> jdbc.update("INSERT INTO pass_balance_events(pass_id,kind,delta_minutes,event_key) "
                 + "SELECT pass_id,'USE',-1,event_key FROM pass_balance_events WHERE pass_id=?", pass)).isInstanceOf(DataAccessException.class);

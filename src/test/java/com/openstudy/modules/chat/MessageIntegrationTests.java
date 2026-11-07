@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.context.TestPropertySource;
 import tools.jackson.databind.JsonNode;
 import com.openstudy.support.database.MySqlIntegrationTest;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -18,7 +17,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  * every kind of outsider; the races run real concurrent requests against MySQL.
  */
 @MySqlIntegrationTest
-@TestPropertySource(properties = "openstudy.workspace.scheduling.enabled=false")
 class MessageIntegrationTests extends ChannelTestSupport {
 
     // ---- access ---------------------------------------------------------------------------------------------

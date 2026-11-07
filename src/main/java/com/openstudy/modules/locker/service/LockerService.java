@@ -22,7 +22,6 @@ import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyStore;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.ListQuery;
 import com.openstudy.common.web.PageResponse;
@@ -65,7 +64,6 @@ public class LockerService {
     private final AuthorizedCommands commands;
     private final AuditTrail audit;
     private final ObjectMapper json;
-    private final WorkspaceOutbox outbox;
     private final IdempotencyStore requests;
     private final Clock clock;
 
@@ -118,7 +116,6 @@ public class LockerService {
             var locker = LockerConflicts.translating(() -> repository.saveAndFlush(new Locker(branch, lockerNo, rate, stored)));
             audit.record(AuditEvent.change(actor, branch, ENTITY, locker.getId(), "CREATED", null, null,
                     json.writeValueAsString(snapshot(locker)), requestId));
-            outbox.invalidate(branch, ENTITY, locker.getId());
             var result = view(locker);
             requests.complete(actor, CREATE, scopeKey, key, fingerprint, 201, json.writeValueAsString(result),
                     clock.instant().plus(Duration.ofHours(24)));
@@ -153,7 +150,6 @@ public class LockerService {
             LockerConflicts.translating(() -> repository.saveAndFlush(locker));
             audit.record(AuditEvent.change(actor, branch, ENTITY, id, "UPDATED", null, json.writeValueAsString(before),
                     json.writeValueAsString(after), requestId));
-            outbox.invalidate(branch, ENTITY, id);
             return view(locker);
         });
     }
@@ -177,7 +173,6 @@ public class LockerService {
             audit.record(AuditEvent.change(actor, branch, ENTITY, id, "STATUS_CHANGED", reason,
                     json.writeValueAsString(Map.of("status", previous.label())),
                     json.writeValueAsString(Map.of("status", next.label())), requestId));
-            outbox.invalidate(branch, ENTITY, id);
             return view(locker);
         });
     }
@@ -205,7 +200,6 @@ public class LockerService {
             after.put("updated", updated);
             audit.record(AuditEvent.change(actor, branch, "branches", branch, "LOCKER_RATE_APPLIED", null,
                     json.writeValueAsString(Map.of("ratesPer4WeeksKrw", previous)), json.writeValueAsString(after), requestId));
-            outbox.invalidate(branch, ENTITY, null);
             var result = new LockerRateResult(updated, rate);
             requests.complete(actor, APPLY_RATE, scopeKey, key, fingerprint, 200, json.writeValueAsString(result),
                     clock.instant().plus(Duration.ofHours(24)));

@@ -13,7 +13,6 @@ import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyStore;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.persistence.DuplicateKeys;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.modules.authorization.service.PermissionCatalog;
@@ -39,19 +38,17 @@ public class InvitationManagementRepository {
     private final SessionBranchService branches;
     private final ObjectMapper json;
     private final AuditTrail audit;
-    private final WorkspaceOutbox outbox;
     private final IdempotencyStore requests;
 
     public InvitationManagementRepository(InvitationRepository invitations, InvitationSendJobRepository jobs,
             PermissionCatalog permissions, SessionBranchService branches, ObjectMapper json, AuditTrail audit,
-            WorkspaceOutbox outbox, IdempotencyStore requests) {
+            IdempotencyStore requests) {
         this.invitations = invitations;
         this.jobs = jobs;
         this.permissions = permissions;
         this.branches = branches;
         this.json = json;
         this.audit = audit;
-        this.outbox = outbox;
         this.requests = requests;
     }
 
@@ -159,7 +156,6 @@ public class InvitationManagementRepository {
     public void changed(long actor, long branch, long id, String action, Invitation before, Invitation after, String requestId) {
         audit.record(AuditEvent.change(actor, branch, "invitations", id, action,
                 before == null ? null : json.writeValueAsString(before), json.writeValueAsString(after), requestId));
-        outbox.invalidate(branch, "invitations", id);
     }
 
     public Optional<Invitation> replay(long actor, long branch, String key, Object input, Instant now) {

@@ -6,7 +6,7 @@ spring:
     # Matches Infra's default SPRING_FLYWAY_ENABLED=false; the app account has no DDL rights.
     enabled: false
   lifecycle:
-    # Open SSE streams hold graceful shutdown until this timeout; it must end before the ECS stop timeout (30s, then SIGKILL).
+    # In-flight requests (e.g. AI queries) hold graceful shutdown until this timeout; it must end before the ECS stop timeout (30s, then SIGKILL).
     timeout-per-shutdown-phase: 20s
 server:
   shutdown: graceful

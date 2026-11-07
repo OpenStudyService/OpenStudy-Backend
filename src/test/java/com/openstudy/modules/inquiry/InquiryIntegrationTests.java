@@ -73,7 +73,6 @@ class InquiryIntegrationTests {
         for (long id : branches) {
             jdbc.update("DELETE e FROM inquiry_events e JOIN inquiries i ON i.id=e.inquiry_id WHERE i.branch_id=?", id);
             jdbc.update("DELETE FROM inquiries WHERE branch_id=?", id);
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE branch_id=?", id);
             jdbc.update("DELETE FROM audit_events WHERE branch_id=?", id);
         }
         jdbc.update("DELETE FROM customer_service_interactions WHERE customer_id IN (SELECT id FROM customers WHERE member_no LIKE ?)", token + "%");
@@ -230,7 +229,6 @@ class InquiryIntegrationTests {
             assertThat(created.get("customer").get("id").asString()).isEqualTo(Long.toString(inScope));
             assertThat(count("SELECT COUNT(*) FROM inquiries WHERE id=? AND branch_id=? AND customer_id=? AND created_by=? AND status='RECEIVED' AND source='PHONE'",
                     id(created), first, inScope, staff)).isEqualTo(1);
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_type='inquiries' AND entity_id=? AND branch_id=?", id(created), first)).isEqualTo(1);
 
             // A colleague with no part in the registration answers it.
             var done = answered(c, created, "답변드립니다.");

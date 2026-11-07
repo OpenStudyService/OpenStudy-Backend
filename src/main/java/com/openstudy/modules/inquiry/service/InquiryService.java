@@ -25,7 +25,6 @@ import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.ObjectMapper;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyStore;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.ListQuery;
 import com.openstudy.common.web.PageResponse;
@@ -67,7 +66,6 @@ public class InquiryService {
     private final AuthorizationService policy;
     private final AuthorizedCommands commands;
     private final ObjectMapper json;
-    private final WorkspaceOutbox outbox;
     private final IdempotencyStore requests;
     private final Clock clock;
 
@@ -150,7 +148,6 @@ public class InquiryService {
             String message = "문의를 등록했습니다. 접수 경로: " + InquiryInputs.label(source) + (assignee == null ? ""
                     : ", 담당자: " + employees.names(List.of(assignee)).getOrDefault(assignee, ""));
             events.save(new InquiryEvent(inquiry.getId(), actor, null, status, message));
-            outbox.invalidate(branch, "inquiries", inquiry.getId());
             var result = detail(inquiry, state, customer);
             requests.complete(actor, CREATE, scopeKey, key, fingerprint, 201, json.writeValueAsString(result), now.plus(Duration.ofHours(24)));
             return result;
@@ -217,7 +214,6 @@ public class InquiryService {
 
     private InquiryDetail saved(Inquiry inquiry, AuthorizationState state) {
         var result = repository.saveAndFlush(inquiry);
-        outbox.invalidate(result.getBranchId(), "inquiries", result.getId());
         return detail(result, state);
     }
 

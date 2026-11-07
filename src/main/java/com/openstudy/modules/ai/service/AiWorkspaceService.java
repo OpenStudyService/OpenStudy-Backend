@@ -22,7 +22,6 @@ import com.openstudy.modules.ai.repository.AiTraceRepository;
 import com.openstudy.modules.ai.repository.AiWorkRecordRepository;
 import com.openstudy.modules.sales.service.SalesAggregationService;
 import com.openstudy.modules.sales.service.SalesAggregationService.RefundBasis;
-import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -40,7 +39,6 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -499,71 +497,6 @@ public class AiWorkspaceService {
                 securityGate,
                 legacyExecution
         );
-    }
-
-    /**
-     * Streams the 6-stage pipeline events over SSE for {@code GET /api/ai/requests/{id}/events}
-     * and {@code GET /api/requests/{id}/events}.
-     */
-    @Transactional(readOnly = true)
-    public SseEmitter streamRequestEvents(String requestId) {
-        SseEmitter emitter = new SseEmitter(60_000L);
-        var execOpt = executionRepository.findByRequestRef(requestId)
-                .or(() -> executionRepository.findById(requestId));
-
-        if (execOpt.isEmpty()) {
-            try {
-                emitter.send(SseEmitter.event().name("failed").data(Map.of(
-                        "code", "NOT_FOUND",
-                        "message", "요청한 AI 실행 이력을 찾을 수 없습니다."
-                )));
-                emitter.complete();
-            } catch (IOException ignored) {
-                emitter.completeWithError(ignored);
-            }
-            return emitter;
-        }
-
-        AiExecutionEntity exec = execOpt.get();
-        try {
-            for (String phase : List.of("accepted", "retrieving", "generating", "validating", "executing")) {
-                emitter.send(SseEmitter.event().name(phase).data(Map.of(
-                        "requestId", exec.getRequestRef(),
-                        "phase", phase
-                )));
-            }
-
-            switch (exec.getStatus()) {
-                case "READY", "COMPLETED" -> emitter.send(SseEmitter.event().name("completed").data(Map.of(
-                        "status", "READY",
-                        "executionId", exec.getId(),
-                        "requestId", exec.getRequestRef()
-                )));
-                case "UNSUPPORTED" -> emitter.send(SseEmitter.event().name("completed").data(Map.of(
-                        "status", "UNSUPPORTED",
-                        "executionId", exec.getId(),
-                        "unsupportedReason", "OpenStudy 업무 도메인 외의 질문이거나 지원하지 않는 형식입니다."
-                )));
-                case "CLARIFICATION" -> {
-                    var actor = userResolver.resolveByEmployeeId(exec.getEmployeeId());
-                    var plan = playbackGateway.planQuestion(exec.getQuestion(), null, actor, exec.getScopeKey());
-                    emitter.send(SseEmitter.event().name("clarification").data(Map.of(
-                            "clarificationOptions", plan.clarificationOptions()
-                    )));
-                }
-                case "CANCELED" -> emitter.send(SseEmitter.event().name("canceled").data(Map.of(
-                        "status", "CANCELED"
-                )));
-                default -> emitter.send(SseEmitter.event().name("failed").data(Map.of(
-                        "code", exec.getErrorCode() == null ? "REQUEST_FAILED" : exec.getErrorCode(),
-                        "message", "권한 또는 입력 조건 검증에 실패했습니다."
-                )));
-            }
-            emitter.complete();
-        } catch (IOException e) {
-            emitter.completeWithError(e);
-        }
-        return emitter;
     }
 
     @Transactional

@@ -27,7 +27,6 @@ import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyStore;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.ListQuery;
 import com.openstudy.common.web.PageResponse;
@@ -87,7 +86,6 @@ public class RoomReservationService {
     private final AuthorizedCommands commands;
     private final AuditTrail audit;
     private final ObjectMapper json;
-    private final WorkspaceOutbox outbox;
     private final IdempotencyStore requests;
     private final Clock clock;
 
@@ -134,7 +132,6 @@ public class RoomReservationService {
             if (approved) RoomConflicts.translating(() -> slots.saveAllAndFlush(slots(reservation)));
             audit.record(AuditEvent.change(actor, branch, ENTITY, reservation.getId(), reservation.getStatus().name(), null, null,
                     json.writeValueAsString(snapshot(reservation)), requestId));
-            outbox.invalidate(branch, ENTITY, reservation.getId());
             var result = views(List.of(reservation), state, now).getFirst();
             requests.complete(actor, CREATE, scopeKey, key, fingerprint, 201, json.writeValueAsString(result),
                     clock.instant().plus(Duration.ofHours(24)));
@@ -179,7 +176,6 @@ public class RoomReservationService {
             after.put("refundId", Long.toString(refundId));
             audit.record(AuditEvent.change(actor, branch, ENTITY, id, reservation.getStatus().name(), reason,
                     json.writeValueAsString(Map.of("status", before)), json.writeValueAsString(after), requestId));
-            outbox.invalidate(branch, ENTITY, id);
             var result = views(List.of(reservation), state, now).getFirst();
             requests.complete(actor, CANCEL, scopeKey, key, fingerprint, 200, json.writeValueAsString(result),
                     clock.instant().plus(Duration.ofHours(24)));
@@ -242,7 +238,6 @@ public class RoomReservationService {
         after.put("status", reservation.getStatus().name());
         audit.record(AuditEvent.change(actor, reservation.getBranchId(), ENTITY, reservation.getId(), reservation.getStatus().name(), null,
                 json.writeValueAsString(Map.of("status", before)), json.writeValueAsString(after), requestId));
-        outbox.invalidate(reservation.getBranchId(), ENTITY, reservation.getId());
         return views(List.of(reservation), state, now).getFirst();
     }
 
