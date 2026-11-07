@@ -1,5 +1,7 @@
 # 정책 및 설계 결정
 
+> **2026-11-06 명시적 갱신 정책**: 기반 D9의 SSE 전달·재연결 요구를 명시적 조회로 대체한다. 원래 결정 표는 당시 설계 이력으로 보존한다. 서버의 현재 권한·세션·버전·중복 검증은 유지한다. 결정은 [ADR-COM-001](../../db/ADR-COM-001.md), 구현은 [Backend #170](https://github.com/OpenStudyService/OpenStudy-Backend/issues/170)·[Frontend #77](https://github.com/OpenStudyService/OpenStudy-Frontend/issues/77)에서 추적한다. 이번 PR은 문서 변경이다.
+
 작성일: 2026-10-23. 갱신일: 2026-10-26. `기존 확정`은 기존 사용자 결정 또는 검토 완료 SRS에서 확인한 내용이다. Q1~Q12는 사용자의 명시적 답변으로 확정했다. `설계 선택`은 구현 방법의 선택이며 그 밖의 사업 정책까지 사용자에게 승인받았다는 의미는 아니다.
 
 ## 기존 확정 사항 유지

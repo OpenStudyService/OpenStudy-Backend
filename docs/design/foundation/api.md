@@ -1,5 +1,7 @@
 # 기반 기능 API 계약
 
+> **2026-11-06 명시적 갱신 정책**: SSE·polling 대신 사용자 요청으로 조회한다. 다음 API에서 현재 권한을 검증하고, 감지 후 비공개 상태를 정리한다. OpenAPI의 현재 SSE operation은 실제 구현 전환과 함께 정리한다. 결정은 [ADR-COM-001](../../db/ADR-COM-001.md), 구현은 [Backend #170](https://github.com/OpenStudyService/OpenStudy-Backend/issues/170)·[Frontend #77](https://github.com/OpenStudyService/OpenStudy-Frontend/issues/77)에서 추적한다. 이번 PR은 문서 변경이다.
+
 2026-10-26: 현재 상품 정책은 SRS v1.1의 물리 삭제 미제공·판매 중지/재개이며 OpenAPI `0.1.4-product-retention`에 반영했다. 구현된 M1 본인 닉네임 저장과 현재 사용자 응답·타입 동기화는 [profile-api.md](profile-api.md)를 따른다. `PATCH /me/profile`은 계정 version을 사용하며 이메일·사진 변경을 허용하지 않는다.
 
 작성일: 2026-10-23. 갱신일: 2026-10-26. 목표 계약은 [openapi.json](openapi.json), 확정 정책 Q1~Q12는 [decisions.md](decisions.md)를 따른다. 서버에 이미 구현된 endpoint와 혼동하지 않는다. base URL은 동일 origin의 `/api`다.
@@ -28,7 +30,7 @@
 
 | HTTP | 대표 code | 클라이언트 처리 |
 | --- | --- | --- |
-| 401 | AUTHENTICATION_FAILED, SESSION_EXPIRED | 로그인 실패는 ID 존재 여부를 구별하지 않음. 보호 요청 만료는 SSE 종료·민감 캐시 정리·로그인 복귀 |
+| 401 | AUTHENTICATION_FAILED, SESSION_EXPIRED | 로그인 실패는 ID 존재 여부를 구별하지 않음. 보호 요청 만료는 진행 요청 취소·늦은 응답 차단·민감 캐시/초안 정리·로그인 복귀 |
 | 403 | FORBIDDEN, CSRF_INVALID | 권한 화면 또는 CSRF 재발급. 자동으로 다른 지점 데이터를 조회하지 않음 |
 | 404 | NOT_FOUND | 허용 범위 내 존재하지 않는 대상 안내 |
 | 409 | VERSION_CONFLICT, INVALID_STATE, DUPLICATE_INVITATION, LAST_ADMIN_REQUIRED, IDEMPOTENCY_CONFLICT, REQUEST_IN_PROGRESS | 입력 보존·최신값 확인 후 재시도. 처리 중이면 Retry-After를 참고 |
@@ -60,7 +62,7 @@ URL에 검색·지점·필터·정렬·page를 저장하고 목록 복귀 시 �
 
 신규 초대 수락 후 자동 업무 로그인하지 않는다. 승인 확인용 로그인으로 PENDING 상태를 확인하고, 승인 완료 시 Q10에 따라 재로그인해 업무 세션을 발급받는다. 기존 직원은 자신의 ACTIVE 세션으로 새 지점 초대를 수락하고 기존 지점 업무는 유지한다. 제한 세션과 기존 지점 업무 유지는 확정 정책 Q1, 승인 후 재로그인은 확정 정책 Q10을 따른다.
 
-유휴 60분·최대12시간 기준은 서버가 판단한다. SSE heartbeat·자동 재접속·백그라운드 polling은 유효 활동 시각을 연장하지 않는다. 일반 소속·권한 변경은 로그인 유지 후 재평가, 계정 제한·퇴사는 즉시 새 업무 요청을 거부하고 세션·스트림을 폐기한다. 최초 사장님은 제한된 별도 초기화 명령으로 생성하고 공개 API는 제공하지 않는다.
+유휴 60분·최대12시간 기준은 서버가 판단한다. 화면 상태를 위한 자동 조회는 사용하지 않는다. 일반 소속·권한 변경은 로그인 유지 후 다음 API에서 현재 상태로 재평가한다. 계정 제한·퇴사는 서버 세션을 무효화하고 새 업무 요청을 거부한다. 감지 후 관련 비공개 상태를 정리하며 요청 없는 화면의 즉시 삭제는 보장하지 않는다. 최초 사장님은 제한된 별도 초기화 명령으로 생성하고 공개 API는 제공하지 않는다.
 
 ## API별 권한
 
@@ -149,9 +151,18 @@ Q9에 따라 상품 유형은 등록 후 변경하지 않고 다른 유형은 �
 
 일반 수정은 version, 초대 명령은 version+상태 전이를 사용한다. login/accept의 비밀번호·토큰 요청을 멱등 결과에 저장하지 않는다. 네트워크 응답 유실 뒤 초대 수락 재시도가 성공 응답을 재생하지는 않으므로 로그인 후 본인 승인 상태를 확인하도록 안내한다. 결제·환불·예약의 키 정책은 그 기능 설계 시 이 공통 저장소 규칙을 적용한다.
 
-## SSE·lookups·빈 화면
+## 화면 갱신·lookups·빈 화면
 
-2026-10-26 구현 범위·실제 최소 DTO·연결 종료·설정·후속 검증은 [workspace-api.md](workspace-api.md)를 따른다. 아래의 기반 정책은 유지한다.
+SRS v1.15 FR-COM-13·POL-52·53과 [ADR-COM-001](../../db/ADR-COM-001.md)을 따른다.
+
+- 메뉴 진입·같은 메뉴 재클릭·명시적 새로고침·검색/필터/정렬/페이지/지점 변경 시 현재 조건으로 조회한다. 유효한 조회 조건과 미저장 입력 보호를 유지하고 마지막 조회 시각을 표시한다.
+- 화면을 읽거나 편집하는 동안 마지막 조회 상태를 유지한다. SSE·polling·포커스 복귀·네트워크 복구·시간 경과만으로 재조회하지 않는다. 주기적 `/me`도 추가하지 않는다.
+- 본인 변경 성공은 응답과 관련 목록·상세·필요한 요약에 반영한다. 오류·409는 입력을 보존하고 최신값 확인 후 재시도한다. 서버는 현재 상태·권한·금액·버전·중복을 최종 검증한다.
+- 다른 세션의 권한 변경은 다음 API부터 차단한다. 감지된 401·접근 범위 변경·로그아웃·계정/지점 변경에서는 해당 캐시·초안·진행 요청과 늦은 응답을 정리한다.
+
+### 이전 SSE 계약 — 구현 제거 전 참고
+
+아래 내용은 [workspace-api.md](workspace-api.md)에 기록한 현재 구현의 근거다. 새 기능의 필수 요구가 아니며 endpoint·타입·테스트의 실제 제거는 Backend #170·Frontend #77에서 처리한다.
 
 `GET /workspace/events?scope=...`의 이벤트는 개인정보 없는 갱신 신호다. 변경된 자원의 resource/entityId/허용 branchId만 보내고, 권한 변경 이벤트에는 타 지점 목록을 담지 않는다. EventSource는 same-origin 쿠키로 연결한다. Nginx buffering을 끄고 heartbeat는 연결 유지에만 쓴다. 연결 복구 시 `resync`를 보내고 클라이언트는 현재 화면·me·lookups를 다시 조회한다. Last-Event-ID 재생은 이번 계약에서 보장하지 않는다.
 

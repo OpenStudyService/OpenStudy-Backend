@@ -1,5 +1,7 @@
 # DB 관리 안내
 
+2026-11-06 공통 화면 갱신 결정은 [ADR-COM-001](ADR-COM-001.md)을 따른다. SSE·polling 제거와 요청 시 인가 전환의 정책 기록이며 Outbox 테이블 DROP이나 기존 Flyway 수정은 확정하지 않았다.
+
 ## 현재 기준
 
 실행 스키마의 정본은 Backend의 [`src/main/resources/db/migration/`](../../src/main/resources/db/migration/)이다. MySQL 8.4/InnoDB, `utf8mb4_0900_ai_ci`, UTC 저장을 사용한다. 통합 V1은 기존 V1~V3과 검토된 M3/M4 물리 제약을 빈 DB에 한 번에 생성한다. 업무 기능 전체의 구현 완료를 뜻하지 않는다.

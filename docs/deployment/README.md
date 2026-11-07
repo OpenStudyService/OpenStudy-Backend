@@ -1,5 +1,7 @@
 # Backend 실행 이미지와 운영 설정 계약
 
+> **2026-11-06 명시적 갱신 정책**: SSE buffering·heartbeat·연결 유지·fan-out 인수는 SSE 제거 전환 후 적용하지 않는다. 아래 SSE 설정은 현재 구현을 운영하는 동안의 참고다. 일반 HTTP·AI 장시간 응답의 timeout·HTTPS·쿠키·CSRF·서버 세션 보안 검증은 유지한다. [ADR-COM-001](../db/ADR-COM-001.md)과 [Backend #170](https://github.com/OpenStudyService/OpenStudy-Backend/issues/170)·[Frontend #77](https://github.com/OpenStudyService/OpenStudy-Frontend/issues/77)를 따른다. 문서 확정과 코드 제거 완료는 구분한다.
+
 [Backend #29](https://github.com/OpenStudyService/OpenStudy-Backend/issues/29)의 Backend 측 계약이다. 이미지 빌드·실행·환경 변수·프록시·DB 계약을 정리하고 Infra에 전달할 값을 모은다.
 
 - 실제 AWS 배포와 공개 HTTPS 검증은 [Infra #2](https://github.com/OpenStudyService/OpenStudy-Infra/issues/2)에서 한다.

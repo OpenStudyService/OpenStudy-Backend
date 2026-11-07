@@ -1,5 +1,7 @@
 # 업무·채널·시설·문의·공지 API 계약
 
+> **2026-11-06 명시적 갱신 정책**: 업무·시설·문의·공지는 사용자 요청으로 다시 읽는다. 아래 SSE 인수 조건은 대체하며 상태 전이·인가·버전 검증은 유지한다. 팀 채팅 제외 정책(ADR-M10-002)도 유지한다. 결정은 [ADR-COM-001](../../db/ADR-COM-001.md), 구현은 [Backend #170](https://github.com/OpenStudyService/OpenStudy-Backend/issues/170)·[Frontend #77](https://github.com/OpenStudyService/OpenStudy-Frontend/issues/77)에서 추적한다. 이번 PR은 문서 변경이다.
+
 Backend [#74](https://github.com/OpenStudyService/OpenStudy-Backend/issues/74)의 M7 계약이다. 구현은 업무(#75), 채널·메시지(#76), 업무 카드(#77), 시설(#78), 문의(#79), 공지(#80)에서 이 문서를 기준으로 진행한다. Frontend는 같은 [OpenAPI](openapi.json)(최초 `0.1.7-m7-collaboration`, 현재 `0.1.9-m7-thread-read`)로 연동한다(#26~#28).
 
 정책 근거는 [ADR-M7-001](../../db/ADR-M7-001.md)(M7-D01~D07)이다. 공통 요청·응답·오류·목록 규칙은 [API 계약](api.md)을 따르고, 고객 조회 범위는 [M4 계약](customer-sales-api.md), 정확 일치 조회는 [M5 계약](seat-usage-api.md)을 따른다.

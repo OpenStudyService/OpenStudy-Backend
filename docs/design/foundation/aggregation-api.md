@@ -1,5 +1,7 @@
 # 정형 집계·최소 원장·홈 요약 API 계약
 
+> **2026-11-06 명시적 갱신 정책**: 집계·운영 홈은 마지막 조회 상태와 조회 시각을 유지하고 사용자 요청으로 다시 읽는다. 원장·집계 정합성과 본인 쓰기 이후 필요한 관련 요약 반영은 유지한다. SSE 무효화는 이전 구현의 근거다. 결정은 [ADR-COM-001](../../db/ADR-COM-001.md), 구현은 [Backend #170](https://github.com/OpenStudyService/OpenStudy-Backend/issues/170)·[Frontend #77](https://github.com/OpenStudyService/OpenStudy-Frontend/issues/77)에서 추적한다. 이번 PR은 문서 변경이다.
+
 Backend [#86](https://github.com/OpenStudyService/OpenStudy-Backend/issues/86)의 M9 계약이다. 구현은 공통 집계 기반·매출·지점 비교·최소 원장(#87), 이용권 판매량·상품 순위·추세(#88), 운영 홈 요약(#90)에서 이 문서를 기준으로 진행한다. 실행 계획·인덱스 검토는 #89다. Frontend는 같은 [OpenAPI](openapi.json)(`0.1.11-m9-aggregation`)로 연동한다.
 
 정책 근거는 [ADR-M9-001](../../db/ADR-M9-001.md)(M9-D01~D09)이다. 공통 요청·응답·오류·목록 규칙은 [API 계약](api.md)을 따른다. 원거래 의미는 [M4 결제·환불 계약](customer-sales-api.md)과 [M6 공간 운영 계약](space-operations-api.md)을, 홈 카드의 원본은 [M5 좌석](seat-usage-api.md)·[M7 협업](collaboration-api.md)·[M8 근무](workforce-api.md) 계약을 따른다. 자연어 질의·동적 시각화는 [ADR-M10-001](../../db/ADR-M10-001.md)의 M10 범위다.

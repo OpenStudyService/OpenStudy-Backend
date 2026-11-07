@@ -1,5 +1,7 @@
 # 요구사항 추적 및 인수 기준
 
+> **2026-11-06 명시적 갱신 정책**: 아래 초기 표의 SRS 행 번호는 과거 버전 기준이다. 최신 추적은 요구사항 ID와 v1.15를 사용한다. SSE·회수 즉시 화면 정리보다 다음 API의 재검증·감지 후 정리를 우선한다. 결정은 [ADR-COM-001](../../db/ADR-COM-001.md), 구현은 [Backend #170](https://github.com/OpenStudyService/OpenStudy-Backend/issues/170)·[Frontend #77](https://github.com/OpenStudyService/OpenStudy-Frontend/issues/77)에서 추적한다. 이번 PR은 문서 변경이다.
+
 작성일: 2026-10-23. 갱신일: 2026-10-26. 최초 8개 중분류·61개 요구사항의 **설계 추적**이다. 구현/테스트 통과 상태표가 아니다. 원문과 셀 행은 [requirements.json](requirements.json), operationId의 실제 요청·응답은 [openapi.json](openapi.json), 이슈 ID는 [implementation-plan.md](implementation-plan.md)를 따른다.
 
 공통 요구사항은 모든 관련 API와 화면에 교차 적용한다. endpoint가 있다는 것만으로 충족되지 않으며 마지막 열의 부정·경합 시나리오가 인수 조건이다. Q1~Q12는 사용자가 확정했으며 [decisions.md](decisions.md)의 선택을 인수 기준으로 적용한다. FR-BR-08의 신규 운영 거래, FR-COM-15의 결제·예약 적용은 후속 도메인의 구현 검증까지 연결한다.
@@ -102,7 +104,7 @@
 | FR-COM-10 · 247 | 트랜잭션·동시성 처리 | version·UNIQUE·guard·transaction | `updateProduct`, `changeProductStatus` | Backend #8/#9/#18 | 여러 레코드 부분 성공 없음·두 연결 경합 검증 |
 | FR-COM-11 · 248 | 변경 결과·재시도 안내 | DTO·공통 오류 / 프론트 입력 | 모든 관련 API·화면에 공통 적용 | Backend #7/Frontend #4 | 검증 오류 필드 표시·실패 입력 보존·다시 제출 |
 | FR-COM-12 · 249 | 조회 조건·화면 상태 보존 | 프론트 URL·query cache | 비HTTP: URL 조건 보존·현재 권한 캐시 복원 | Frontend #4 | 검색/필터/정렬/page 복원·권한 회수 후 범위 재설정 |
-| FR-COM-13 · 250 | 실시간 변경 재조회 | workspace_event_outbox·현재 권한 | `subscribeWorkspaceEvents` | Backend #17/Frontend #4 | 커밋 후 무효화·재연결resync·회수차단·logout정리 |
+| FR-COM-13 · v1.15 행248 | 사용자 요청에 따른 명시적 갱신 | 현재 권한·REST 조회 / 프론트 조건·조회 시각 | 메뉴 진입·재클릭·새로고침·사용자 조건 변경 | Backend #170/Frontend #77 | SSE·polling·포커스/재연결 자동 조회 없음·본인 저장 반영·다음 API 인가·감지 후 정리 |
 | FR-COM-14 · 251 | 오래된 버전 충돌 안내 | aggregate version | `updateProduct`, `changeProductStatus` | Backend #7/Frontend #4 | 낡은version409·reloadUrl·입력 유지 후 최신값 확인 |
 | FR-COM-15 · 252 | 변경 요청 멱등성 | idempotency_records·상태 전이 | 모든 관련 API·화면에 공통 적용 | Backend #8/#11/Backend #13/#15/Backend #16 | 동일키/같은입력 재사용·다른입력409·동시 중복 없음 |
 

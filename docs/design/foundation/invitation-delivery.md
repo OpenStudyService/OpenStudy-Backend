@@ -1,5 +1,7 @@
 # 초대 메일 발송과 장애 복구
 
+> **2026-11-06 명시적 갱신 정책**: 메일 worker·SMTP 재시도는 유지한다. 발송 결과의 화면 반영은 메뉴 진입·재클릭·새로고침으로 확인하며 화면 polling이나 SSE는 새 인수 조건이 아니다. 결정은 [ADR-COM-001](../../db/ADR-COM-001.md), 구현은 [Backend #170](https://github.com/OpenStudyService/OpenStudy-Backend/issues/170)·[Frontend #77](https://github.com/OpenStudyService/OpenStudy-Frontend/issues/77)에서 추적한다. 이번 PR은 문서 변경이다.
+
 Backend [#14](https://github.com/OpenStudyService/OpenStudy-Backend/issues/14)의 구현 계약이다. [#13 관리 API](invitation-management-api.md)가 만든 초대·발송 작업을 재사용한다. 공개 미리보기·수락·승인(#15)과 운영 SMTP 수신 검증은 별도다.
 
 ## 실행 설정
