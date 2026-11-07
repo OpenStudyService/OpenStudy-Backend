@@ -278,7 +278,8 @@ public class AiWorkspaceService {
         long started = System.nanoTime();
         OpenStudyAnalyses.PocExecutionResult result;
         try {
-            result = executeWithOverrides(saved.getAnalysisId(), decision.effectiveBranches(), null, false);
+            result = executeWithOverrides(saved.getAnalysisId(), decision.effectiveBranches(),
+                    saved.getRefundBasis(), saved.isZeroFillRequested());
         } catch (AccessDeniedException | IllegalArgumentException | IllegalStateException e) {
             return reopenedWithoutData(requestId, conversationId, "REFUSED", 422, "REOPEN_NOT_EXECUTABLE",
                     "REOPEN_NOT_EXECUTABLE", "저장된 조회를 지금 다시 실행할 수 없어요. 다시 질문해 주세요.", saved);
@@ -386,7 +387,8 @@ public class AiWorkspaceService {
                     null, plan.analysisId(), plan.intentDomain(),
                     plan.outcome(), plan.resultCategory(), plan.errorCode(),
                     null, null,
-                    totalMs, stages, plan.retrievedCandidates(), securityGate, now
+                    totalMs, stages, plan.retrievedCandidates(), securityGate, now,
+                    plan.refundBasisOverride(), plan.zeroFillOverrideRequested()
             );
 
             return new AiQueryResponse(
@@ -467,7 +469,8 @@ public class AiWorkspaceService {
                 pocResult.pocCode(), pocResult.analysisId(), plan.intentDomain(),
                 "READY", plan.resultCategory(), null,
                 querySpec, pocResult.envelope().view(),
-                totalMs, stages, plan.retrievedCandidates(), securityGate, now
+                totalMs, stages, plan.retrievedCandidates(), securityGate, now,
+                plan.refundBasisOverride(), plan.zeroFillOverrideRequested()
         );
 
         messageRepository.save(new AiMessageEntity(convId, "USER", rawQuestion, executionId, now));
@@ -588,7 +591,7 @@ public class AiWorkspaceService {
         Set<Long> branches = parseBranchCsv(entity.getBranchIdsCsv());
         var rerun = rerunSaved(actor, entity);
         Map<String, Object> result = new LinkedHashMap<>(
-                buildLegacyExecutionContract(entity.getId(), rerun, branches, null));
+                buildLegacyExecutionContract(entity.getId(), rerun, branches, entity.getRefundBasis()));
         result.put("id", entity.getId());
         result.put("requestId", entity.getRequestRef());
         result.put("conversationId", entity.getConversationId());
@@ -620,7 +623,7 @@ public class AiWorkspaceService {
         }
         Set<Long> branches = parseBranchCsv(saved.getBranchIdsCsv());
         verifyBranchReaccess(actor, branches, "sales".equals(saved.getIntentDomain()));
-        return executeWithOverrides(saved.getAnalysisId(), branches, null, false);
+        return executeWithOverrides(saved.getAnalysisId(), branches, saved.getRefundBasis(), saved.isZeroFillRequested());
     }
 
     // =========================================================================
@@ -1043,7 +1046,9 @@ public class AiWorkspaceService {
             List<StageSpan> stages,
             List<OpenStudyPlaybackGateway.RetrievalCandidate> candidates,
             Map<String, Object> securityGate,
-            Instant now
+            Instant now,
+            String refundBasisOverride,
+            boolean zeroFillRequested
     ) {
         String branchCsv = OpenStudyUserContextResolver.toCsv(branches);
         var execEntity = new AiExecutionEntity(
@@ -1065,7 +1070,9 @@ public class AiWorkspaceService {
                 now,
                 OpenStudyCatalogConfiguration.VERSION,
                 OpenStudyPolicies.POLICY_VERSION,
-                now
+                now,
+                refundBasisOverride,
+                zeroFillRequested
         );
         executionRepository.save(execEntity);
 

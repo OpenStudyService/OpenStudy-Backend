@@ -176,6 +176,27 @@ class AiConversationHistoryIntegrationTests {
         }
     }
 
+    @Test void reopeningKeepsTheConditionsTheQuestionAskedFor() throws Exception {
+        String conversation = conversation(owner, "조건 보존");
+        String original = execution(conversation, owner, "원결제일 기준으로 항목별 매출", "READY", OpenStudyAnalyses.ID_POC_008,
+                "sales", "2026-11-01 01:00:00", Long.toString(branch));
+        jdbc.update("UPDATE ai_executions SET refund_basis='ORIGINAL_PAYMENT_DATE' WHERE id=?", original);
+        String zeroFill = execution(conversation, owner, "0원인 날도 채워서 일별 매출", "READY", OpenStudyAnalyses.ID_POC_007,
+                "sales", "2026-11-01 01:01:00", Long.toString(branch));
+        jdbc.update("UPDATE ai_executions SET zero_fill_requested=1 WHERE id=?", zeroFill);
+        String plain = execution(conversation, owner, "항목별 매출", "READY", OpenStudyAnalyses.ID_POC_008,
+                "sales", "2026-11-01 01:02:00", Long.toString(branch));
+        try (var s = login(owner)) {
+            JsonNode turns = ok(s, "/api/ai/conversations/" + conversation + "?scope=all").get("turns");
+            assertThat(turns.get(0).get("response").get("semanticStatus").asString()).isEqualTo("EXPLICIT_ORIGINAL_PAYMENT_DATE");
+            assertThat(turns.get(0).get("response").get("summary").get("refund_basis").asString()).isEqualTo("ORIGINAL_PAYMENT_DATE");
+            assertThat(turns.get(1).get("response").get("semanticStatus").asString()).isEqualTo("EXPLICIT_ZERO_FILL_OVERRIDE_REVIEW");
+            assertThat(turns.get(2).get("response").get("semanticStatus").asString()).isNotEqualTo("EXPLICIT_ORIGINAL_PAYMENT_DATE");
+            assertThat(ok(s, "/api/executions/" + original).get("refundBasis").asString()).isEqualTo("original");
+            assertThat(ok(s, "/api/executions/" + plain).get("refundBasis").asString()).isEqualTo("processed");
+        }
+    }
+
     // ---- fixtures -------------------------------------------------------------------------------------------
 
     long person(String role) {
