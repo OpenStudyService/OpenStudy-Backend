@@ -54,7 +54,6 @@ class TaskIntegrationTests {
             jdbc.update("DELETE e FROM task_events e JOIN work_tasks t ON t.id=e.task_id WHERE t.branch_id=?", id);
             jdbc.update("DELETE i FROM task_checklist_items i JOIN work_tasks t ON t.id=i.task_id WHERE t.branch_id=?", id);
             jdbc.update("DELETE FROM work_tasks WHERE branch_id=?", id);
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE branch_id=?", id);
             jdbc.update("DELETE FROM audit_events WHERE branch_id=?", id);
             jdbc.update("DELETE FROM branch_memberships WHERE branch_id=?", id);
             jdbc.update("DELETE FROM branch_weekly_hours WHERE branch_id=?", id);
@@ -166,7 +165,6 @@ class TaskIntegrationTests {
             assertThat(created.at("/checklist/1/sortOrder").asInt()).isEqualTo(1);
             long id = created.get("id").asLong();
             assertThat(jdbc.queryForObject("SELECT status FROM work_tasks WHERE id=?", String.class, id)).isEqualTo("TODO");
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type='tasks' AND entity_id=?", first, id)).isEqualTo(1);
 
             var stored = get(s, "/api/tasks/" + id);
             assertThat(stored.statusCode()).isEqualTo(200);

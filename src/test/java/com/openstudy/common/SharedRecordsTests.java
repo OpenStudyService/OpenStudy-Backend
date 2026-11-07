@@ -15,22 +15,17 @@ import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditResult;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.idempotency.IdempotencyStore;
-import com.openstudy.common.outbox.WorkspaceEventRepository;
-import com.openstudy.common.outbox.WorkspaceEventType;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.support.database.MySqlIntegrationTest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Phase 1: audit, idempotency and outbox rows written through JPA must match what the former SQL stored. */
+/** Phase 1: audit and idempotency rows written through JPA must match what the former SQL stored. */
 @MySqlIntegrationTest
 @Transactional
 class SharedRecordsTests {
 
     @Autowired AuditTrail audit;
     @Autowired IdempotencyStore requests;
-    @Autowired WorkspaceOutbox outbox;
-    @Autowired WorkspaceEventRepository events;
     @Autowired JdbcTemplate jdbc;
     long actor;
     long branch;
@@ -82,33 +77,5 @@ class SharedRecordsTests {
         requests.discard(stored);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM idempotency_records WHERE id=?", Integer.class, stored.getId()))
                 .isZero();
-    }
-
-    @Test
-    void outboxRowsAreDeliveredOnceAndMarkedWithDatabaseTime() {
-        long before = jdbc.queryForObject("SELECT COALESCE(MAX(id),0) FROM workspace_event_outbox", Long.class);
-        outbox.invalidate(branch, "branches", branch);
-        outbox.notifyEmployee(branch, actor, "employee", actor, WorkspaceEventType.AUTHORIZATION_CHANGED);
-
-        var mine = events.findDeliverable(org.springframework.data.domain.Limit.of(1000)).stream()
-                .filter(e -> e.getId() > before).toList();
-        assertThat(mine).extracting(e -> e.getEventType()).containsExactly(WorkspaceEventType.INVALIDATE,
-                WorkspaceEventType.AUTHORIZATION_CHANGED);
-        assertThat(mine.get(1).getTargetEmployeeId()).isEqualTo(actor);
-
-        long id = mine.getFirst().getId();
-        assertThat(events.markPublished(id)).isEqualTo(1);
-        assertThat(events.markPublished(id)).isZero();
-        assertThat(jdbc.queryForMap("SELECT attempts, published_at IS NOT NULL published FROM workspace_event_outbox WHERE id=?", id))
-                .containsEntry("attempts", 1L).containsEntry("published", 1L);
-    }
-
-    @Test
-    void everyBranchInvalidationWritesOneRowPerExistingBranch() {
-        long branches = jdbc.queryForObject("SELECT COUNT(*) FROM branches", Long.class);
-        long before = jdbc.queryForObject("SELECT COALESCE(MAX(id),0) FROM workspace_event_outbox", Long.class);
-        outbox.invalidateEveryBranch("product-categories", 42);
-        assertThat(jdbc.queryForObject("SELECT COUNT(DISTINCT branch_id) FROM workspace_event_outbox "
-                + "WHERE id>? AND entity_type='product-categories' AND entity_id=42", Long.class, before)).isEqualTo(branches);
     }
 }

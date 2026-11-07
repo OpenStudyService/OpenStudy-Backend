@@ -67,7 +67,6 @@ class LockerLedgerIntegrationTests extends LockerIntegrationSupport {
             created(post(boss, "/api/lockers", newLocker(first, "A-2", 12000), key()));
             long id = made.get("id").asLong();
             assertThat(audits("lockers", id, "CREATED")).isEqualTo(1);
-            assertThat(events(first, "lockers")).isEqualTo(2);
         }
     }
 
@@ -333,14 +332,6 @@ class LockerLedgerIntegrationTests extends LockerIntegrationSupport {
         }
     }
 
-    @Test void workspaceEventsNameBothResources() {
-        for (String type : List.of("lockers", "locker-assignments")) {
-            String resource = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
-                    com.openstudy.modules.workspace.service.WorkspaceEventService.class, "resource", type);
-            assertThat(resource).isEqualTo(type);
-        }
-    }
-
     // ---- the branch rate --------------------------------------------------------------------------------------
 
     @Test void theBranchRateNeedsOperationsWriteThere() throws Exception {
@@ -363,7 +354,6 @@ class LockerLedgerIntegrationTests extends LockerIntegrationSupport {
         try (var ops = login(operator); var cash = login(cashier); var book = login(reader)) {
             ok(post(ops, "/api/lockers/" + stopped + "/status", stop(1, "운영 중단", "고장"), null));
             long held = assigned(cash, assignment(first, open, customer, "2026-11-01", "2026-11-29"));
-            var eventsBefore = events(first, "lockers");
             var result = ok(applyRate(ops, first, 15000, key()));
             assertThat(fields(result)).containsExactlyInAnyOrder("updated", "ratePer4WeeksKrw");
             assertThat(result.get("updated").asLong()).isEqualTo(3);
@@ -378,7 +368,6 @@ class LockerLedgerIntegrationTests extends LockerIntegrationSupport {
             assertThat(lockerVersion(elsewhere)).isZero();
             assertThat(audits("branches", first, "LOCKER_RATE_APPLIED")).as("one audit row for the branch").isEqualTo(1);
             assertThat(count("SELECT COUNT(*) FROM audit_events WHERE branch_id=? AND action='LOCKER_RATE_APPLIED'", first)).isEqualTo(1);
-            assertThat(events(first, "lockers")).isEqualTo(eventsBefore + 1);
             var charge = ok(get(book, "/api/locker-assignments/" + held)).get("charges").get(0);
             assertThat(charge.get("ratePer4WeeksKrw").asLong()).as("the snapshot stays").isEqualTo(12000);
             assertThat(charge.get("amountKrw").asLong()).isEqualTo(12000);

@@ -26,7 +26,6 @@ import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyStore;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.ListQuery;
 import com.openstudy.common.web.PageResponse;
@@ -80,7 +79,6 @@ public class LockerAssignmentService {
     private final AuthorizedCommands commands;
     private final AuditTrail audit;
     private final ObjectMapper json;
-    private final WorkspaceOutbox outbox;
     private final IdempotencyStore requests;
     private final Clock clock;
 
@@ -305,8 +303,6 @@ public class LockerAssignmentService {
 
     /** A locker's state is computed from its assignments, so both lists are stale after any of these commands. */
     private void announce(long branch, LockerAssignment assignment) {
-        outbox.invalidate(branch, ENTITY, assignment.getId());
-        outbox.invalidate(branch, LOCKERS, assignment.getLockerId());
     }
 
     private static Map<String, Object> snapshot(LockerAssignment assignment, LockerAssignmentCharge charge) {

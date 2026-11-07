@@ -26,7 +26,6 @@ import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyStore;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.ListQuery;
 import com.openstudy.common.web.PageResponse;
@@ -64,13 +63,12 @@ public class ProductService {
     private final AuthorizedCommands commands;
     private final ObjectMapper json;
     private final AuditTrail audit;
-    private final WorkspaceOutbox outbox;
     private final IdempotencyStore requests;
     private final Clock clock;
 
     public ProductService(ProductRepository repository, ProductCategoryRepository categories,
             ProductRevisionRepository revisions, EntityManager entityManager, AuthorizationService policy,
-            AuthorizedCommands commands, ObjectMapper json, AuditTrail audit, WorkspaceOutbox outbox,
+            AuthorizedCommands commands, ObjectMapper json, AuditTrail audit,
             IdempotencyStore requests, Clock clock) {
         this.repository = repository;
         this.categories = categories;
@@ -80,7 +78,6 @@ public class ProductService {
         this.commands = commands;
         this.json = json;
         this.audit = audit;
-        this.outbox = outbox;
         this.requests = requests;
         this.clock = clock;
     }
@@ -146,7 +143,6 @@ public class ProductService {
             revisions.save(new com.openstudy.modules.ticket.entity.ProductRevision(id, created.dbVersion(), RevisionEvent.CREATED,
                     actor, requestId, snapshotJson(created)));
             audit.record(AuditEvent.change(actor, null, "products", id, "CREATED", null, snapshotJson(created), requestId));
-            invalidate(id, branches);
             var result = view(created, state, policy.scope(state, "all", BranchAction.READ));
             requests.complete(actor, CREATE, "all", key, fingerprint, 201, json.writeValueAsString(result),
                     clock.instant().plus(Duration.ofHours(24)));
@@ -182,7 +178,7 @@ public class ProductService {
                 return view(before, state, policy.scope(state, "all", BranchAction.READ));
             }
             return write(actor, state, product, before, newName, newPrice, newTerms, Long.parseLong(category.id()), before.onSale(),
-                    persisted, "UPDATED", requestId);
+                    "UPDATED", requestId);
         });
     }
 
@@ -199,7 +195,7 @@ public class ProductService {
             ApiVersion.requireCurrent(version, before.dbVersion(), reload(id));
             if (before.onSale() == onSale) return view(before, state, policy.scope(state, "all", BranchAction.READ));
             return write(actor, state, product, before, before.name(), before.priceKrw(), before.terms(), before.categoryId(), onSale,
-                    persisted, "STATUS_CHANGED", requestId);
+                    "STATUS_CHANGED", requestId);
         });
     }
 
@@ -222,10 +218,8 @@ public class ProductService {
             added.removeAll(persisted);
             removed.removeAll(requested);
             product.replaceBranches(removed, added);
-            Set<Long> affected = new TreeSet<>(persisted);
-            affected.addAll(requested);
             return write(actor, state, product, before, before.name(), before.priceKrw(), before.terms(), before.categoryId(),
-                    before.onSale(), affected, "BRANCHES_CHANGED", requestId);
+                    before.onSale(), "BRANCHES_CHANGED", requestId);
         });
     }
 
@@ -293,7 +287,7 @@ public class ProductService {
      */
     private Product write(long actor, AuthorizationState state, com.openstudy.modules.ticket.entity.Product product,
             ProductRecord before, String name, long price, ProductTerms terms, long categoryId, boolean onSale,
-            Set<Long> affected, String action, String requestId) {
+            String action, String requestId) {
         var category = categoryId == before.categoryId() ? product.getCategory() : categories.getReferenceById(categoryId);
         product.change(name, price, ProductViews.columns(terms), category, onSale, actor);
         try {
@@ -308,13 +302,7 @@ public class ProductService {
         revisions.save(new com.openstudy.modules.ticket.entity.ProductRevision(after.id(), after.dbVersion(),
                 RevisionEvent.UPDATED, actor, requestId, snapshotJson(after)));
         audit.record(AuditEvent.change(actor, null, "products", after.id(), action, snapshotJson(before), snapshotJson(after), requestId));
-        invalidate(after.id(), affected);
         return view(after, state, policy.scope(state, "all", BranchAction.READ));
-    }
-
-    /** Both the previous and the new branches must reload; the outbox rows commit with the product change. */
-    private void invalidate(long id, Set<Long> branches) {
-        for (long branch : branches) outbox.invalidate(branch, "products", id);
     }
 
     private com.openstudy.modules.ticket.entity.Product lockedProduct(long id) {

@@ -14,10 +14,6 @@ import com.openstudy.modules.workforce.entity.Shift;
 import com.openstudy.modules.workforce.entity.ShiftStatus;
 
 public interface ShiftRepository extends JpaRepository<Shift, Long> {
-    /** The employee never changes, so a plain read may name the row to lock before the shift itself is locked. */
-    @Query("SELECT s.employeeId FROM Shift s WHERE s.id = :id")
-    Optional<Long> employeeOf(@Param("id") long id);
-
     /** SELECT ... FOR UPDATE, for a change or a cancellation, after the employee row. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT s FROM Shift s WHERE s.id = :id")

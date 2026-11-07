@@ -305,7 +305,7 @@ Backend [#60](https://github.com/OpenStudyService/OpenStudy-Backend/issues/60)�
 
 - 중간에 하나라도 실패하면 전체를 롤백한다. 점유만 남거나 원장만 남는 부분 성공은 없다.
 - DB 제약 `uk_seat_sessions_1`·`_2`·`_3`·`_4`, `ck_seat_sessions_1`·`_2`, `uk_pass_balance_events_1`, `ck_seat_session_moves_1`이 같은 불변식을 한 번 더 막는다.
-- 지점별 무효화 이벤트(`WorkspaceEvent.resource`)에 `seats`, `seat-sessions`를 추가한다.
+- 지점별 무효화 이벤트(`WorkspaceEvent.resource`)에 `seats`, `seat-sessions`를 추가한다. (2026-11-07 SSE 제거로 더 이상 적용되지 않음, Backend #170)
   - `seats`·`seat-sessions` 이벤트의 branchId는 좌석·이용 지점이다.
   - `passes` 이벤트의 branchId는 M4와 같이 구매 지점이다. 다른 지점에서 이용해 잔량이 바뀌면 구매 지점 화면이 갱신된다.
   - 이벤트는 entityId·branchId만 담고 개인정보·금액을 담지 않는다.

@@ -31,7 +31,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 
 import com.openstudy.common.audit.AuditTrail;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.modules.invitation.repository.InvitationRepository;
 import com.openstudy.modules.invitation.repository.InvitationSendJobRepository;
 import com.openstudy.modules.invitation.repository.InvitationDeliveryRepository;
@@ -54,7 +53,6 @@ class InvitationEmailWorkerIntegrationTests {
     @Autowired InvitationManagementService management;
     @Autowired ObjectMapper json;
     @Autowired AuditTrail audit;
-    @Autowired WorkspaceOutbox outbox;
     @Autowired InvitationRepository invitationRows;
     @Autowired InvitationSendJobRepository jobRows;
     private long owner, branch;
@@ -84,7 +82,6 @@ class InvitationEmailWorkerIntegrationTests {
         jdbc.update("DELETE FROM invitation_send_jobs WHERE invitation_id IN (SELECT id FROM employee_invitations WHERE branch_id=?)", branch);
         jdbc.update("DELETE FROM employee_invitations WHERE branch_id=?", branch);
         jdbc.update("DELETE FROM audit_events WHERE branch_id=? OR actor_employee_id=?", branch, owner);
-        jdbc.update("DELETE FROM workspace_event_outbox WHERE branch_id=?", branch);
         jdbc.update("DELETE FROM idempotency_records WHERE actor_employee_id=?", owner);
         jdbc.update("DELETE FROM branch_memberships WHERE branch_id=?", branch);
         jdbc.update("DELETE FROM employees WHERE id=?", owner);
@@ -108,7 +105,6 @@ class InvitationEmailWorkerIntegrationTests {
         assertThat(jdbc.queryForList("SELECT * FROM employee_invitations WHERE id=?", id).toString()).doesNotContain(token);
         assertThat(jdbc.queryForList("SELECT * FROM invitation_send_jobs WHERE invitation_id=?", id).toString()).doesNotContain(token);
         assertThat(jdbc.queryForList("SELECT before_json,after_json,request_id FROM audit_events WHERE branch_id=?", branch).toString()).doesNotContain(token);
-        assertThat(jdbc.queryForList("SELECT * FROM workspace_event_outbox WHERE branch_id=?", branch).toString()).doesNotContain(token);
         assertThat(jdbc.queryForList("SELECT response_json FROM idempotency_records WHERE actor_employee_id=?", owner).toString()).doesNotContain(token);
     }
 
@@ -362,7 +358,7 @@ class InvitationEmailWorkerIntegrationTests {
 
     @Test void claimDatabaseFailureRollsBackHashLeaseAndDoesNotSendMail() {
         long id = create();
-        // Fail after real audit/outbox SQL, without requiring elevated MySQL trigger privileges.
+        // Fail after real audit SQL, without requiring elevated MySQL trigger privileges.
         var claimFailure = workerWithFailingAudit("MAIL_CLAIMED");
         assertThatThrownBy(claimFailure::runOnce).isInstanceOf(IllegalStateException.class).hasMessage("Controlled worker audit failure");
         assertThat(hash(id)).isNull();
@@ -372,7 +368,7 @@ class InvitationEmailWorkerIntegrationTests {
     }
 
     private InvitationEmailWorker workerWithFailingAudit(String failedAction) {
-        var faultyRepository = new InvitationDeliveryRepository(invitationRows, jobRows, json, audit, outbox) {
+        var faultyRepository = new InvitationDeliveryRepository(invitationRows, jobRows, json, audit) {
             @Override public void changed(InvitationState invitation, Job job, String action) {
                 super.changed(invitation, job, action);
                 if (failedAction.equals(action)) throw new IllegalStateException("Controlled worker audit failure");

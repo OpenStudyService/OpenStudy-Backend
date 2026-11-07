@@ -24,7 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * different times, and always look at the raw response of the reader who must learn nothing.
  */
 @MySqlIntegrationTest
-@TestPropertySource(properties = {"openstudy.workspace.scheduling.enabled=false", "spring.jpa.properties.hibernate.generate_statistics=true"})
+@TestPropertySource(properties = {"spring.jpa.properties.hibernate.generate_statistics=true"})
 class TaskCardIntegrationTests extends ChannelTestSupport {
     @Autowired EntityManagerFactory factory;
 

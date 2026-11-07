@@ -55,12 +55,9 @@ class EmployeeJpaBehaviorTests {
     }
 
     @Test
-    void lookupAndRelatedToBranchesEqualTheFormerSql() {
+    void lookupEqualsTheFormerSql() {
         assertThat(accounts.lookup(Set.of(branch))).isEqualTo(formerLookup(branch));
         assertThat(accounts.lookup(Set.of())).isEmpty();
-        assertThat(accounts.relatedToBranches(employee, Set.of(branch))).isTrue();
-        assertThat(accounts.relatedToBranches(employee, Set.of(Long.MAX_VALUE))).isFalse();
-        assertThat(accounts.relatedToBranches(owner, Set.of(Long.MAX_VALUE))).isTrue();
     }
 
     @Test

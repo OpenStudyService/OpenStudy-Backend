@@ -14,7 +14,7 @@ import com.openstudy.modules.workforce.repository.ShiftSearchRepository;
 /**
  * M8-D02 in one place, for shifts and attendance alike: a record is read by its recorded branch, which must be readable,
  * and then either managed by the reader (OWNER or that branch's MANAGER) or the reader's own. Lists, details, the weekly
- * schedule, conflict answers and workspace events all ask here, so none of them can open more than another.
+ * schedule and conflict answers all ask here, so none of them can open more than another.
  */
 @Component
 @RequiredArgsConstructor

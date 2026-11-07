@@ -6,24 +6,20 @@ import tools.jackson.databind.ObjectMapper;
 
 import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
-import com.openstudy.common.outbox.WorkspaceEventType;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.modules.employee.dto.EmployeeAccount;
 import com.openstudy.modules.employee.entity.Employee;
 import com.openstudy.modules.employee.repository.EmployeeRepository;
 
-/** Shared write helpers of the employee services: version advance, audit/outbox records and display codes. */
+/** Shared write helpers of the employee services: version advance, audit records and display codes. */
 @Component
 class EmployeeChanges {
     private final EmployeeRepository employees;
     private final EntityManager entityManager;
     private final ObjectMapper json;
     private final AuditTrail audit;
-    private final WorkspaceOutbox outbox;
 
-    EmployeeChanges(EmployeeRepository employees, EntityManager entityManager, ObjectMapper json, AuditTrail audit,
-            WorkspaceOutbox outbox) {
-        this.employees = employees; this.entityManager = entityManager; this.json = json; this.audit = audit; this.outbox = outbox;
+    EmployeeChanges(EmployeeRepository employees, EntityManager entityManager, ObjectMapper json, AuditTrail audit) {
+        this.employees = employees; this.entityManager = entityManager; this.json = json; this.audit = audit;
     }
 
     /**
@@ -38,19 +34,12 @@ class EmployeeChanges {
     }
 
     void changed(long actor, Long branch, long target, String action, Object before, Object after, String requestId) {
-        changed(actor, branch, target, action, before, after, requestId, WorkspaceEventType.AUTHORIZATION_CHANGED);
+        audit.record(AuditEvent.change(actor, branch, "employee", target, action,
+                json.writeValueAsString(before), json.writeValueAsString(after), requestId));
     }
 
     void profileChanged(long actor, Object before, Object after, String requestId) {
-        changed(actor, null, actor, "UPDATE_PROFILE", before, after, requestId, WorkspaceEventType.INVALIDATE);
-    }
-
-    private void changed(long actor, Long branch, long target, String action, Object before, Object after, String requestId,
-            WorkspaceEventType eventType) {
-        audit.record(AuditEvent.change(actor, branch, "employee", target, action,
-                json.writeValueAsString(before), json.writeValueAsString(after), requestId));
-        outbox.notifyEmployee(branch, target, "employee", target, eventType);
-        outbox.invalidate(branch, "employees", target);
+        changed(actor, null, actor, "UPDATE_PROFILE", before, after, requestId);
     }
 
     static EmployeeAccount account(Employee e) {

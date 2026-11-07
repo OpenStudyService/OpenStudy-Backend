@@ -16,7 +16,7 @@ spring:
     password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
-    # API responses are DTOs. Long-lived SSE requests must not retain an EntityManager/DB connection.
+    # API responses are DTOs. Long requests (e.g. AI queries) must not retain an EntityManager/DB connection.
     open-in-view: false
     hibernate:
       ddl-auto: validate

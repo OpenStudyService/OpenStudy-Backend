@@ -18,7 +18,6 @@ import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyStore;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.ListQuery;
 import com.openstudy.common.web.PageResponse;
 import com.openstudy.common.web.StrictInput;
@@ -43,19 +42,17 @@ public class ProductCategoryService {
     private final AuthorizedCommands commands;
     private final ObjectMapper json;
     private final AuditTrail audit;
-    private final WorkspaceOutbox outbox;
     private final IdempotencyStore requests;
     private final Clock clock;
 
     public ProductCategoryService(ProductCategoryRepository repository, AuthorizationService policy,
-            AuthorizedCommands commands, ObjectMapper json, AuditTrail audit, WorkspaceOutbox outbox,
+            AuthorizedCommands commands, ObjectMapper json, AuditTrail audit,
             IdempotencyStore requests, Clock clock) {
         this.repository = repository;
         this.policy = policy;
         this.commands = commands;
         this.json = json;
         this.audit = audit;
-        this.outbox = outbox;
         this.requests = requests;
         this.clock = clock;
     }
@@ -134,7 +131,6 @@ public class ProductCategoryService {
     private void recordChange(long actor, long id, String action, String before, String after, String requestId) {
         audit.record(AuditEvent.change(actor, null, "product_categories", id, action, before, after, requestId));
         // Categories are shared by every branch, so every branch stream is told to reload product data.
-        outbox.invalidateEveryBranch("product-categories", id);
     }
 
     private static byte[] digest(String value) {

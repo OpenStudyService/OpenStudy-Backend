@@ -123,7 +123,6 @@ class RoomCancelUsageIntegrationTests {
         jdbc.update("DELETE FROM audit_events WHERE actor_employee_id IN (" + actors + ")");
         for (long id : branches) {
             jdbc.update("DELETE FROM rooms WHERE branch_id=?", id);
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE branch_id=?", id);
             jdbc.update("DELETE FROM audit_events WHERE branch_id=?", id);
             jdbc.update("DELETE g FROM membership_permission_grants g JOIN branch_memberships m ON m.id=g.membership_id WHERE m.branch_id=?", id);
             jdbc.update("DELETE FROM branch_memberships WHERE branch_id=?", id);
@@ -192,9 +191,6 @@ class RoomCancelUsageIntegrationTests {
     String status(long reservation) { return text("SELECT status FROM room_reservations WHERE id=?", reservation); }
     String paymentStatus(long reservation) {
         return text("SELECT p.status FROM payments p JOIN room_reservations r ON r.payment_id=p.id WHERE r.id=?", reservation);
-    }
-    long events(long branch, String type, long id) {
-        return count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type=? AND entity_id=?", branch, type, id);
     }
     long audits(String type, long id, String action) {
         return count("SELECT COUNT(*) FROM audit_events WHERE entity_type=? AND entity_id=? AND action=?", type, id, action);
@@ -436,7 +432,7 @@ class RoomCancelUsageIntegrationTests {
         }
     }
 
-    @Test void aCancellationLeavesAuditAndEventsWithoutAmounts() throws Exception {
+    @Test void aCancellationLeavesAuditWithoutAmounts() throws Exception {
         long customer = customer(first);
         long room = room(first);
         try (var s = login(cashier)) {
@@ -448,8 +444,6 @@ class RoomCancelUsageIntegrationTests {
             assertThat(text("SELECT reason FROM audit_events WHERE entity_type='room-reservations' AND entity_id=? AND action='CANCELLED'", id)).isEqualTo("고객 요청");
             assertThat(text("SELECT CAST(before_json AS CHAR) FROM audit_events WHERE entity_type='room-reservations' AND entity_id=? AND action='CANCELLED'", id)).contains("CONFIRMED");
             assertThat(text("SELECT CAST(after_json AS CHAR) FROM audit_events WHERE entity_type='room-reservations' AND entity_id=? AND action='CANCELLED'", id)).contains("CANCELLED", "refundId");
-            assertThat(events(first, "room-reservations", id)).as("booking and cancellation").isEqualTo(2);
-            assertThat(events(first, "payments", payment)).as("charge and refund").isEqualTo(2);
         }
     }
 
@@ -468,7 +462,6 @@ class RoomCancelUsageIntegrationTests {
             assertThat(heldSlots(id)).isEqualTo(2);
             assertThat(audits("room-reservations", id, "CANCELLED")).isZero();
             assertThat(audits("payments", payment, "REFUNDED")).isZero();
-            assertThat(events(first, "payments", payment)).isEqualTo(1);
             assertThat(count("SELECT COUNT(*) FROM idempotency_records WHERE actor_employee_id=? AND operation='room-reservations:cancel'", cashier)).isZero();
             Mockito.reset(slotRepository);
             ok(cancel(s, id, 1, "고객 요청", requestKey));
@@ -525,7 +518,6 @@ class RoomCancelUsageIntegrationTests {
             assertThat(refunds(id)).isEqualTo(1);
             assertThat(audits("room-reservations", id, "CANCELLED")).isEqualTo(1);
             assertThat(audits("payments", payment, "REFUNDED")).isEqualTo(1);
-            assertThat(events(first, "room-reservations", id)).isEqualTo(2);
 
             refused(cancel(s, id, 1, "다른 사유", requestKey), 409, "IDEMPOTENCY_CONFLICT");
             refused(cancel(s, id, 2, "고객 요청", requestKey), 409, "IDEMPOTENCY_CONFLICT");
@@ -652,7 +644,6 @@ class RoomCancelUsageIntegrationTests {
             assertThat(audits("room-reservations", id, "IN_USE")).isEqualTo(1);
             assertThat(audits("room-reservations", id, "COMPLETED")).isEqualTo(1);
             assertThat(text("SELECT CAST(before_json AS CHAR) FROM audit_events WHERE entity_type='room-reservations' AND entity_id=? AND action='COMPLETED'", id)).contains("IN_USE");
-            assertThat(events(first, "room-reservations", id)).as("booking, start and completion").isEqualTo(3);
             assertThat(paymentStatus(id)).as("using a room moves no money").isEqualTo("APPROVED");
         }
     }

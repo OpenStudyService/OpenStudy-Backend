@@ -124,7 +124,6 @@ class SeatSessionMoveIntegrationTests {
         jdbc.update("DELETE FROM product_categories WHERE created_by IN (" + actors + ")");
         for (long id : branches) {
             jdbc.update("DELETE FROM seats WHERE branch_id=?", id);
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE branch_id=?", id);
             jdbc.update("DELETE FROM audit_events WHERE branch_id=?", id);
             jdbc.update("DELETE FROM branch_memberships WHERE branch_id=?", id);
             jdbc.update("DELETE FROM branch_weekly_hours WHERE branch_id=?", id);
@@ -297,7 +296,7 @@ class SeatSessionMoveIntegrationTests {
 
     // ---- acceptance: a move keeps the stay and swaps the occupancy ------------------------------------------
 
-    @Test void aMoveKeepsTheStayAndPassSwapsTheOccupancyAndLeavesHistoryAuditAndEvents() throws Exception {
+    @Test void aMoveKeepsTheStayAndPassSwapsTheOccupancyAndLeavesHistoryAndAudit() throws Exception {
         clock.fixed = TEN;
         long customer = customer(first, "이동 고객");
         long pass = pass(customer, first, time(600));
@@ -359,9 +358,6 @@ class SeatSessionMoveIntegrationTests {
             assertThat(audit.get("reason")).isEqualTo("창가 요청");
             assertThat(json.readTree((String) audit.get("before_json")).get("seatId").asString()).isEqualTo(Long.toString(from));
             assertThat(json.readTree((String) audit.get("after_json")).get("seatId").asString()).isEqualTo(Long.toString(target));
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type='seats' AND entity_id=?", first, from)).isEqualTo(2);
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type='seats' AND entity_id=?", first, target)).isEqualTo(1);
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type='seat-sessions' AND entity_id=?", first, id)).isEqualTo(2);
 
             // The vacated seat is usable by someone else straight away.
             long other = customer(first, "빈 좌석 고객");

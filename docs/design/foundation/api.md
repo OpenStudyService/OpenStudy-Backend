@@ -162,7 +162,7 @@ SRS v1.15 FR-COM-13·POL-52·53과 [ADR-COM-001](../../db/ADR-COM-001.md)을 따
 
 ### 이전 SSE 계약 — 구현 제거 전 참고
 
-아래 내용은 [workspace-api.md](workspace-api.md)에 기록한 현재 구현의 근거다. 새 기능의 필수 요구가 아니며 endpoint·타입·테스트의 실제 제거는 Backend #170·Frontend #77에서 처리한다.
+> **2026-11-07 제거됨**: 아래 SSE 계약은 Backend #170에서 endpoint·Outbox 발행과 함께 제거했다. 당시 구현의 근거로만 남긴다. 현재 동작은 [workspace-api.md](workspace-api.md)의 명시적 조회와 요청 시 인가를 따른다. Frontend 전환은 Frontend #77에서 처리한다.
 
 `GET /workspace/events?scope=...`의 이벤트는 개인정보 없는 갱신 신호다. 변경된 자원의 resource/entityId/허용 branchId만 보내고, 권한 변경 이벤트에는 타 지점 목록을 담지 않는다. EventSource는 same-origin 쿠키로 연결한다. Nginx buffering을 끄고 heartbeat는 연결 유지에만 쓴다. 연결 복구 시 `resync`를 보내고 클라이언트는 현재 화면·me·lookups를 다시 조회한다. Last-Event-ID 재생은 이번 계약에서 보장하지 않는다.
 

@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.context.TestPropertySource;
 import tools.jackson.databind.JsonNode;
 import com.openstudy.support.database.MySqlIntegrationTest;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -17,7 +16,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  * goes through the API against MySQL, because what matters is what a reader is told, not what a row holds.
  */
 @MySqlIntegrationTest
-@TestPropertySource(properties = "openstudy.workspace.scheduling.enabled=false")
 class ThreadReadIntegrationTests extends ChannelTestSupport {
 
     HttpResponse<String> readThread(long person, long channel, Object original, Object reply) throws Exception {
@@ -112,16 +110,15 @@ class ThreadReadIntegrationTests extends ChannelTestSupport {
         refused(write(staffA, "POST", threadPath(channel, original), Map.of("replyId", Long.toString(later), "employeeId", Long.toString(staffA2))), 422, "VALIDATION_FAILED");
     }
 
-    @Test void aReadStaysWithItsReaderAndRaisesNoAuditRowOrWorkspaceEvent() throws Exception {
+    @Test void aReadStaysWithItsReaderAndRaisesNoAuditRow() throws Exception {
         long channel = channelId(owner, a, "이벤트 없음", staffA);
         long original = sent(owner, channel, "본문");
         long reply = reply(owner, channel, "답글", original);
         as(staffA);
-        long audits = count("SELECT COUNT(*) FROM audit_events"), events = count("SELECT COUNT(*) FROM workspace_event_outbox");
+        long audits = count("SELECT COUNT(*) FROM audit_events");
         ok(read(staffA, channel, original));
         ok(readThread(staffA, channel, original, reply));
         assertThat(count("SELECT COUNT(*) FROM audit_events")).isEqualTo(audits);
-        assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox")).isEqualTo(events);
     }
 
     // ---- forward only ---------------------------------------------------------------------------------------

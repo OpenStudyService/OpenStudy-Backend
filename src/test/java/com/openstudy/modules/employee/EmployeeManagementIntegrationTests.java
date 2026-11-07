@@ -41,11 +41,9 @@ class EmployeeManagementIntegrationTests {
         for(long id:people) {
             jdbc.update("DELETE FROM SPRING_SESSION WHERE PRINCIPAL_NAME=?",Long.toString(id));
             jdbc.update("DELETE FROM audit_events WHERE actor_employee_id=? OR (entity_type='employee' AND entity_id=?)",id,id);
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE target_employee_id=? OR (entity_type IN ('employee','employees') AND entity_id=?)",id,id);
             jdbc.update("DELETE FROM idempotency_records WHERE actor_employee_id=?",id);
         }
         for(long id:createdPresets) {
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE entity_type='permission-presets' AND entity_id=?",id);
             jdbc.update("DELETE FROM permission_presets WHERE id=?",id);
         }
         for(long id:people) jdbc.update("DELETE FROM branch_memberships WHERE employee_id=?",id);
@@ -94,7 +92,6 @@ class EmployeeManagementIntegrationTests {
         String audit=jdbc.queryForObject("SELECT CONCAT(before_json,after_json) FROM audit_events WHERE request_id='audit-request'",String.class);
         assertThat(audit).contains("members:write","employeeVersion").doesNotContain(hash,"password","token");
         assertThat(jdbc.queryForObject("SELECT actor_employee_id FROM audit_events WHERE request_id='audit-request'",Long.class)).isEqualTo(owner);
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM workspace_event_outbox WHERE target_employee_id=? AND event_type='AUTHORIZATION_CHANGED'",Long.class,staff)).isEqualTo(1);
     }
     @Test void managerMayEditOnlyOtherStaffAndStaffCannotReceiveAdminOnlyGrants() {
         assertThatThrownBy(()->employees.membership(manager,manager,first,"all",membershipBody(manager,first,"admin","활성",List.of()),"self")).isInstanceOf(AccessDeniedException.class);
@@ -107,13 +104,11 @@ class EmployeeManagementIntegrationTests {
         assertThat(employees.membership(manager,staff,first,"all",membershipBody(staff,first,"staff","활성",List.of("operations:write","customers:cross-branch-read")),"cross-branch-grant").membership().permissions()).containsExactlyInAnyOrder("operations:write","customers:cross-branch-read");
         assertThat(employees.membership(owner,staff,first,"all",membershipBody(staff,first,"admin","활성",List.of("people:manage")),"owner-promote").membership().role()).isEqualTo("admin");
     }
-    @Test void pendingOrRevokedMembershipCannotBypassInvitationAndFailedWritesLeaveNoOutbox() {
+    @Test void pendingOrRevokedMembershipCannotBypassInvitation() {
         jdbc.update("UPDATE branch_memberships SET status='PENDING' WHERE employee_id=? AND branch_id=?",staff,first);
-        long before=jdbc.queryForObject("SELECT COUNT(*) FROM workspace_event_outbox",Long.class);
         assertThatThrownBy(()->employees.membership(owner,staff,first,"all",membershipBody(staff,first,"staff","활성",List.of()),"pending")).isInstanceOf(ApiException.class);
         jdbc.update("UPDATE branch_memberships SET status='REVOKED' WHERE employee_id=? AND branch_id=?",staff,first);
         assertThatThrownBy(()->employees.membership(owner,staff,first,"all",membershipBody(staff,first,"staff","활성",List.of()),"revoked")).isInstanceOf(ApiException.class);
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM workspace_event_outbox",Long.class)).isEqualTo(before);
         long pending=person("EMPLOYEE","PENDING");
         assertThatThrownBy(()->employees.update(owner,pending,Map.of("version",1,"status","활성"),"pending-account")).isInstanceOf(ApiException.class);
     }

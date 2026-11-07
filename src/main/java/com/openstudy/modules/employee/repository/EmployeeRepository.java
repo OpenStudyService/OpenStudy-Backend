@@ -62,12 +62,6 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
             + "AND (:branch IS NULL OR m.branch_id=:branch))))", nativeQuery = true)
     Number channelEligible(@Param("employee") long employee, @Param("branch") Long branch);
 
-    /** Revoked memberships count here: peers need a scope-free invalidation to remove stale choices. */
-    @Query(value = "SELECT EXISTS(SELECT 1 FROM employees e WHERE e.id=:employee "
-            + "AND (e.global_role='OWNER' OR EXISTS(SELECT 1 FROM branch_memberships m WHERE m.employee_id=e.id "
-            + "AND m.branch_id IN (:branches))))", nativeQuery = true)
-    Number relatedToBranches(@Param("employee") long employee, @Param("branches") Collection<Long> branches);
-
     /** Login time only: the account version is not a client-visible change here, so it does not advance. */
     @Modifying
     @Query("UPDATE Employee e SET e.lastLoginAt = cast(sql('UTC_TIMESTAMP(6)') as Instant) WHERE e.id = :id")

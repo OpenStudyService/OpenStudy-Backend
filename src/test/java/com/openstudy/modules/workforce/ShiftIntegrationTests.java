@@ -363,8 +363,6 @@ class ShiftIntegrationTests extends ShiftIntegrationSupport {
             refused(register(lead, body), 409, "SHIFT_CONFLICT");
             refused(register(lead, body, "short"), 422, "VALIDATION_FAILED");
             assertThat(count("SELECT COUNT(*) FROM shift_events e JOIN shifts s ON s.id=e.shift_id WHERE s.employee_id=?", staff)).isEqualTo(1);
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type='shifts' AND entity_id=?",
-                    first, once.get("id").asLong())).isEqualTo(1);
         }
     }
 

@@ -16,7 +16,6 @@ import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyStore;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.*;
 import com.openstudy.modules.authorization.dto.*;
 import com.openstudy.modules.authorization.entity.BranchRole;
@@ -36,14 +35,13 @@ public class PermissionPresetService {
     private final AuthorizedCommands commands;
     private final ObjectMapper json;
     private final AuditTrail audit;
-    private final WorkspaceOutbox outbox;
     private final IdempotencyStore requests;
     private final Clock clock;
     public PermissionPresetService(PermissionPresetRepository repository, PermissionDefinitionRepository definitions,
             EntityManager entityManager, AuthorizationService authorization, AuthorizedCommands commands, ObjectMapper json,
-            AuditTrail audit, WorkspaceOutbox outbox, IdempotencyStore requests, Clock clock) {
+            AuditTrail audit, IdempotencyStore requests, Clock clock) {
         this.repository=repository; this.definitions=definitions; this.entityManager=entityManager; this.authorization=authorization;
-        this.commands=commands; this.json=json; this.audit=audit; this.outbox=outbox; this.requests=requests; this.clock=clock;
+        this.commands=commands; this.json=json; this.audit=audit; this.requests=requests; this.clock=clock;
     }
     @Transactional(readOnly=true)
     public List<PermissionDefinition> definitions(long actor) {
@@ -135,7 +133,6 @@ public class PermissionPresetService {
     private void changed(long actor, long id, String action, Object before, Object after, String requestId) {
         audit.record(AuditEvent.change(actor, null, "permission-preset", id, action,
                 json.writeValueAsString(before), json.writeValueAsString(after), requestId));
-        outbox.invalidate(null, "permission-presets", id);
     }
     private Optional<PermissionPreset> replay(long actor, String key, Object input) {
         byte[] hash = hash(input);

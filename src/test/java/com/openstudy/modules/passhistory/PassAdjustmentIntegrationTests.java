@@ -20,7 +20,7 @@ class PassAdjustmentIntegrationTests extends PassUsageFixture {
 
     // ---- what one adjustment leaves behind ------------------------------------------------------------------
 
-    @Test void aTimePassAdjustmentLeavesTheLedgerRowAuditAndEventAtThePurchaseBranch() throws Exception {
+    @Test void aTimePassAdjustmentLeavesTheLedgerRowAndAuditAtThePurchaseBranch() throws Exception {
         long customer = customer(first, "조정 고객");
         long pass = pass(customer, first, time(600));
         long before = version(pass);
@@ -51,8 +51,6 @@ class PassAdjustmentIntegrationTests extends PassUsageFixture {
         assertThat(is.get("remainingMinutes").asLong()).isEqualTo(480);
         assertThat(was.get("status").asString()).isEqualTo("ACTIVE");
         assertThat(audit.get("occurred_at")).isNotNull();
-        assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type='passes' AND entity_id=?", first, pass))
-                .isEqualTo(2); // issued, adjusted
     }
 
     @Test void aStoredValuePassAdjustsItsCreditAndLeavesMinutesAlone() throws Exception {
@@ -365,7 +363,6 @@ class PassAdjustmentIntegrationTests extends PassUsageFixture {
         assertThat(version(pass)).isEqualTo(version);
         assertThat(adjustments(pass)).isZero();
         assertThat(adjustAudits(pass)).isZero();
-        assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_type='passes' AND entity_id=?", pass)).isEqualTo(1);
     }
 
     @Test void aStaleVersionIsAConflictPointingAtThePass() throws Exception {

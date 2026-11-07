@@ -68,7 +68,6 @@ abstract class ShiftIntegrationSupport {
             jdbc.update("DELETE FROM shifts WHERE employee_id=?", id);
         }
         for (long id : branches) {
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE branch_id=?", id);
             jdbc.update("DELETE g FROM membership_permission_grants g JOIN branch_memberships m ON m.id=g.membership_id WHERE m.branch_id=?", id);
             jdbc.update("DELETE FROM branch_memberships WHERE branch_id=?", id);
         }

@@ -46,7 +46,7 @@ import com.openstudy.modules.task.service.TaskCardService;
  * a non-participant gets the same 404 for a channel, a message and a reply, a manager included, and before any input is
  * looked at. Sends and read positions go through the guard, which is also what makes IDs follow commit order: a reader
  * can never pass a message that commits later with a smaller ID. The body is stored and returned as sent. A read
- * position concerns only its reader: moving one writes no audit row and raises no workspace event.
+ * position concerns only its reader: moving one writes no audit row.
  */
 @Service
 @RequiredArgsConstructor

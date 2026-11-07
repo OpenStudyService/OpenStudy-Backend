@@ -58,7 +58,6 @@ import com.openstudy.modules.reservation.repository.RoomReservationRepository;
 import com.openstudy.modules.reservation.service.RoomService;
 import com.openstudy.modules.ticket.service.ProductCategoryService;
 import com.openstudy.modules.ticket.service.ProductService;
-import com.openstudy.modules.workspace.service.WorkspaceEventService;
 import com.openstudy.support.database.MySqlIntegrationTest;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -140,7 +139,6 @@ class RoomReservationIntegrationTests {
         jdbc.update("DELETE FROM product_categories WHERE created_by IN (" + actors + ")");
         for (long id : branches) {
             jdbc.update("DELETE FROM rooms WHERE branch_id=?", id);
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE branch_id=?", id);
             jdbc.update("DELETE FROM audit_events WHERE branch_id=?", id);
             jdbc.update("DELETE g FROM membership_permission_grants g JOIN branch_memberships m ON m.id=g.membership_id WHERE m.branch_id=?", id);
             jdbc.update("DELETE FROM branch_memberships WHERE branch_id=?", id);
@@ -479,19 +477,6 @@ class RoomReservationIntegrationTests {
         }
     }
 
-    @Test void changesRaiseRoomEventsWithoutAmounts() throws Exception {
-        long customer = customer(first);
-        long room = room(first);
-        try (var s = login(cashier)) {
-            long id = booked(s, booking(first, room, customer, "14:00", "15:00")).get("id").asLong();
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type='rooms' AND entity_id=?", first, room)).isEqualTo(1);
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type='room-reservations' AND entity_id=?", first, id)).isEqualTo(1);
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type='payments'", first)).isEqualTo(1);
-        }
-        assertThat((String) ReflectionTestUtils.invokeMethod(WorkspaceEventService.class, "resource", "rooms")).isEqualTo("rooms");
-        assertThat((String) ReflectionTestUtils.invokeMethod(WorkspaceEventService.class, "resource", "room-reservations")).isEqualTo("room-reservations");
-    }
-
     // ---- the contract's fee examples ------------------------------------------------------------------------
 
     record Example(long rate, String start, String end, int hours, long amount) {}
@@ -708,7 +693,6 @@ class RoomReservationIntegrationTests {
         try (var s = login(cashier)) {
             booked(s, booking(first, room, holder, "14:00", "16:00"));
             long auditBefore = count("SELECT COUNT(*) FROM audit_events WHERE actor_employee_id=?", cashier);
-            long eventsBefore = count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=?", first);
             // Pretend the check read before the rival committed: only uk_room_reservation_slots_1 can refuse now.
             doReturn(false).when(reservationRepository).existsOverlapping(anyLong(), any(), any(), any());
             refused(book(s, booking(first, room, rival, "15:00", "17:00"), key()), 409, "ROOM_TIME_CONFLICT");
@@ -716,7 +700,6 @@ class RoomReservationIntegrationTests {
             assertThat(bookings(rival)).isZero();
             assertThat(slots(room)).as("the free 16:00 slot went with it").isEqualTo(2);
             assertThat(count("SELECT COUNT(*) FROM audit_events WHERE actor_employee_id=?", cashier)).isEqualTo(auditBefore);
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=?", first)).isEqualTo(eventsBefore);
             assertThat(count("SELECT COUNT(*) FROM idempotency_records WHERE actor_employee_id=?", cashier)).isEqualTo(1);
         }
     }

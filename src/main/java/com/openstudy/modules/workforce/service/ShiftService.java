@@ -27,7 +27,6 @@ import tools.jackson.databind.ObjectMapper;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyRecord;
 import com.openstudy.common.idempotency.IdempotencyStore;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.ListQuery;
 import com.openstudy.common.web.PageResponse;
@@ -75,7 +74,6 @@ public class ShiftService {
     private final AuthorizationService policy;
     private final AuthorizedCommands commands;
     private final ObjectMapper json;
-    private final WorkspaceOutbox outbox;
     private final IdempotencyStore requests;
     private final Clock clock;
 
@@ -156,7 +154,6 @@ public class ShiftService {
             requireFree(state, employee, start, end, null);
             var shift = shifts.saveAndFlush(new Shift(branch, employee, start, end, breakMinutes, actor));
             record(shift, actor, ShiftEvent.Type.CREATED, null, null);
-            outbox.invalidate(branch, ENTITY, shift.getId());
             var result = views(List.of(shift), state).getFirst();
             requests.complete(actor, CREATE, scopeKey, key, fingerprint, 201, json.writeValueAsString(result),
                     clock.instant().plus(Duration.ofHours(24)));
@@ -211,16 +208,6 @@ public class ShiftService {
         });
     }
 
-    /**
-     * Whether a workspace stream may hear of this shift: the OWNER, the MANAGER of its branch or its own employee, the
-     * readers of M8-D02. A branch event alone would reach every member of the branch (workforce-api.md "workspace 이벤트").
-     */
-    @Transactional(readOnly = true)
-    public boolean announcedTo(AuthorizationState state, long branch, long shiftId) {
-        if (readers.manages(state, branch)) return true;
-        return shifts.employeeOf(shiftId).filter(employee -> employee == state.employeeId()).isPresent();
-    }
-
     /** Before any lock: 404 for a shift the requester cannot see, then 403 unless they manage its branch. Returns its employee. */
     private long managed(long actor, long id) {
         var state = policy.current(actor);
@@ -251,7 +238,6 @@ public class ShiftService {
     private ShiftView saved(Shift shift, long actor, ShiftEvent.Type type, Map<String, Object> before, String reason, AuthorizationState state) {
         var result = shifts.saveAndFlush(shift);
         record(result, actor, type, before, reason);
-        outbox.invalidate(result.getBranchId(), ENTITY, result.getId());
         return views(List.of(result), state).getFirst();
     }
 

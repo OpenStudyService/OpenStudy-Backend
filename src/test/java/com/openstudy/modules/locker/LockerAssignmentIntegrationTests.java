@@ -333,8 +333,6 @@ class LockerAssignmentIntegrationTests extends LockerIntegrationSupport {
             long assignment = made.get("id").asLong();
             assertThat(status(assignment)).isEqualTo("ACTIVE");
             assertThat(audits("locker-assignments", assignment, "ACTIVE")).isEqualTo(1);
-            assertThat(events(first, "locker-assignments")).isEqualTo(1);
-            assertThat(events(first, "payments")).isEqualTo(1);
             assertThat(lockerVersion(id)).as("assigning does not edit the ledger").isZero();
             assertThat(ok(get(cash, "/api/locker-assignments/" + assignment))).isEqualTo(made);
         }
@@ -794,7 +792,6 @@ class LockerAssignmentIntegrationTests extends LockerIntegrationSupport {
             assertThat(assign(cash, body, key).statusCode()).isEqualTo(500);
             assertThat(payments(customer)).isZero();
             assertThat(assignments(customer)).isZero();
-            assertThat(events(first, "payments")).isZero();
             Mockito.reset(chargeRepository);
             created(assign(cash, body, key));
             assertThat(payments(customer)).isEqualTo(1);

@@ -19,12 +19,11 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
- * Unified REST & SSE controller for OpenStudy M10 DomainLens AI Workspace (`OS-DL-0504`).
+ * Unified REST controller for OpenStudy M10 DomainLens AI Workspace (`OS-DL-0504`).
  * Supports both the legacy M10 frontend contract (`Ai.tsx` / `domainlens.ts`) and the Stage 6 5-view console
- * (`/api/ai/queries`, `/api/ai/requests/{id}/events`, `/api/ai/records`, `/api/ai/approvals`, `/api/ai/traces`, `/api/ai/evaluation`).
+ * (`/api/ai/queries`, `/api/ai/records`, `/api/ai/approvals`, `/api/ai/traces`, `/api/ai/evaluation`).
  */
 @RestController
 public class AiWorkspaceController {
@@ -185,14 +184,6 @@ public class AiWorkspaceController {
         } finally {
             playbackGateway.releaseRateLimit(actor.employeeId());
         }
-    }
-
-    @GetMapping(
-            value = {"/api/requests/{requestId}/events", "/api/ai/requests/{requestId}/events"},
-            produces = MediaType.TEXT_EVENT_STREAM_VALUE
-    )
-    public SseEmitter streamEvents(@PathVariable String requestId) {
-        return workspaceService.streamRequestEvents(requestId);
     }
 
     @PostMapping({"/api/requests/{requestId}/cancel", "/api/ai/requests/{requestId}/cancel"})

@@ -75,7 +75,6 @@ class SeatIntegrationTests {
         jdbc.update("DELETE FROM product_categories WHERE created_by=?", owner);
         for (long id : branches) {
             jdbc.update("DELETE FROM seats WHERE branch_id=?", id);
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE branch_id=?", id);
             jdbc.update("DELETE FROM audit_events WHERE branch_id=?", id);
             jdbc.update("DELETE FROM branch_memberships WHERE branch_id=?", id);
             jdbc.update("DELETE FROM branch_weekly_hours WHERE branch_id=?", id);
@@ -210,7 +209,7 @@ class SeatIntegrationTests {
         return json.valueToTree(rows.get(0));
     }
 
-    @Test void aStaffMemberWithOperationsWriteRegistersATrimmedSeatAndTheServerRecordsAuditAndEvent() throws Exception {
+    @Test void aStaffMemberWithOperationsWriteRegistersATrimmedSeatAndTheServerRecordsAudit() throws Exception {
         try (var s = login(writer)) {
             var body = seatBody(first, "  A구역 ", "  A-01 ");
             body.put("kind", "모니터");
@@ -229,7 +228,6 @@ class SeatIntegrationTests {
             assertThat(created.get("createdAt").asString()).isNotBlank();
             assertThat(jdbc.queryForObject("SELECT CONCAT(zone,'|',seat_no,'|',kind,'|',status) FROM seats WHERE id=?", String.class, id))
                     .isEqualTo("A구역|A-01|MONITOR|AVAILABLE");
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type='seats' AND entity_id=?", first, id)).isEqualTo(1);
             var row = audit(id, "CREATED");
             assertThat(row.get("actor_employee_id").asLong()).isEqualTo(writer);
             assertThat(row.get("branch_id").asLong()).isEqualTo(first);
@@ -340,8 +338,6 @@ class SeatIntegrationTests {
             assertThat(after.get("seatNo").asString()).isEqualTo("B-07");
             assertThat(before.get("kind").asString()).isEqualTo("일반");
             assertThat(after.get("kind").asString()).isEqualTo("기타");
-            // One event for the edit, on top of the one from the check-in.
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type='seats' AND entity_id=?", first, seat)).isEqualTo(2);
         }
     }
 
@@ -363,7 +359,6 @@ class SeatIntegrationTests {
             var same = node(send(s, "PATCH", "/api/seats/" + seat, versioned(current, "zone", "A", "seatNo", "A-01")));
             assertThat(same.get("version").asLong()).isEqualTo(current.get("version").asLong());
             assertThat(count("SELECT COUNT(*) FROM audit_events WHERE entity_type='seats' AND entity_id=?", seat)).isZero();
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_type='seats' AND entity_id=?", seat)).isZero();
             // A stale version is a conflict that names the latest version and where to reload.
             assertThat(send(s, "PATCH", "/api/seats/" + seat, versioned(current, "zone", "B")).statusCode()).isEqualTo(200);
             var stale = send(s, "PATCH", "/api/seats/" + seat, versioned(current, "zone", "C"));
@@ -417,7 +412,6 @@ class SeatIntegrationTests {
             assertThat(resumed.statusCode()).isEqualTo(200);
             assertThat(node(resumed).get("status").asString()).isEqualTo("사용 가능");
             assertThat(count("SELECT COUNT(*) FROM audit_events WHERE entity_type='seats' AND entity_id=? AND action='STATUS_CHANGED'", seat)).isEqualTo(2);
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_type='seats' AND entity_id=?", seat)).isEqualTo(2);
         }
         try (var s = login(owner)) {
             var current = node(get(s, "/api/seats/" + seat));

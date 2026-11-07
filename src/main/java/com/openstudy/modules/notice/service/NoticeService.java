@@ -25,7 +25,6 @@ import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyStore;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.ListQuery;
 import com.openstudy.common.web.PageResponse;
@@ -63,7 +62,6 @@ public class NoticeService {
     private final AuthorizationService policy;
     private final AuthorizedCommands commands;
     private final ObjectMapper json;
-    private final WorkspaceOutbox outbox;
     private final IdempotencyStore requests;
     private final AuditTrail audit;
     private final Clock clock;
@@ -125,7 +123,6 @@ public class NoticeService {
             after.put("pinned", pinned); after.put("status", NoticeInputs.label(status));
             audit.record(AuditEvent.change(actor, auditBranch(branches), ENTITY, notice.getId(), "CREATED", null,
                     json.writeValueAsString(after), requestId));
-            announce(notice.getId(), target, branches, null, Set.of());
             var result = detail(notice, new TreeSet<>(branches), state);
             requests.complete(actor, CREATE, ENTITY, key, fingerprint, 201, json.writeValueAsString(result), now.plus(Duration.ofHours(24)));
             return result;
@@ -185,15 +182,13 @@ public class NoticeService {
                 before.put("target", NoticeInputs.label(notice.getTarget())); after.put("target", NoticeInputs.label(nextTarget));
                 before.put("branchIds", ids(current)); after.put("branchIds", ids(nextIds));
             }
-            // An identical request is not a change: no version bump, audit row or event.
+            // An identical request is not a change: no version bump or audit row.
             if (before.isEmpty()) return detail(notice, current, state);
-            NoticeTarget previousTarget = notice.getTarget();
             notice.edit(nextTitle, nextBody, nextPinned);
             if (retargeted) notice.retarget(nextTarget, nextIds);
             var saved = repository.saveAndFlush(notice);
             audit.record(AuditEvent.change(actor, auditBranch(nextTarget == NoticeTarget.ALL ? current : nextIds), ENTITY, id, "UPDATED",
                     null, json.writeValueAsString(before), json.writeValueAsString(after), requestId));
-            announce(id, nextTarget, nextIds, previousTarget, current);
             return detail(saved, new TreeSet<>(nextIds), state);
         });
     }
@@ -223,7 +218,6 @@ public class NoticeService {
             audit.record(AuditEvent.change(actor, auditBranch(current), ENTITY, id, "STATUS_CHANGED", null,
                     json.writeValueAsString(Map.of("status", NoticeInputs.label(previous))),
                     json.writeValueAsString(Map.of("status", NoticeInputs.label(next))), requestId));
-            announce(id, notice.getTarget(), current, notice.getTarget(), current);
             return detail(saved, current, state);
         });
     }
@@ -280,20 +274,6 @@ public class NoticeService {
     private Set<Long> readable(AuthorizationState state) {
         return state.branches().keySet().stream().filter(branch -> policy.permits(state, branch, BranchAction.READ))
                 .collect(Collectors.toSet());
-    }
-
-    /**
-     * One invalidate row per target branch (old and new target alike, so a branch that just lost the notice reloads),
-     * or one per branch for a notice that is or was addressed to everyone. The stream hides the notice ID.
-     */
-    private void announce(long id, NoticeTarget target, Set<Long> branches, NoticeTarget previousTarget, Set<Long> previousBranches) {
-        if (target == NoticeTarget.ALL || previousTarget == NoticeTarget.ALL) {
-            outbox.invalidateEveryBranch(ENTITY, id);
-            return;
-        }
-        Set<Long> all = new TreeSet<>(branches);
-        all.addAll(previousBranches);
-        for (long branch : all) outbox.invalidate(branch, ENTITY, id);
     }
 
     // ---- responses --------------------------------------------------------------------------------------------

@@ -9,7 +9,6 @@ import org.springframework.stereotype.Repository;
 import tools.jackson.databind.ObjectMapper;
 import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.modules.invitation.entity.InvitationSendJob;
 import com.openstudy.modules.invitation.entity.SendJobStatus;
 
@@ -24,11 +23,10 @@ public class InvitationDeliveryRepository {
     private final InvitationSendJobRepository jobs;
     private final ObjectMapper json;
     private final AuditTrail audit;
-    private final WorkspaceOutbox outbox;
 
     public InvitationDeliveryRepository(InvitationRepository invitations, InvitationSendJobRepository jobs, ObjectMapper json,
-            AuditTrail audit, WorkspaceOutbox outbox) {
-        this.invitations = invitations; this.jobs = jobs; this.json = json; this.audit = audit; this.outbox = outbox;
+            AuditTrail audit) {
+        this.invitations = invitations; this.jobs = jobs; this.json = json; this.audit = audit;
     }
 
     public record Candidate(long invitationId, long jobId) {}
@@ -93,6 +91,5 @@ public class InvitationDeliveryRepository {
     public void changed(InvitationState invitation, Job job, String action) {
         String snapshot = json.writeValueAsString(Map.of("jobId", Long.toString(job.id()), "revision", job.revision()));
         audit.record(AuditEvent.change(null, invitation.branchId(), "invitations", invitation.id(), action, null, snapshot, null));
-        outbox.invalidate(invitation.branchId(), "invitations", invitation.id());
     }
 }

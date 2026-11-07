@@ -21,7 +21,6 @@ import tools.jackson.databind.ObjectMapper;
 import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.persistence.DuplicateKeys;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.ListQuery;
@@ -69,7 +68,6 @@ public class PassService {
     private final AuthorizationService policy;
     private final ObjectMapper json;
     private final AuditTrail audit;
-    private final WorkspaceOutbox outbox;
     private final Clock clock;
 
     /** Call inside the payment transaction, after the payment row exists; a failure here rolls the payment back too. */
@@ -89,7 +87,6 @@ public class PassService {
         after.put("startedAt", String.valueOf(pass.getStartedAt()));
         after.put("expiresAt", String.valueOf(pass.getExpiresAt()));
         audit.record(AuditEvent.change(actor, branchId, "passes", pass.getId(), "ISSUED", null, json.writeValueAsString(after), requestId));
-        outbox.invalidate(branchId, "passes", pass.getId());
         return pass.getId();
     }
 
@@ -112,7 +109,6 @@ public class PassService {
         audit.record(AuditEvent.change(actor, pass.getPurchaseBranchId(), "passes", pass.getId(), "REFUNDED",
                 json.writeValueAsString(Map.of("status", before)),
                 json.writeValueAsString(Map.of("status", pass.getStatus().name())), requestId));
-        outbox.invalidate(pass.getPurchaseBranchId(), "passes", pass.getId());
         return pass.getId();
     }
 
@@ -155,7 +151,6 @@ public class PassService {
         pass.deduct(settled.deductedMinutes(), settled.deductedKrw());
         repository.saveAndFlush(pass);
         // The purchase branch's screens show this balance, wherever the pass was used (seat-usage-api.md).
-        outbox.invalidate(pass.getPurchaseBranchId(), "passes", id);
         return settled;
     }
 

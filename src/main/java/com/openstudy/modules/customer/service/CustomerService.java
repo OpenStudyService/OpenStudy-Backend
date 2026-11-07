@@ -27,7 +27,6 @@ import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyStore;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.ListQuery;
 import com.openstudy.common.web.PageResponse;
@@ -70,7 +69,6 @@ public class CustomerService {
     private final AuthorizedCommands commands;
     private final ObjectMapper json;
     private final AuditTrail audit;
-    private final WorkspaceOutbox outbox;
     private final IdempotencyStore requests;
     private final Clock clock;
 
@@ -118,7 +116,6 @@ public class CustomerService {
             var customer = repository.saveAndFlush(new Customer(memberNo(), branch, name, phone, email, memo));
             audit.record(AuditEvent.change(actor, branch, "customers", customer.getId(), "CREATED", null,
                     summary("memberNo", customer.getMemberNo(), "status", customer.getStatus().name()), requestId));
-            invalidate(customer);
             var result = detail(customer, state);
             requests.complete(actor, CREATE, scopeKey, key, fingerprint, 201, json.writeValueAsString(result),
                     clock.instant().plus(Duration.ofHours(24)));
@@ -155,7 +152,6 @@ public class CustomerService {
             flush(customer);
             audit.record(AuditEvent.change(actor, customer.getRegisteredBranchId(), "customers", id, "UPDATED", null,
                     json.writeValueAsString(Map.of("changedFields", changed)), requestId));
-            invalidate(customer);
             return detail(customer, state);
         });
     }
@@ -177,7 +173,6 @@ public class CustomerService {
             flush(customer);
             audit.record(AuditEvent.change(actor, customer.getRegisteredBranchId(), "customers", id, "STATUS_CHANGED",
                     summary("status", previous.name()), summary("status", next.name()), requestId));
-            invalidate(customer);
             return detail(customer, state);
         });
     }
@@ -298,12 +293,6 @@ public class CustomerService {
         repository.findById(id).map(Customer::getRegisteredBranchId).ifPresent(branches::add);
         repository.paymentBranchIds(id).forEach(branch -> branches.add(branch.longValue()));
         return branches;
-    }
-
-    /** The event goes to the registration branch only; an unassigned customer (OWNER-only) has none to notify. */
-    private void invalidate(Customer customer) {
-        if (customer.getRegisteredBranchId() != null)
-            outbox.invalidate(customer.getRegisteredBranchId(), "customers", customer.getId());
     }
 
     private Customer lockedCustomer(long id) {

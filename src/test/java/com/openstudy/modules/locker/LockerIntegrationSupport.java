@@ -107,7 +107,6 @@ abstract class LockerIntegrationSupport {
         jdbc.update("DELETE FROM audit_events WHERE actor_employee_id IN (" + actors + ")");
         for (long id : branches) {
             jdbc.update("DELETE FROM lockers WHERE branch_id=?", id);
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE branch_id=?", id);
             jdbc.update("DELETE FROM audit_events WHERE branch_id=?", id);
             jdbc.update("DELETE g FROM membership_permission_grants g JOIN branch_memberships m ON m.id=g.membership_id WHERE m.branch_id=?", id);
             jdbc.update("DELETE FROM branch_memberships WHERE branch_id=?", id);
@@ -179,7 +178,6 @@ abstract class LockerIntegrationSupport {
     String endDate(long assignment) { return text("SELECT DATE_FORMAT(end_date,'%Y-%m-%d') FROM locker_assignments WHERE id=?", assignment); }
     long rate(long locker) { return count("SELECT rate_per_4weeks_krw FROM lockers WHERE id=?", locker); }
     long lockerVersion(long locker) { return count("SELECT version FROM lockers WHERE id=?", locker); }
-    long events(long branch, String type) { return count("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=? AND entity_type=?", branch, type); }
     long audits(String type, long id, String action) {
         return count("SELECT COUNT(*) FROM audit_events WHERE entity_type=? AND entity_id=? AND action=?", type, id, action);
     }

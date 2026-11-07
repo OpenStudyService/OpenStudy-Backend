@@ -61,14 +61,12 @@ class CustomerIntegrationTests {
         for (long customer : created) {
             jdbc.update("DELETE FROM payments WHERE customer_id=?", customer);
             jdbc.update("DELETE FROM customer_status_events WHERE customer_id=?", customer);
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE entity_type='customers' AND entity_id=?", customer);
             jdbc.update("DELETE FROM audit_events WHERE entity_type='customers' AND entity_id=?", customer);
             jdbc.update("DELETE FROM customers WHERE id=?", customer);
         }
         String actors = people.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(","));
         jdbc.update("DELETE FROM audit_events WHERE actor_employee_id IN (" + actors + ")");
         for (long id : branches) {
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE branch_id=?", id);
             jdbc.update("DELETE FROM audit_events WHERE branch_id=?", id);
             jdbc.update("DELETE FROM branch_memberships WHERE branch_id=?", id);
             jdbc.update("DELETE FROM branch_weekly_hours WHERE branch_id=?", id);
@@ -210,7 +208,6 @@ class CustomerIntegrationTests {
             assertThat(node(replay).get("id").asLong()).isEqualTo(id);
             assertThat(count("SELECT COUNT(*) FROM customers WHERE member_no=?", customer.get("memberNo").asString())).isEqualTo(1);
             assertThat(count("SELECT COUNT(*) FROM audit_events WHERE entity_type='customers' AND entity_id=? AND action='CREATED'", id)).isEqualTo(1);
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_type='customers' AND entity_id=? AND branch_id=?", id, first)).isEqualTo(1);
             // The audit row records who and when, not the contact details themselves.
             String after = jdbc.queryForObject("SELECT after_json FROM audit_events WHERE entity_type='customers' AND entity_id=?", String.class, id);
             assertThat(after).doesNotContain("01012345678").doesNotContain("홍길동");
@@ -441,9 +438,8 @@ class CustomerIntegrationTests {
         }
     }
 
-    @Test void failedCommandsRollBackCustomerHistoryAuditAndEventsTogether() {
+    @Test void failedCommandsRollBackCustomerHistoryAndAuditTogether() {
         long id = register(first, "롤백", "01012344444");
-        long events = count("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_type='customers' AND entity_id=?", id);
         transactions.executeWithoutResult(tx -> {
             customers.changeStatus(owner, id, "all", Map.of("version", 1, "status", "비활성", "reason", "롤백"), "rollback");
             tx.setRollbackOnly();
@@ -452,7 +448,6 @@ class CustomerIntegrationTests {
         assertThat(count("SELECT version FROM customers WHERE id=?", id)).isZero();
         assertThat(count("SELECT COUNT(*) FROM customer_status_events WHERE customer_id=?", id)).isZero();
         assertThat(count("SELECT COUNT(*) FROM audit_events WHERE entity_type='customers' AND entity_id=? AND action='STATUS_CHANGED'", id)).isZero();
-        assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_type='customers' AND entity_id=?", id)).isEqualTo(events);
     }
 
     private int[] race(Callable<Object> a, Callable<Object> b) throws Exception {

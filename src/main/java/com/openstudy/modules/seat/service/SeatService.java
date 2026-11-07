@@ -24,7 +24,6 @@ import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyStore;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.ListQuery;
 import com.openstudy.common.web.PageResponse;
@@ -70,7 +69,6 @@ public class SeatService {
     private final AuthorizedCommands commands;
     private final AuditTrail audit;
     private final ObjectMapper json;
-    private final WorkspaceOutbox outbox;
     private final IdempotencyStore requests;
     private final Clock clock;
 
@@ -153,7 +151,6 @@ public class SeatService {
             var seat = repository.saveAndFlush(new Seat(branch, zone, seatNo, kind, stored));
             audit.record(AuditEvent.change(actor, branch, ENTITY, seat.getId(), "CREATED", null, null,
                     json.writeValueAsString(snapshot(seat)), requestId));
-            outbox.invalidate(branch, ENTITY, seat.getId());
             var result = views(List.of(seat)).get(0);
             requests.complete(actor, CREATE, scopeKey, key, fingerprint, 201, json.writeValueAsString(result), now.plus(Duration.ofHours(24)));
             return result;
@@ -188,7 +185,6 @@ public class SeatService {
             repository.flush();
             audit.record(AuditEvent.change(actor, branch, ENTITY, id, "UPDATED", null, json.writeValueAsString(before),
                     json.writeValueAsString(after), requestId));
-            outbox.invalidate(branch, ENTITY, id);
             return views(List.of(seat)).get(0);
         });
     }
@@ -212,7 +208,6 @@ public class SeatService {
             audit.record(AuditEvent.change(actor, branch, ENTITY, id, "STATUS_CHANGED", reason,
                     json.writeValueAsString(Map.of("status", previous.label())),
                     json.writeValueAsString(Map.of("status", next.label())), requestId));
-            outbox.invalidate(branch, ENTITY, id);
             return views(List.of(seat)).get(0);
         });
     }

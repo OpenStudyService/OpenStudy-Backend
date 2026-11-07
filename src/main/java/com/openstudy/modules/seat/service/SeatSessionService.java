@@ -29,7 +29,6 @@ import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyStore;
-import com.openstudy.common.outbox.WorkspaceOutbox;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.ListQuery;
 import com.openstudy.common.web.PageResponse;
@@ -85,7 +84,6 @@ public class SeatSessionService {
     private final AuthorizedCommands commands;
     private final AuditTrail audit;
     private final ObjectMapper json;
-    private final WorkspaceOutbox outbox;
     private final IdempotencyStore requests;
     private final Clock clock;
 
@@ -125,8 +123,6 @@ public class SeatSessionService {
             after.put("passId", Long.toString(passId));
             after.put("checkedInAt", now.toString());
             audit.record(AuditEvent.change(actor, branch, ENTITY, id, "CHECKED_IN", reason, null, json.writeValueAsString(after), requestId));
-            outbox.invalidate(branch, "seats", seatId);
-            outbox.invalidate(branch, ENTITY, id);
             return complete(actor, CHECK_IN, scopeKey, key, fingerprint, 201, view(session));
         });
     }
@@ -162,8 +158,6 @@ public class SeatSessionService {
             after.put("overageKrw", settled.overageKrw());
             audit.record(AuditEvent.change(actor, branch, ENTITY, id, CHECKED_OUT, reason,
                     json.writeValueAsString(Map.of("status", SeatSession.Status.ACTIVE.name())), json.writeValueAsString(after), requestId));
-            outbox.invalidate(branch, "seats", session.getSeatId());
-            outbox.invalidate(branch, ENTITY, id);
             return complete(actor, CHECK_OUT, scopeKey, key, fingerprint, 200, view(session));
         });
     }
@@ -206,9 +200,6 @@ public class SeatSessionService {
             audit.record(AuditEvent.change(actor, branch, ENTITY, id, "SEAT_MOVED", reason,
                     json.writeValueAsString(Map.of("seatId", Long.toString(fromSeatId))),
                     json.writeValueAsString(Map.of("seatId", Long.toString(toSeatId))), requestId));
-            outbox.invalidate(branch, "seats", fromSeatId);
-            outbox.invalidate(branch, "seats", toSeatId);
-            outbox.invalidate(branch, ENTITY, id);
             return complete(actor, MOVE, scopeKey, key, fingerprint, 200, view(session));
         });
     }

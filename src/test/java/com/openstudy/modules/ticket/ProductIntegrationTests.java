@@ -83,7 +83,6 @@ class ProductIntegrationTests {
         jdbc.update("DELETE FROM audit_events WHERE actor_employee_id IN (" + actors + ")");
         jdbc.update("DELETE FROM product_categories WHERE created_by IN (" + actors + ")");
         for (long id : branches) {
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE branch_id=?", id);
             jdbc.update("DELETE FROM audit_events WHERE branch_id=?", id);
             jdbc.update("DELETE FROM branch_memberships WHERE branch_id=?", id);
             jdbc.update("DELETE FROM branch_weekly_hours WHERE branch_id=?", id);
@@ -311,7 +310,7 @@ class ProductIntegrationTests {
         }
     }
 
-    @Test void createWritesInitialRevisionAuditAndEventsAndReplaysByKey() throws Exception {
+    @Test void createWritesInitialRevisionAndAuditAndReplaysByKey() throws Exception {
         try (var s = login(staffFirst); var m = login(managerFirst)) {
             String key = key();
             var request = body("직원 등록", 12000, time(120, null), timeCategory, first);
@@ -323,7 +322,6 @@ class ProductIntegrationTests {
                     .containsEntry("event_type", "CREATED").containsEntry("changed_by", java.math.BigInteger.valueOf(staffFirst))
                     .containsEntry("product_version", java.math.BigInteger.ZERO);
             assertThat(count("SELECT COUNT(*) FROM audit_events WHERE entity_type='products' AND entity_id=? AND action='CREATED'", id)).isEqualTo(1);
-            assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_type='products' AND entity_id=? AND branch_id=?", id, first)).isEqualTo(1);
             // Replays require the same key and input; the stored result is returned without a second row.
             assertThat(http(s.client(), "POST", "/api/products", s.token(), request, key).body()).isEqualTo(made.body());
             assertThat(count("SELECT COUNT(*) FROM products WHERE id=?", id)).isEqualTo(1);
@@ -594,12 +592,11 @@ class ProductIntegrationTests {
         assertThat(count("SELECT COUNT(*) FROM product_revisions WHERE original_product_id=?", statusId)).isEqualTo(2);
     }
 
-    @Test void failedCommandsRollBackProductRevisionAuditAndEventsTogether() {
+    @Test void failedCommandsRollBackProductRevisionAndAuditTogether() {
         var product = create("롤백", first);
         long id = id(product);
         long revisions = count("SELECT COUNT(*) FROM product_revisions WHERE original_product_id=?", id);
         long audits = count("SELECT COUNT(*) FROM audit_events WHERE entity_type='products' AND entity_id=?", id);
-        long events = count("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_type='products' AND entity_id=?", id);
         transactions.executeWithoutResult(tx -> {
             products.changeStatus(owner, id, "all", Map.of("version", 1, "status", "판매 중지"), "rollback");
             tx.setRollbackOnly();
@@ -608,7 +605,6 @@ class ProductIntegrationTests {
         assertThat(jdbc.queryForObject("SELECT sale_status FROM products WHERE id=?", String.class, id)).isEqualTo("ON_SALE");
         assertThat(count("SELECT COUNT(*) FROM product_revisions WHERE original_product_id=?", id)).isEqualTo(revisions);
         assertThat(count("SELECT COUNT(*) FROM audit_events WHERE entity_type='products' AND entity_id=?", id)).isEqualTo(audits);
-        assertThat(count("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_type='products' AND entity_id=?", id)).isEqualTo(events);
 
         String key = key();
         long created = count("SELECT COUNT(*) FROM products WHERE created_by=?", owner);

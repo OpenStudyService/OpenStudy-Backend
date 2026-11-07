@@ -46,7 +46,6 @@ class BranchIntegrationTests {
     }
     @AfterEach void clean() {
         for(long id:branches) {
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE branch_id=?",id);
             jdbc.update("DELETE FROM audit_events WHERE branch_id=?",id);
             jdbc.update("DELETE FROM branch_memberships WHERE branch_id=?",id);
             jdbc.update("DELETE FROM branch_weekly_hours WHERE branch_id=?",id);
@@ -121,11 +120,10 @@ class BranchIntegrationTests {
             var a=pool.submit(call);var b=pool.submit(call);start.countDown();
             var one=a.get(15,TimeUnit.SECONDS);var two=b.get(15,TimeUnit.SECONDS);branches.add(Long.parseLong(one.id()));
             assertThat(two).isEqualTo(one);
-            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM workspace_event_outbox WHERE branch_id=?",Long.class,one.id())).isEqualTo(1);
             assertThatThrownBy(()->service.create(owner,key,body("다른 값"),"different")).isInstanceOf(ApiException.class);
         }
     }
-    @Test void scheduleAuditOutboxAndIdempotencyRollbackTogether() {
+    @Test void scheduleAuditAndIdempotencyRollbackTogether() {
         String key=UUID.randomUUID().toString();long count=jdbc.queryForObject("SELECT COUNT(*) FROM branches",Long.class);
         transactions.executeWithoutResult(tx->{service.create(owner,key,body("롤백"),"rollback");tx.setRollbackOnly();});
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM branches",Long.class)).isEqualTo(count);

@@ -59,7 +59,6 @@ class ProfileIntegrationTests {
         for (long id : people) {
             jdbc.update("DELETE FROM SPRING_SESSION WHERE PRINCIPAL_NAME=?", Long.toString(id));
             jdbc.update("DELETE FROM audit_events WHERE actor_employee_id=? OR (entity_type='employee' AND entity_id=?)", id, id);
-            jdbc.update("DELETE FROM workspace_event_outbox WHERE target_employee_id=? OR (entity_type IN ('employee','employees') AND entity_id=?)", id, id);
             jdbc.update("DELETE FROM branch_memberships WHERE employee_id=?", id);
         }
         for (long id : people) jdbc.update("UPDATE employees SET updated_by=NULL,created_by=NULL WHERE id=?", id);
@@ -111,7 +110,6 @@ class ProfileIntegrationTests {
         assertThat(accounts.byId(id).nickname()).isEqualTo("이전 별명");
         assertThat(accounts.byId(id).version()).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_events WHERE actor_employee_id=? AND " + NOT_LOGIN, Long.class, id)).isZero();
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_id=? AND entity_type IN ('employee','employees')", Long.class, id)).isZero();
     }
     private void validation(HttpResponse<String> response, String field) {
         assertThat(response.statusCode()).as(response.body()).isEqualTo(422);
@@ -151,7 +149,6 @@ class ProfileIntegrationTests {
                 assertThat(audit.get("request_id")).isEqualTo(response.headers().firstValue("X-Request-ID").orElseThrow());
                 assertThat(audit.get("before_json").toString()).contains("이전 별명", "version").doesNotContain(hash, "password", "token");
                 assertThat(audit.get("after_json").toString()).contains(nickname).doesNotContain(hash, "password", "token");
-                assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM workspace_event_outbox WHERE entity_id=? AND entity_type IN ('employee','employees') AND event_type='INVALIDATE'", Long.class, id)).isEqualTo(2);
             }
         }
     }
@@ -261,7 +258,7 @@ class ProfileIntegrationTests {
         }
     }
 
-    @Test void transactionRollbackRestoresAccountAuditAndOutbox() {
+    @Test void transactionRollbackRestoresAccountAndAudit() {
         assertThatThrownBy(() -> new TransactionTemplate(transactions).execute(status -> {
             users.updateProfile(staff, "WORKSPACE", Map.of("version", 1, "nickname", "롤백"), "rollback-profile");
             throw new IllegalStateException("rollback");
