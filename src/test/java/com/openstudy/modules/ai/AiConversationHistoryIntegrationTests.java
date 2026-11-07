@@ -64,6 +64,8 @@ class AiConversationHistoryIntegrationTests {
     }
 
     @AfterEach void clean() {
+        jdbc.update("DELETE FROM ai_work_records WHERE employee_id IN ("
+                + people.stream().map(String::valueOf).collect(Collectors.joining(",")) + ")");
         for (String id : conversations) {
             jdbc.update("DELETE FROM ai_executions WHERE conversation_id=?", id);
             jdbc.update("DELETE FROM ai_conversations WHERE id=?", id);
@@ -143,6 +145,37 @@ class AiConversationHistoryIntegrationTests {
         }
     }
 
+    @Test void noResultIsStoredAndEveryResultIsRunAgainUnderTheCurrentPermissions() throws Exception {
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() "
+                + "AND ((table_name='ai_executions' AND column_name IN ('envelope_json','legacy_execution_json')) "
+                + "OR (table_name='ai_work_records' AND column_name='snapshot_json'))", Long.class)).isZero();
+
+        String conversation = conversation(owner, "결과 미저장");
+        String ran = execution(conversation, owner, "지점별 매출을 비교해줘", "READY", OpenStudyAnalyses.ID_POC_001, "sales",
+                "2026-11-01 01:00:00", Long.toString(branch));
+        try (var s = login(owner)) {
+            JsonNode execution = ok(s, "/api/executions/" + ran);
+            assertThat(execution.get("envelope").get("datasets").isArray()).isTrue();
+
+            var created = send(s, "POST", "/api/ai/records", Map.of("executionId", ran, "title", "매출 기록"));
+            assertThat(created.statusCode()).as(created.body()).isEqualTo(200);
+            String record = json.readTree(created.body()).get("id").asString();
+            JsonNode opened = ok(s, "/api/ai/records/" + record);
+            assertThat(opened.get("snapshot").get("datasets").isArray()).isTrue();
+
+            assertThat(send(s, "DELETE", "/api/ai/conversations/" + conversation, null).statusCode()).isEqualTo(204);
+            JsonNode orphan = ok(s, "/api/ai/records/" + record);
+            assertThat(orphan.get("snapshot").isNull()).isTrue();
+            assertThat(orphan.get("snapshotUnavailableReason").asString()).contains("삭제");
+        }
+        String other = conversation(analyst, "권한 없는 실행");
+        String denied = execution(other, analyst, "지점별 매출을 비교해줘", "READY", OpenStudyAnalyses.ID_POC_001, "sales",
+                "2026-11-01 01:00:00", Long.toString(branch));
+        try (var s = login(analyst)) {
+            assertThat(send(s, "GET", "/api/executions/" + denied, null).statusCode()).isEqualTo(403);
+        }
+    }
+
     // ---- fixtures -------------------------------------------------------------------------------------------
 
     long person(String role) {
@@ -169,13 +202,19 @@ class AiConversationHistoryIntegrationTests {
         return id;
     }
 
-    void execution(String conversation, long employee, String question, String status, String analysisId, String domain,
+    String execution(String conversation, long employee, String question, String status, String analysisId, String domain,
             String createdAt) {
+        return execution(conversation, employee, question, status, analysisId, domain, createdAt, "");
+    }
+
+    String execution(String conversation, long employee, String question, String status, String analysisId, String domain,
+            String createdAt, String branchCsv) {
         String id = "exec-" + UUID.randomUUID().toString().substring(0, 12);
         jdbc.update("INSERT INTO ai_executions(id,request_ref,conversation_id,employee_id,scope_key,branch_ids_csv,question,"
                         + "analysis_id,intent_domain,status,as_of_utc,snapshot_version,policy_version,created_at) "
-                        + "VALUES(?,?,?,?,'all','',?,?,?,?,'2026-11-01 00:00:00','s1','p1',?)",
-                id, "req-" + id, conversation, employee, question, analysisId, domain, status, createdAt);
+                        + "VALUES(?,?,?,?,'all',?,?,?,?,?,'2026-11-01 00:00:00','s1','p1',?)",
+                id, "req-" + id, conversation, employee, branchCsv, question, analysisId, domain, status, createdAt);
+        return id;
     }
 
     // ---- HTTP -----------------------------------------------------------------------------------------------

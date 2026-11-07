@@ -60,11 +60,7 @@ public class AiExecutionEntity {
     @Column(name = "view_spec_json", columnDefinition = "text")
     private String viewSpecJson;
 
-    @Column(name = "envelope_json", columnDefinition = "mediumtext")
-    private String envelopeJson;
 
-    @Column(name = "legacy_execution_json", columnDefinition = "mediumtext")
-    private String legacyExecutionJson;
 
     @Column(name = "as_of_utc", nullable = false)
     private Instant asOfUtc;
@@ -94,8 +90,6 @@ public class AiExecutionEntity {
             String errorCode,
             String querySpecJson,
             String viewSpecJson,
-            String envelopeJson,
-            String legacyExecutionJson,
             Instant asOfUtc,
             String snapshotVersion,
             String policyVersion,
@@ -116,8 +110,6 @@ public class AiExecutionEntity {
         this.errorCode = errorCode;
         this.querySpecJson = querySpecJson;
         this.viewSpecJson = viewSpecJson;
-        this.envelopeJson = envelopeJson;
-        this.legacyExecutionJson = legacyExecutionJson;
         this.asOfUtc = asOfUtc;
         this.snapshotVersion = snapshotVersion;
         this.policyVersion = policyVersion;
