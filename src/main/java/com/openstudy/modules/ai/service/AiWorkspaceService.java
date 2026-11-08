@@ -48,6 +48,7 @@ import tools.jackson.databind.ObjectMapper;
  */
 @Service
 public class AiWorkspaceService {
+    static final java.util.regex.Pattern BRANCH_CHOICE = java.util.regex.Pattern.compile("branch:([1-9][0-9]{0,18}):([a-zA-Z.]+)");
     /**
      * A saved analysis the semantic catalog no longer offers (#168): it is shown as a reason instead of failing the
      * whole reopen. The question is never sent to the model again to find a replacement (M10-D12).
@@ -325,6 +326,14 @@ public class AiWorkspaceService {
     public AiQueryResponse executeQuery(Authentication auth, AiQueryRequest request) {
         String rawQuestion = request == null ? null : request.question();
         String scope = (request == null || request.scope() == null || request.scope().isBlank()) ? "all" : request.scope().trim();
+        String clarificationChoice = request == null ? null : request.clarificationChoice();
+        // A branch picked for a one-branch analysis ("branch:<id>:<analysisId>", built below) narrows the scope to that
+        // branch and asks for that analysis. The scope is checked again like any other (ADR-M10-003).
+        var branchChoice = clarificationChoice == null ? null : BRANCH_CHOICE.matcher(clarificationChoice.trim());
+        if (branchChoice != null && branchChoice.matches()) {
+            scope = branchChoice.group(1);
+            clarificationChoice = branchChoice.group(2);
+        }
         String actorOverride = request == null ? null : request.actor();
         var actor = userResolver.resolve(auth, actorOverride);
 
@@ -350,7 +359,7 @@ public class AiWorkspaceService {
 
         var plan = playbackGateway.planQuestion(
                 rawQuestion,
-                request == null ? null : request.clarificationChoice(),
+                clarificationChoice,
                 actor,
                 scope
         );
@@ -436,6 +445,29 @@ public class AiWorkspaceService {
         );
         Set<Long> targetBranches = scopeDecision.effectiveBranches();
         securityGate.put("authorizedBranches", targetBranches);
+
+        // A one-branch analysis over several branches asks which branch, offering only branches already in scope.
+        if (OpenStudyAnalyses.SINGLE_BRANCH.contains(plan.analysisId()) && targetBranches.size() > 1) {
+            var options = targetBranches.stream().sorted()
+                    .map(id -> new OpenStudyPlaybackGateway.ClarificationOption("branch:" + id + ":" + plan.analysisId(),
+                            userResolver.branchName(id), plan.analysisId(), Long.toString(id)))
+                    .toList();
+            String message = "어느 지점을 볼까요? 이 분석은 한 지점씩 보여 줍니다.";
+            stages.add(new StageSpan("validating", "권한·스코프·예산 가드레일 검증", "CLARIFICATION", 1L, message));
+            long totalMs = Math.max(1L, Duration.ofNanos(System.nanoTime() - startNanos).toMillis());
+            persistExecutionAndTrace(
+                    executionId, requestId, traceId, convId, actor, scope, Set.of(),
+                    rawQuestion == null ? "" : rawQuestion,
+                    null, plan.analysisId(), plan.intentDomain(),
+                    "CLARIFICATION", "CLARIFICATION", "BRANCH_REQUIRED",
+                    null, null,
+                    totalMs, stages, plan.retrievedCandidates(), securityGate, now,
+                    plan.refundBasisOverride(), plan.zeroFillOverrideRequested()
+            );
+            return new AiQueryResponse(requestId, executionId, convId, traceId, "CLARIFICATION", 200, "BRANCH_REQUIRED",
+                    "CLARIFICATION", "QUESTION", message, null, plan.analysisId(), plan.intentDomain(), null, null, null, null,
+                    Map.of(), plan.truncation(), options, stages, plan.retrievedCandidates(), securityGate, null);
+        }
 
         var querySpec = playbackGateway.buildQuerySpec(plan.analysisId());
         long genMs = plan.llmDurationMs() > 0 ? plan.llmDurationMs() : 4L;
@@ -797,13 +829,24 @@ public class AiWorkspaceService {
 
     @Transactional
     public Map<String, Object> runEvaluationSuite(Authentication auth, String suiteId) {
+        // A quality tool, not a business screen: OWNER only, over the branches the OWNER may read (never fixed demo IDs).
+        var owner = userResolver.resolve(auth, null);
+        if (!owner.owner()) {
+            throw new AccessDeniedException("품질 평가는 OWNER만 실행할 수 있습니다.");
+        }
+        List<Long> evaluated = owner.aiBranches().stream().sorted().toList();
+        if (evaluated.isEmpty()) {
+            throw ApiException.unprocessable("NO_BRANCH", "평가할 지점이 없습니다.");
+        }
         String normalizedSuite = (suiteId == null || suiteId.isBlank()) ? "ALL" : suiteId.trim().toUpperCase(Locale.ROOT);
         List<Map<String, Object>> caseResults = new ArrayList<>();
 
         if ("POC_GOLDEN_10".equals(normalizedSuite) || "ALL".equals(normalizedSuite)) {
             for (int i = 1; i <= 10; i++) {
                 String pocCode = String.format("POC-%03d", i);
-                var res = analyses.executeCase(pocCode, List.of(9100001L, 9100002L, 9100003L));
+                String analysisId = analyses.normalizeAnalysisId(pocCode);
+                var res = analyses.executeCase(pocCode,
+                        OpenStudyAnalyses.SINGLE_BRANCH.contains(analysisId) ? List.of(evaluated.getFirst()) : evaluated);
                 boolean passed = res.envelope() != null && !res.envelope().datasets().isEmpty() && res.envelope().view() != null;
                 caseResults.add(Map.of(
                         "id", pocCode,
@@ -924,7 +967,7 @@ public class AiWorkspaceService {
             );
         }
         if (OpenStudyAnalyses.ID_POC_002.equals(analysisId) || OpenStudyAnalyses.ID_POC_004.equals(analysisId)) {
-            long branchId = targetBranches.isEmpty() ? OpenStudyUserContextResolver.GANGNAM_BRANCH_ID : targetBranches.iterator().next();
+            long branchId = OpenStudyAnalyses.singleBranch(targetBranches);
             return OpenStudyAnalyses.ID_POC_002.equals(analysisId)
                     ? analyses.executePoc002HourlyCongestion(branchId)
                     : analyses.executePoc004RealtimeSeats(branchId);
@@ -1078,7 +1121,7 @@ public class AiWorkspaceService {
         }
         for (Long bId : requiredBranches) {
             if (!actor.aiBranches().contains(bId)) {
-                throw new AccessDeniedException("해당 지점(" + OpenStudyUserContextResolver.branchLabel(bId) + ")에 대한 접근 권한이 없습니다.");
+                throw new AccessDeniedException("해당 지점에 대한 접근 권한이 없습니다.");
             }
             if (isSales && !actor.salesBranches().contains(bId)) {
                 throw new AccessDeniedException("해당 지점의 매출 조회(sales:read) 권한이 없습니다.");

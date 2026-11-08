@@ -51,9 +51,9 @@ import org.springframework.transaction.annotation.Transactional;
 public class OpenStudyAnalyses implements AnalysisExecutor {
     public static final String CATALOG_VERSION = "openstudy-ui-1.0.0";
     public static final String COMPONENT_VERSION = "1.0.0";
-    public static final long GANGNAM_BRANCH_ID = 9100001L;
-    public static final long SEONGSU_BRANCH_ID = 9100002L;
-    public static final long NEW_BRANCH_ID = 9100003L;
+    /** Analyses that look at one branch only; a wider scope asks which branch (2026-11-08 decision, ADR-M10-003). */
+    public static final java.util.Set<String> SINGLE_BRANCH = java.util.Set.of("openstudy.seats.hourlyCongestion",
+            "openstudy.seats.realtimeAvailability");
 
     public static final String ID_POC_001 = "openstudy.sales.branchComparison";
     public static final String ID_POC_002 = "openstudy.seats.hourlyCongestion";
@@ -156,6 +156,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
     private final SalesAggregationService salesService;
     private final OpenStudyClock clock;
     private final SemanticRegistry registry;
+    private final com.openstudy.modules.branch.service.SessionBranchService branchNames;
     private final ViewBinder viewBinder;
     private final Map<String, Definition> definitions;
     private final Map<String, String> aliasToAnalysisId;
@@ -164,9 +165,11 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             EntityManager entityManager,
             SalesAggregationService salesService,
             OpenStudyClock clock,
-            SemanticRegistry registry
+            SemanticRegistry registry,
+            com.openstudy.modules.branch.service.SessionBranchService branchNames
     ) {
         this.entityManager = entityManager;
+        this.branchNames = branchNames;
         this.salesService = salesService;
         this.clock = clock;
         this.registry = registry;
@@ -589,9 +592,9 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         String analysisId = resolveFromQuestion(caseOrAnalysisId).orElseGet(() -> normalizeAnalysisId(caseOrAnalysisId));
         return switch (analysisId) {
             case ID_POC_001 -> executePoc001BranchSales(branchScope);
-            case ID_POC_002 -> executePoc002HourlyCongestion(GANGNAM_BRANCH_ID);
+            case ID_POC_002 -> executePoc002HourlyCongestion(singleBranch(branchScope));
             case ID_POC_003 -> executePoc003Top5Passes(branchScope);
-            case ID_POC_004 -> executePoc004RealtimeSeats(GANGNAM_BRANCH_ID);
+            case ID_POC_004 -> executePoc004RealtimeSeats(singleBranch(branchScope));
             case ID_POC_005 -> executePoc005WeeklyRoomReservations(branchScope);
             case ID_POC_006 -> executePoc006ExpiringPasses(branchScope);
             case ID_POC_007 -> executePoc007DailySalesTrend(branchScope);
@@ -600,6 +603,18 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             case ID_POC_010 -> executePoc010WeeklyAttendance(branchScope);
             default -> throw new EngineException(EngineErrorCode.IR_UNSUPPORTED, "Unsupported analysis ID: " + caseOrAnalysisId);
         };
+    }
+
+    /** A one-branch analysis needs exactly one branch; anything else is a caller error, never a default branch. */
+    static long singleBranch(Collection<Long> branchScope) {
+        if (branchScope == null || branchScope.size() != 1) {
+            throw new IllegalArgumentException("A single-branch analysis needs exactly one branch");
+        }
+        return branchScope.iterator().next();
+    }
+
+    private String branchName(long branchId) {
+        return branchNames.names(List.of(branchId)).getOrDefault(branchId, "지점 " + branchId);
     }
 
     /**
@@ -704,7 +719,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
     }
 
     /**
-     * {@code POC-002}: "강남점은 언제 가장 붐벼?" ({@code 2026-10-19T00:00+09:00} ~ {@code 2026-11-02T00:00+09:00}, 2 weeks, sampled hours 9/12/15/18/21 KST).
+     * {@code POC-002}: "○○점은 언제 가장 붐벼?" ({@code 2026-10-19T00:00+09:00} ~ {@code 2026-11-02T00:00+09:00}, 2 weeks, sampled hours 9/12/15/18/21 KST).
      */
     public PocExecutionResult executePoc002HourlyCongestion(long branchId) {
         var period = clock.previousTwoWeeks();
@@ -809,7 +824,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                                 new ViewSpec.Ref("HEATMAP", COMPONENT_VERSION),
                                 "heatmapRows",
                                 Map.of("category", "weekday", "series", "hour_kst", "value", "sampled_occupancy_pct"),
-                                Map.of("title", "강남점 요일·시간대별 좌석 점유율 히트맵", "unit", "%"),
+                                Map.of("title", branchName(branchId) + " 요일·시간대별 좌석 점유율 히트맵", "unit", "%"),
                                 List.of()
                         )
                 ),
@@ -832,7 +847,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         return new PocExecutionResult(
                 "POC-002",
                 ID_POC_002,
-                "강남점은 언제 가장 붐벼?",
+                branchName(branchId) + "은 언제 가장 붐벼?",
                 "POLICY_PENDING_OCCUPANCY_DENOMINATOR_AND_TIME_WEIGHTING",
                 List.of("HEATMAP"),
                 envelope,
@@ -985,7 +1000,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
     }
 
     /**
-     * {@code POC-004}: "지금 강남점에 빈자리가 얼마나 있어?" ({@code asOf = 2026-11-02T14:00:00+09:00}).
+     * {@code POC-004}: "지금 ○○점에 빈자리가 얼마나 있어?" ({@code asOf = 2026-11-02T14:00:00+09:00}).
      */
     public PocExecutionResult executePoc004RealtimeSeats(long branchId) {
         Instant now = clock.asOf();
@@ -1063,7 +1078,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                                 new ViewSpec.Ref("KPI", COMPONENT_VERSION),
                                 "seatSummary",
                                 Map.of("values", List.of("free", "occupied", "available", "blocked", "occupied_pct")),
-                                Map.of("title", "강남점 실시간 좌석 요약", "unit", "석"),
+                                Map.of("title", branchName(branchId) + " 실시간 좌석 요약", "unit", "석"),
                                 List.of()
                         ),
                         new ViewSpec.Component(
@@ -1071,7 +1086,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                                 new ViewSpec.Ref("SEAT_MAP", COMPONENT_VERSION),
                                 "seatMap",
                                 Map.of("columns", List.of("seat_id", "seat_no", "seat_status", "occupancy_state")),
-                                Map.of("title", "강남점 좌석 배치 현황"),
+                                Map.of("title", branchName(branchId) + " 좌석 배치 현황"),
                                 List.of()
                         )
                 ),
@@ -1092,7 +1107,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         return new PocExecutionResult(
                 "POC-004",
                 ID_POC_004,
-                "지금 강남점에 빈자리가 얼마나 있어?",
+                "지금 " + branchName(branchId) + "에 빈자리가 얼마나 있어?",
                 "CONFIRMED_ADR",
                 List.of("KPI", "SEAT_MAP"),
                 envelope,

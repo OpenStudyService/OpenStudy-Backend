@@ -16160,6 +16160,7 @@
           "OUT_OF_DOMAIN",
           "CLARIFICATION_REQUIRED",
           "CLARIFICATION_OR_POLICY_PENDING",
+          "BRANCH_REQUIRED",
           "RATE_LIMITED",
           "NOT_FOUND"
         ],
@@ -16350,6 +16351,7 @@
           "OUT_OF_DOMAIN",
           "CLARIFICATION_REQUIRED",
           "CLARIFICATION_OR_POLICY_PENDING",
+          "BRANCH_REQUIRED",
           "RATE_LIMITED",
           "NOT_FOUND"
         ],
@@ -26926,7 +26928,7 @@
           },
           "clarificationChoice": {
             "type": "string",
-            "description": "직전 응답 clarificationOptions[].id"
+            "description": "직전 응답 clarificationOptions[].id. branch:{지점 ID}:{분석 ID}면 그 지점으로 좁혀 실행(ADR-M10-003 M10-D17)"
           },
           "conversationId": {
             "type": "string",

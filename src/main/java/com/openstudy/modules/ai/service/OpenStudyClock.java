@@ -19,8 +19,9 @@ import org.springframework.stereotype.Service;
 /**
  * OpenStudy reference clock and KST ({@code Asia/Seoul}) calendar period resolver ({@code OS-DL-0401}).
  * <p>
- * The PoC reference time is fixed to {@code 2026-11-02T14:00:00+09:00} ({@code 2026-11-02T05:00:00Z})
- * unless overridden via {@code openstudy.ai.fixed-as-of}.
+ * The reference time is the real current time (ADR-M10-003, 2026-11-08). A fixed time is used only when
+ * {@code openstudy.ai.fixed-as-of} is set, which the recorded playback checks and tests do
+ * ({@code 2026-11-02T05:00:00Z} reproduces the PoC fixtures).
  * All calendar day/week/month boundaries are computed in {@code Asia/Seoul} and converted to UTC
  * {@link Instant} half-open intervals {@code [startInclusive, endExclusive)} for database queries.
  */
@@ -37,17 +38,12 @@ public class OpenStudyClock implements ClockPort {
     private final boolean useSystemClock;
 
     public OpenStudyClock(
-            @Value("${openstudy.ai.fixed-as-of:2026-11-02T05:00:00Z}") String fixedAsOfText,
+            @Value("${openstudy.ai.fixed-as-of:}") String fixedAsOfText,
             @Value("${openstudy.ai.use-system-clock:false}") boolean useSystemClock
     ) {
-        this.fixedAsOf = (fixedAsOfText == null || fixedAsOfText.isBlank())
-                ? DEFAULT_AS_OF
-                : parseInstantOrOffset(fixedAsOfText.trim());
-        this.useSystemClock = useSystemClock;
-    }
-
-    public OpenStudyClock() {
-        this(DEFAULT_AS_OF.toString(), false);
+        boolean fixed = fixedAsOfText != null && !fixedAsOfText.isBlank();
+        this.fixedAsOf = fixed ? parseInstantOrOffset(fixedAsOfText.trim()) : DEFAULT_AS_OF;
+        this.useSystemClock = useSystemClock || !fixed;
     }
 
     public static OpenStudyClock fixed(Instant asOf) {

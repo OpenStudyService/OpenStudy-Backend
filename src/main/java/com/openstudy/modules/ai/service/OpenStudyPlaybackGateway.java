@@ -153,12 +153,14 @@ public class OpenStudyPlaybackGateway {
     private final ConcurrentHashMap<Long, AtomicInteger> activeRequestsByUser = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Deque<Long>> requestTimestampsByUser = new ConcurrentHashMap<>();
     private volatile ModelGateway liveGateway;
+    private final OpenStudyUserContextResolver userResolver;
 
     public OpenStudyPlaybackGateway(
             SemanticRegistry registry,
             Retriever retriever,
             EmbeddingIndex embeddingIndex,
             OpenStudyAnalyses analyses,
+            OpenStudyUserContextResolver userResolver,
             DomainLensProperties properties,
             @Value("${openstudy.ai.model-mode:playback}") String modelMode,
             @Value("${openstudy.ai.rate-limit.max-concurrent:10}") int maxConcurrentPerUser,
@@ -168,6 +170,7 @@ public class OpenStudyPlaybackGateway {
         this.retriever = retriever;
         this.embeddingIndex = embeddingIndex;
         this.analyses = analyses;
+        this.userResolver = userResolver;
         this.properties = properties;
         this.modelMode = modelMode == null ? "playback" : modelMode.trim().toLowerCase(Locale.ROOT);
         this.maxConcurrentPerUser = maxConcurrentPerUser;
@@ -524,8 +527,8 @@ public class OpenStudyPlaybackGateway {
                     false,
                     TruncationInfo.defaultUntruncated(),
                     List.of(
-                            new ClarificationOption("occ-available", "강남점은 언제 가장 붐벼?", OpenStudyAnalyses.ID_POC_002, "9100001"),
-                            new ClarificationOption("seat-realtime", "지금 강남점에 빈자리가 얼마나 있어?", OpenStudyAnalyses.ID_POC_004, "9100001")
+                            new ClarificationOption("occ-available", "언제 가장 붐벼?", OpenStudyAnalyses.ID_POC_002, requestedScope),
+                            new ClarificationOption("seat-realtime", "지금 빈자리가 얼마나 있어?", OpenStudyAnalyses.ID_POC_004, requestedScope)
                     ),
                     retrieveCandidates(q, actor)
             );
@@ -546,8 +549,7 @@ public class OpenStudyPlaybackGateway {
                     false,
                     TruncationInfo.defaultUntruncated(),
                     List.of(
-                            new ClarificationOption("urgent-today", "지금 급하게 처리해야 할 업무가 뭐야?", OpenStudyAnalyses.ID_POC_009, requestedScope),
-                            new ClarificationOption("urgent-gangnam", "강남점 지금 급하게 처리해야 할 업무가 뭐야?", OpenStudyAnalyses.ID_POC_009, "9100001")
+                            new ClarificationOption("urgent-today", "지금 급하게 처리해야 할 업무가 뭐야?", OpenStudyAnalyses.ID_POC_009, requestedScope)
                     ),
                     retrieveCandidates(q, actor)
             );
@@ -672,8 +674,8 @@ public class OpenStudyPlaybackGateway {
                     false,
                     TruncationInfo.defaultUntruncated(),
                     List.of(
-                            new ClarificationOption("gangnam-realtime-seats", "지금 강남점에 빈자리가 얼마나 있어?", OpenStudyAnalyses.ID_POC_004, "9100001"),
-                            new ClarificationOption("gangnam-hourly-congestion", "강남점은 언제 가장 붐벼?", OpenStudyAnalyses.ID_POC_002, "9100001")
+                            new ClarificationOption("realtime-seats", "지금 빈자리가 얼마나 있어?", OpenStudyAnalyses.ID_POC_004, requestedScope),
+                            new ClarificationOption("hourly-congestion", "언제 가장 붐벼?", OpenStudyAnalyses.ID_POC_002, requestedScope)
                     ),
                     retrieveCandidates(q, actor)
             );
@@ -832,11 +834,11 @@ public class OpenStudyPlaybackGateway {
 
     private static final String LIVE_QWEN_SYSTEM_PROMPT = """
             You are the OpenStudy DomainLens semantic planner. Map the Korean user question to one of the 10 approved registered analyses.
-            All 10 analyses support branch filtering (강남점, 성수점, 신규점, 전체 지점) and standard time expressions (이번 달, 지난달, 이번 주, 지난주, 지금, 7일 이내).
+            All 10 analyses support branch filtering (a branch name or 전체 지점) and standard time expressions (이번 달, 지난달, 이번 주, 지난주, 지금, 7일 이내).
             1. openstudy.sales.branchComparison (domain: sales) - 이번 달 지점별 매출을 비교해줘 / 지점별 매출·승인·환불·순매출 비교
-            2. openstudy.seats.hourlyCongestion (domain: seats) - 강남점은 언제 가장 붐벼? / 요일·시간대별 좌석 혼잡도 히트맵
+            2. openstudy.seats.hourlyCongestion (domain: seats) - ○○점은 언제 가장 붐벼? / 요일·시간대별 좌석 혼잡도 히트맵
             3. openstudy.passes.topProducts (domain: passes) - 지난달 가장 잘 팔린 이용권 TOP 5를 보여줘 / 인기 이용권 판매 순위
-            4. openstudy.seats.realtimeAvailability (domain: seats) - 지금 강남점에 빈자리가 얼마나 있어? / 실시간 빈자리·좌석 점유 현황
+            4. openstudy.seats.realtimeAvailability (domain: seats) - 지금 ○○점에 빈자리가 얼마나 있어? / 실시간 빈자리·좌석 점유 현황
             5. openstudy.rooms.weeklyReservations (domain: rooms) - 이번 주 스터디룸 예약 현황을 보여줘 / 주간 스터디룸 예약 캘린더
             6. openstudy.passes.expiringSoon (domain: passes) - 앞으로 7일 이내에 만료되는 이용권을 보여줘 / 만료 예정 이용권
             7. openstudy.sales.dailyTrend (domain: sales) - 지난달 일별 매출 추이를 그래프로 보여줘 / 일별 매출 추이 선 차트
@@ -964,8 +966,8 @@ public class OpenStudyPlaybackGateway {
     private static List<ClarificationOption> defaultClarificationOptionsForDomain(String domain, String requestedScope) {
         if ("seats".equalsIgnoreCase(domain)) {
             return List.of(
-                    new ClarificationOption("gangnam-realtime-seats", "지금 강남점에 빈자리가 얼마나 있어?", OpenStudyAnalyses.ID_POC_004, "9100001"),
-                    new ClarificationOption("gangnam-hourly-congestion", "강남점은 언제 가장 붐벼?", OpenStudyAnalyses.ID_POC_002, "9100001")
+                    new ClarificationOption("realtime-seats", "지금 빈자리가 얼마나 있어?", OpenStudyAnalyses.ID_POC_004, requestedScope),
+                    new ClarificationOption("hourly-congestion", "언제 가장 붐벼?", OpenStudyAnalyses.ID_POC_002, requestedScope)
             );
         }
         if ("rooms".equalsIgnoreCase(domain)) {
@@ -1032,7 +1034,7 @@ public class OpenStudyPlaybackGateway {
         if (direct.isPresent()) {
             return direct.get();
         }
-        if (q.contains("매출") && (q.contains("지점") || q.contains("강남") || q.contains("성수") || q.contains("신규점"))) {
+        if (q.contains("매출") && (q.contains("지점") || !userResolver.mentionedBranches(q).isEmpty())) {
             return OpenStudyAnalyses.ID_POC_001;
         }
         if (q.contains("이용권") && q.contains("매출")) {
@@ -1068,83 +1070,13 @@ public class OpenStudyPlaybackGateway {
         return "general";
     }
 
+    /** One rule for branch scope: the same decision the execution step makes (OpenStudyUserContextResolver). */
     private OpenStudyUserContextResolver.ScopeDecision authorizeScope(
             OpenStudyUserContextResolver.ResolvedActor actor,
             String requestedScope,
             String question,
             boolean isSalesDomain
     ) {
-        // Delegate to OpenStudyUserContextResolver rules
-        String q = question == null ? "" : question.trim();
-        if (actor.aiBranches().isEmpty()) {
-            return OpenStudyUserContextResolver.ScopeDecision.denied(
-                    403, "AI_PERMISSION_DENIED", "AUTHORIZATION_DENIED", "403",
-                    "AI 분석 조회(ai:read) 권한이 없습니다.");
-        }
-        Set<Long> mentioned = OpenStudyUserContextResolver.extractMentionedBranches(q);
-        boolean mentionsAll = q.contains("모든 지점") || q.contains("전 지점") || q.contains("전체 지점") || q.contains("지점별");
-
-        for (Long bId : mentioned) {
-            if (!actor.aiBranches().contains(bId)) {
-                return OpenStudyUserContextResolver.ScopeDecision.denied(
-                        403, "BRANCH_SCOPE_DENIED", "AUTHORIZATION_DENIED", "403_OR_SCOPE_REINPUT",
-                        "요청하신 지점(" + OpenStudyUserContextResolver.branchLabel(bId) + ")에 대한 조회 권한이 없습니다.");
-            }
-            if (isSalesDomain && !actor.salesBranches().contains(bId)) {
-                return OpenStudyUserContextResolver.ScopeDecision.denied(
-                        403, "SALES_PERMISSION_DENIED", "AUTHORIZATION_DENIED", "403_OR_SCOPE_REINPUT",
-                        "요청하신 지점의 매출 조회(sales:read) 권한이 없습니다.");
-            }
-        }
-
-        if (!actor.owner() && mentionsAll && actor.aiBranches().size() < 3) {
-            return OpenStudyUserContextResolver.ScopeDecision.denied(
-                    403, "BRANCH_SCOPE_DENIED", "AUTHORIZATION_DENIED", "403_OR_SCOPE_REINPUT",
-                    "전 지점 비교 권한이 없습니다. 소속 지점만 조회할 수 있습니다.");
-        }
-
-        Long explicitScope = null;
-        if (requestedScope != null && !requestedScope.isBlank() && !"all".equalsIgnoreCase(requestedScope.trim())) {
-            String trimmed = requestedScope.trim();
-            if (!trimmed.matches("[1-9][0-9]*")) {
-                return OpenStudyUserContextResolver.ScopeDecision.denied(
-                        422, "VALIDATION_FAILED", "INVALID_SCOPE", "422", "올바른 지점 범위를 입력해 주세요.");
-            }
-            explicitScope = Long.parseLong(trimmed);
-            if (!actor.aiBranches().contains(explicitScope)) {
-                return OpenStudyUserContextResolver.ScopeDecision.denied(
-                        403, "BRANCH_SCOPE_DENIED", "AUTHORIZATION_DENIED", "403_OR_SCOPE_REINPUT",
-                        "선택한 지점에 대한 조회 권한이 없습니다.");
-            }
-        }
-
-        Set<Long> targetBranches;
-        if (!mentioned.isEmpty()) {
-            targetBranches = mentioned;
-        } else if (explicitScope != null) {
-            targetBranches = Set.of(explicitScope);
-        } else if (actor.owner()) {
-            targetBranches = Set.of(
-                    OpenStudyUserContextResolver.GANGNAM_BRANCH_ID,
-                    OpenStudyUserContextResolver.SEONGSU_BRANCH_ID,
-                    OpenStudyUserContextResolver.NEW_BRANCH_ID
-            );
-        } else {
-            return OpenStudyUserContextResolver.ScopeDecision.denied(
-                    403, "AUTHORIZATION_SCOPE_CHECK", "AUTHORIZATION_SCOPE_CHECK", "DENY_OR_SCOPE_REINPUT",
-                    "타 지점 데이터가 혼합되지 않도록 소속 지점 범위를 지정해 주세요.");
-        }
-
-        if (isSalesDomain) {
-            for (Long bId : targetBranches) {
-                if (!actor.salesBranches().contains(bId)) {
-                    return OpenStudyUserContextResolver.ScopeDecision.denied(
-                            403, "SALES_PERMISSION_DENIED", "AUTHORIZATION_DENIED", "403",
-                            "매출 질문은 대상 지점의 매출 조회(sales:read) 권한이 필요합니다.");
-                }
-            }
-        }
-
-        return OpenStudyUserContextResolver.ScopeDecision.ok(targetBranches);
+        return userResolver.authorizeQuestion(actor, requestedScope, question, isSalesDomain);
     }
 }
