@@ -48,6 +48,12 @@ import tools.jackson.databind.ObjectMapper;
  */
 @Service
 public class AiWorkspaceService {
+    /**
+     * A saved analysis the semantic catalog no longer offers (#168): it is shown as a reason instead of failing the
+     * whole reopen. The question is never sent to the model again to find a replacement (M10-D12).
+     */
+    static final String ANALYSIS_UNAVAILABLE = "ANALYSIS_UNAVAILABLE";
+    static final String ANALYSIS_UNAVAILABLE_MESSAGE = "저장된 분석을 지금은 제공하지 않아 다시 조회할 수 없어요. 다시 질문해 주세요.";
     private static final Set<String> PII_COLUMN_DENYLIST = Set.of(
             "customer_id", "customer_name", "phone", "email", "password_hash", "token_hash", "body"
     );
@@ -272,6 +278,10 @@ public class AiWorkspaceService {
         if (!decision.allowed()) {
             return reopenedWithoutData(requestId, conversationId, "REFUSED", decision.httpStatus(), decision.errorCode(),
                     decision.resultCategory(), "지금 권한이나 지점 범위로는 다시 조회할 수 없어요. " + decision.message(), saved);
+        }
+        if (!analyses.offers(saved.getAnalysisId())) {
+            return reopenedWithoutData(requestId, conversationId, "REFUSED", 422, ANALYSIS_UNAVAILABLE,
+                    ANALYSIS_UNAVAILABLE, ANALYSIS_UNAVAILABLE_MESSAGE, saved);
         }
         long started = System.nanoTime();
         OpenStudyAnalyses.PocExecutionResult result;
@@ -565,6 +575,9 @@ public class AiWorkspaceService {
         }
         Set<Long> branches = parseBranchCsv(saved.getBranchIdsCsv());
         verifyBranchReaccess(actor, branches, "sales".equals(saved.getIntentDomain()));
+        if (!analyses.offers(saved.getAnalysisId())) {
+            throw ApiException.unprocessable(ANALYSIS_UNAVAILABLE, ANALYSIS_UNAVAILABLE_MESSAGE);
+        }
         return executeWithOverrides(saved.getAnalysisId(), branches, saved.getRefundBasis(), saved.isZeroFillRequested());
     }
 

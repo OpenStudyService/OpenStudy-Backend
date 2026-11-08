@@ -574,6 +574,17 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         return Optional.empty();
     }
 
+    /**
+     * Whether the semantic catalog still offers this saved analysis (#168). A saved question whose analysis is gone is
+     * shown with a reason instead of being run, so the failure never reaches a transaction.
+     */
+    public boolean offers(String analysisId) {
+        return analysisId != null && OFFERED.contains(normalizeAnalysisId(analysisId));
+    }
+
+    private static final java.util.Set<String> OFFERED = java.util.Set.of(ID_POC_001, ID_POC_002, ID_POC_003, ID_POC_004,
+            ID_POC_005, ID_POC_006, ID_POC_007, ID_POC_008, ID_POC_009, ID_POC_010);
+
     public PocExecutionResult executeCase(String caseOrAnalysisId, Collection<Long> branchScope) {
         String analysisId = resolveFromQuestion(caseOrAnalysisId).orElseGet(() -> normalizeAnalysisId(caseOrAnalysisId));
         return switch (analysisId) {
