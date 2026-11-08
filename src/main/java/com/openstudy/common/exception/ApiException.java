@@ -29,6 +29,11 @@ public class ApiException extends RuntimeException {
         return new ApiException(422, code, message, Map.of(field, fieldMessage), null, null);
     }
 
+    /** A 503 for a feature that is configured but not usable now, e.g. the AI catalog failing its readiness check. */
+    public static ApiException unavailable(String code, String message) {
+        return new ApiException(503, code, message, null, null, null);
+    }
+
     /** A safe 422 without field details, e.g. an invitation link whose failure reason must not be revealed. */
     public static ApiException unprocessable(String code, String message) {
         return new ApiException(422, code, message, null, null, null);

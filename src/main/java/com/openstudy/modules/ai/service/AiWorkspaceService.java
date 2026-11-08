@@ -32,6 +32,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -53,6 +54,9 @@ public class AiWorkspaceService {
      * A saved analysis the semantic catalog no longer offers (#168): it is shown as a reason instead of failing the
      * whole reopen. The question is never sent to the model again to find a replacement (M10-D12).
      */
+    static final String AI_NOT_READY = "AI_NOT_READY";
+    static final String AI_NOT_READY_MESSAGE = "AI 분석 카탈로그가 준비되지 않아 지금은 질문을 실행할 수 없어요. 준비 상태를 다시 확인해 주세요.";
+    private static final java.util.regex.Pattern CLIENT_KEY = java.util.regex.Pattern.compile("[A-Za-z0-9._:-]{1,100}");
     static final String ANALYSIS_UNAVAILABLE = "ANALYSIS_UNAVAILABLE";
     static final String ANALYSIS_UNAVAILABLE_MESSAGE = "저장된 분석을 지금은 제공하지 않아 다시 조회할 수 없어요. 다시 질문해 주세요.";
     private static final Set<String> PII_COLUMN_DENYLIST = Set.of(
@@ -76,8 +80,13 @@ public class AiWorkspaceService {
             String scope,
             String clarificationChoice,
             String conversationId,
-            String actor
-    ) {}
+            String actor,
+            String clientRequestKey
+    ) {
+        public AiQueryRequest(String question, String scope, String clarificationChoice, String conversationId, String actor) {
+            this(question, scope, clarificationChoice, conversationId, actor, null);
+        }
+    }
 
     public record AiQueryResponse(
             String requestId,
@@ -119,6 +128,7 @@ public class AiWorkspaceService {
     private final AiExportApprovalRepository approvalRepository;
     private final AiTraceRepository traceRepository;
     private final ObjectMapper json;
+    private final AiReadiness readinessCheck;
 
     public AiWorkspaceService(
             OpenStudyUserContextResolver userResolver,
@@ -133,8 +143,10 @@ public class AiWorkspaceService {
             AiWorkRecordRepository workRecordRepository,
             AiExportApprovalRepository approvalRepository,
             AiTraceRepository traceRepository,
-            ObjectMapper json
+            ObjectMapper json,
+            AiReadiness readinessCheck
     ) {
+        this.readinessCheck = readinessCheck;
         this.userResolver = userResolver;
         this.playbackGateway = playbackGateway;
         this.analyses = analyses;
@@ -151,8 +163,11 @@ public class AiWorkspaceService {
     }
 
     public Map<String, Object> readiness() {
+        var status = readinessCheck.status();
         Map<String, Object> res = new LinkedHashMap<>();
-        res.put("ready", true);
+        res.put("ready", status.ready());
+        res.put("reasons", status.reasons());
+        res.put("warnings", status.warnings());
         res.put("mode", playbackGateway.activeMode());
         res.put("model", playbackGateway.activeModelName());
         res.put("version", registry.version());
@@ -160,7 +175,7 @@ public class AiWorkspaceService {
         res.put("metricsCount", registry.metrics().size());
         res.put("embeddingDimensions", 384);
         res.put("asOfKst", clock.asOfOffsetKst().toString());
-        res.put("message", "DomainLens 시맨틱 카탈로그 및 ONNX 임베딩 준비 완료");
+        res.put("message", status.ready() ? "AI 분석을 사용할 수 있습니다." : "AI 분석 카탈로그를 확인해야 합니다. 질문을 실행하지 않습니다.");
         return res;
     }
 
@@ -274,6 +289,10 @@ public class AiWorkspaceService {
             return reopenedWithoutData(requestId, conversationId, status, 200, saved.getErrorCode(),
                     saved.getResultCategory(), message, saved);
         }
+        if (!readinessCheck.status().ready()) {
+            return reopenedWithoutData(requestId, conversationId, "REFUSED", 503, AI_NOT_READY, AI_NOT_READY,
+                    AI_NOT_READY_MESSAGE, saved);
+        }
         boolean sales = "sales".equals(saved.getIntentDomain());
         var decision = userResolver.authorizeQuestion(actor, scope, saved.getQuestion(), sales);
         if (!decision.allowed()) {
@@ -308,6 +327,39 @@ public class AiWorkspaceService {
                 List.of(), Map.of("reopened", true), null);
     }
 
+    /** #96: an optional client key; a malformed one is a validation error rather than silently ignored. */
+    static String clientRequestKey(AiQueryRequest request) {
+        if (request == null || request.clientRequestKey() == null || request.clientRequestKey().isBlank()) return null;
+        String key = request.clientRequestKey().trim();
+        if (!CLIENT_KEY.matcher(key).matches()) {
+            throw ApiException.validation("clientRequestKey", "요청 키는 영문·숫자와 . : _ - 기호로 1~100자를 보내 주세요.");
+        }
+        return key;
+    }
+
+    /**
+     * #96: a resubmission with a key already used gets the saved question back, run again under the current permissions
+     * like a reopened conversation. No new execution is made and the model is not called.
+     */
+    private AiQueryResponse replayed(OpenStudyUserContextResolver.ResolvedActor actor, AiExecutionEntity saved) {
+        var response = rerun(actor, saved.getScopeKey(), saved.getConversationId(), saved);
+        return new AiQueryResponse(saved.getRequestRef(), saved.getId(), saved.getConversationId(), response.traceId(),
+                response.status(), response.httpStatus(), response.errorCode(), response.resultCategory(), "REPLAY",
+                response.message(), response.pocCode(), response.analysisId(), response.intentDomain(),
+                response.semanticStatus(), response.querySpec(), response.viewSpec(), response.envelope(), response.summary(),
+                response.truncation(), response.clarificationOptions(), response.stages(), response.retrievedCandidates(),
+                Map.of("replayed", true), null);
+    }
+
+    /** #96: the execution a lost race already saved for this key, for the controller's duplicate-key path. */
+    @Transactional(readOnly = true)
+    public Optional<AiQueryResponse> replay(Authentication auth, AiQueryRequest request) {
+        var actor = userResolver.resolve(auth, null);
+        String key = clientRequestKey(request);
+        if (key == null) return Optional.empty();
+        return executionRepository.findByEmployeeIdAndClientRequestKey(actor.employeeId(), key).map(saved -> replayed(actor, saved));
+    }
+
     private static AiQueryResponse reopenedWithoutData(
             String requestId, String conversationId, String status, int httpStatus, String errorCode,
             String resultCategory, String message, AiExecutionEntity saved
@@ -336,6 +388,18 @@ public class AiWorkspaceService {
         }
         String actorOverride = request == null ? null : request.actor();
         var actor = userResolver.resolve(auth, actorOverride);
+        String clientKey = clientRequestKey(request);
+        if (clientKey != null) {
+            var replay = executionRepository.findByEmployeeIdAndClientRequestKey(actor.employeeId(), clientKey);
+            if (replay.isPresent()) return replayed(actor, replay.get());
+        }
+        if (!readinessCheck.status().ready()) {
+            return new AiQueryResponse("req-" + UUID.randomUUID().toString().substring(0, 12), null,
+                    request == null ? null : request.conversationId(), null, "NOT_READY", 503, AI_NOT_READY, AI_NOT_READY,
+                    "503", AI_NOT_READY_MESSAGE, null, null, null, null, null, null, null, Map.of(),
+                    OpenStudyPlaybackGateway.TruncationInfo.defaultUntruncated(), List.of(), List.of(), List.of(),
+                    Map.of("ready", false), null);
+        }
 
         long startNanos = System.nanoTime();
         String requestId = "req-" + UUID.randomUUID().toString().substring(0, 12);
@@ -405,7 +469,7 @@ public class AiWorkspaceService {
                     plan.outcome(), plan.resultCategory(), plan.errorCode(),
                     null, null,
                     totalMs, stages, plan.retrievedCandidates(), securityGate, now,
-                    plan.refundBasisOverride(), plan.zeroFillOverrideRequested()
+                    plan.refundBasisOverride(), plan.zeroFillOverrideRequested(), clientKey
             );
 
             return new AiQueryResponse(
@@ -462,7 +526,7 @@ public class AiWorkspaceService {
                     "CLARIFICATION", "CLARIFICATION", "BRANCH_REQUIRED",
                     null, null,
                     totalMs, stages, plan.retrievedCandidates(), securityGate, now,
-                    plan.refundBasisOverride(), plan.zeroFillOverrideRequested()
+                    plan.refundBasisOverride(), plan.zeroFillOverrideRequested(), clientKey
             );
             return new AiQueryResponse(requestId, executionId, convId, traceId, "CLARIFICATION", 200, "BRANCH_REQUIRED",
                     "CLARIFICATION", "QUESTION", message, null, plan.analysisId(), plan.intentDomain(), null, null, null, null,
@@ -512,7 +576,7 @@ public class AiWorkspaceService {
                 "READY", plan.resultCategory(), null,
                 querySpec, pocResult.envelope().view(),
                 totalMs, stages, plan.retrievedCandidates(), securityGate, now,
-                plan.refundBasisOverride(), plan.zeroFillOverrideRequested()
+                plan.refundBasisOverride(), plan.zeroFillOverrideRequested(), clientKey
         );
 
         messageRepository.save(new AiMessageEntity(convId, "USER", rawQuestion, executionId, now));
@@ -607,6 +671,9 @@ public class AiWorkspaceService {
     ) {
         if (!"READY".equals(saved.getStatus()) || saved.getAnalysisId() == null) {
             throw ApiException.unprocessable("NOT_EXECUTABLE", "실행된 조회가 아니어서 다시 실행할 수 없습니다.");
+        }
+        if (!readinessCheck.status().ready()) {
+            throw ApiException.unavailable(AI_NOT_READY, AI_NOT_READY_MESSAGE);
         }
         Set<Long> branches = parseBranchCsv(saved.getBranchIdsCsv());
         verifyBranchReaccess(actor, branches, "sales".equals(saved.getIntentDomain()));
@@ -1061,7 +1128,8 @@ public class AiWorkspaceService {
             Map<String, Object> securityGate,
             Instant now,
             String refundBasisOverride,
-            boolean zeroFillRequested
+            boolean zeroFillRequested,
+            String clientKey
     ) {
         String branchCsv = OpenStudyUserContextResolver.toCsv(branches);
         var execEntity = new AiExecutionEntity(
@@ -1087,6 +1155,7 @@ public class AiWorkspaceService {
                 refundBasisOverride,
                 zeroFillRequested
         );
+        execEntity.assignClientRequestKey(clientKey);
         executionRepository.save(execEntity);
 
         String sanitized = sanitizeQuestion(rawQuestion);

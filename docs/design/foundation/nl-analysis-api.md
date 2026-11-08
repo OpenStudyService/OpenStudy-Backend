@@ -64,6 +64,7 @@ Backend [#92](https://github.com/OpenStudyService/OpenStudy-Backend/issues/92)�
 | `INVALID` | 400 | 입력·기간 오류 |
 | `DENIED` | 400·403 | 안전 정책·권한·범위 거절 |
 | `RATE_LIMITED` | 429 | 빈도 제한 |
+| `NOT_READY` | 503 | 카탈로그가 준비되지 않음(`AI_NOT_READY`). 질문을 실행하지 않는다 |
 
 ### 실패 코드(`errorCode`)
 
@@ -78,6 +79,7 @@ Backend [#92](https://github.com/OpenStudyService/OpenStudy-Backend/issues/92)�
 | 지원 불가 | `OUT_OF_DOMAIN` | 200(`UNSUPPORTED`) |
 | 조건 확인 | `CLARIFICATION_REQUIRED`, `CLARIFICATION_OR_POLICY_PENDING`, `BRANCH_REQUIRED` | 200(`CLARIFICATION`) |
 | 빈도 | `RATE_LIMITED` | 429 |
+| 준비 상태 | `AI_NOT_READY` | 503 |
 
 ### 지점 선택(ADR-M10-003 M10-D17)
 
@@ -94,6 +96,26 @@ Backend [#92](https://github.com/OpenStudyService/OpenStudy-Backend/issues/92)�
 
 변경 의도 질문(예: "예약 전부 취소해줘")은 실행하지 않고 400 `UNSUPPORTED_MODIFICATION_INTENT`로 끝난다. 질문은 `DENIED` 상태로만 저장되고 결과는 없다.
 
+### 준비 상태(#93, ADR-M10-003)
+
+`GET /ai/catalog/readiness`는 `ready`, `reasons`, `warnings`를 돌려준다.
+
+- 다음이 모두 맞아야 `ready: true`다. 하나라도 어긋나면 카탈로그 전체가 준비 안 됨이다. 일부만 활성화하지 않는다.
+  - 카탈로그의 모든 지표가 등록 분석과 연결된다. 등록 분석은 M9 공통 집계 서비스로 계산한다(M10-D05).
+  - 모든 등록 분석에 연결된 지표가 있다.
+  - 지표의 원천이 카탈로그에 있다.
+  - 금지 원천(고객, 세션, 초대, 문의, 팀 채팅 테이블)이 카탈로그에 없다.
+- 준비 안 됨이면 질문은 503 `AI_NOT_READY`(`status: NOT_READY`)로 끝난다. 다시 열기의 각 질문은 `REFUSED`·`AI_NOT_READY`이고, 실행 다시 조회는 503이다. 준비 상태는 언제든 다시 조회할 수 있다.
+- 임베딩 모델이 없으면 의미 검색 후보만 빠지므로 `warnings`에 적고 준비 상태는 바꾸지 않는다.
+
+### 중복 제출(#96)
+
+질문 요청에 `clientRequestKey`(영문·숫자와 `.:_-`, 1~100자)를 보낼 수 있다.
+
+- 같은 직원이 같은 키로 다시 보내면 새 실행을 만들지 않는다. 처음 저장된 질문을 현재 권한으로 다시 실행해 돌려준다. 이때 `executionId`가 같고 `behavior`는 `REPLAY`이며, 모델을 호출하지 않는다.
+- 동시에 보내 경합해도 하나만 저장되고, 다른 요청은 저장된 질문을 받는다.
+- 키는 직원마다 따로다. 형식이 틀리면 422 `VALIDATION_FAILED`다.
+
 ### 취소
 
 `POST /ai/requests/{requestId}/cancel`은 본인 요청(요청 ID 또는 실행 ID)을 `CANCELED`로 표시한다. 질문 처리는 동기식이라 응답이 돌아온 뒤의 취소는 저장 상태만 바꾼다. 남의 요청은 404다.
@@ -104,7 +126,8 @@ Backend [#92](https://github.com/OpenStudyService/OpenStudy-Backend/issues/92)�
 - 저장하는 것: 질문, 검증된 QuerySpec·ViewSpec, 처리 상태, 기준 시각, 질문의 부가 조건(환불 기준, 0원 채우기). **결과 행·합계·건수는 저장하지 않는다.**
 - 목록은 마지막 질문 시각(`lastAskedAt`) 내림차순이다. 제목 변경은 순서를 바꾸지 않는다.
 - 제목은 1~200자다. 벗어나면 422 `VALIDATION_FAILED`.
-- 삭제하면 대화와 저장 질문이 함께 지워져 목록·다시 열기에서 빠진다. 진단 로그는 자체 30일 보관(M10-D04)을 따른다.
+- 삭제하면 대화와 저장 질문이 함께 지워져 목록·다시 열기에서 빠진다.
+- 진단 로그의 질문 원문은 30일 뒤 매일 지운다(M10-D04, `openstudy.ai.trace-retention.cron`, 기본 매일 03:30 Asia/Seoul). 요청 ID·단계·범위·판정 기록은 남는다.
 - 자동 보관 기간은 #99 결정에 포함한다. 확정 전에는 사용자 삭제만 있다.
 
 ### 다시 열기
@@ -120,6 +143,7 @@ Backend [#92](https://github.com/OpenStudyService/OpenStudy-Backend/issues/92)�
 | 권한 판정 코드(`AI_PERMISSION_DENIED`, `BRANCH_SCOPE_DENIED`, `SALES_PERMISSION_DENIED`, `AUTHORIZATION_SCOPE_CHECK`) | 권한 회수, 지점 소속 해제 |
 | `ANALYSIS_UNAVAILABLE` | 의미 카탈로그가 그 분석을 더 제공하지 않음(#180) |
 | `REOPEN_NOT_EXECUTABLE` | 그 밖의 이유로 지금 실행할 수 없음 |
+| `AI_NOT_READY` | 카탈로그가 준비되지 않음 |
 
 ### 실행 다시 조회
 
