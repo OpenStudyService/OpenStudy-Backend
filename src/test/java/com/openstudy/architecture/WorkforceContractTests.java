@@ -274,8 +274,13 @@ class WorkforceContractTests {
                 "| 출근 | 409 `BRANCH_NOT_ACTIVE` |", "| 진행 중 근태의 휴게 시작·종료·퇴근 | 허용 |");
     }
 
+    /** Leave, swaps and corrections are M12: since #106 they exist, but only as the M12 contract's operations. */
     @Test void leaveSwapsAndCorrectionsStayOutOfThisContract() {
-        spec.get("paths").properties().forEach(entry -> assertThat(entry.getKey())
-                .doesNotContain("leave", "swap", "correction", "substitution"));
+        spec.get("paths").properties().forEach(entry -> {
+            if (!entry.getKey().matches(".*(leave|swap|correction|substitution).*")) return;
+            entry.getValue().properties().forEach(method -> assertThat(method.getValue().get("x-implementation-issue").asString())
+                    .as("%s %s", method.getKey(), entry.getKey()).isIn("#107", "#108", "#109"));
+        });
+        OPERATIONS.values().forEach(route -> assertThat(route).doesNotContain("leave", "swap", "correction", "substitution"));
     }
 }
