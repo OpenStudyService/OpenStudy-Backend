@@ -73,6 +73,23 @@ public class TaskSearchRepository {
                 number(row[2]), number(row[3]), number(row[4]), number(row[5]))).toList();
     }
 
+    /**
+     * Tasks of the filter completed in [from, to), for the home card (M9-D08). GET /tasks has no completion time filter,
+     * so this count is the home's own; it uses the same WHERE clause as the list for every other condition.
+     */
+    public long countCompleted(Filter filter, Instant from, Instant to) {
+        if (filter.branches().isEmpty()) return 0;
+        var where = new StringBuilder();
+        var binds = new ArrayList<Object>();
+        where(filter, where, binds);
+        binds.add(from);
+        binds.add(to);
+        Query query = entityManager.createNativeQuery("SELECT COUNT(*) FROM work_tasks t WHERE " + where
+                + " AND t.status = 'DONE' AND t.completed_at >= ? AND t.completed_at < ?");
+        bind(query, binds);
+        return number(query.getSingleResult());
+    }
+
     @SuppressWarnings("unchecked")
     public List<TaskEvent> events(long task, long offset, int limit) {
         Query rows = entityManager.createNativeQuery(

@@ -36,6 +36,7 @@ import com.openstudy.modules.authorization.dto.BranchAction;
 import com.openstudy.modules.authorization.service.AuthorizationService;
 import com.openstudy.modules.authorization.service.AuthorizedCommands;
 import com.openstudy.modules.employee.service.EmployeeAccountService;
+import com.openstudy.modules.workforce.dto.response.ShiftColleague;
 import com.openstudy.modules.workforce.dto.response.ActorSummary;
 import com.openstudy.modules.workforce.dto.response.ShiftCancellation;
 import com.openstudy.modules.workforce.dto.response.ShiftView;
@@ -76,6 +77,25 @@ public class ShiftService {
     private final ObjectMapper json;
     private final IdempotencyStore requests;
     private final Clock clock;
+
+    /**
+     * Same-branch colleagues' shifts that overlap [start, end), for the home card only (2026-11-05 user decision). The
+     * branches are those where the viewer holds an active membership; GET /shifts keeps its M8-D02 scope. Sorted by start,
+     * end, name, branch and then the internal shift ID, which is not returned.
+     */
+    @Transactional(readOnly = true)
+    public List<ShiftColleague> colleagues(long viewer, Set<Long> branches, Instant start, Instant end) {
+        if (branches.isEmpty()) return List.of();
+        var rows = shifts.findAllById(shifts.colleagueShiftIds(branches, viewer, start, end).stream().map(Number::longValue).toList());
+        var names = employees.names(rows.stream().map(Shift::getEmployeeId).toList());
+        return rows.stream()
+                .sorted(java.util.Comparator.comparing(Shift::getStartsAt).thenComparing(Shift::getEndsAt)
+                        .thenComparing(shift -> names.getOrDefault(shift.getEmployeeId(), ""))
+                        .thenComparingLong(Shift::getBranchId).thenComparing(Shift::getId))
+                .map(shift -> new ShiftColleague(shift.getBranchId(), names.getOrDefault(shift.getEmployeeId(), ""),
+                        shift.getStartsAt(), shift.getEndsAt()))
+                .toList();
+    }
 
     @Transactional(readOnly = true)
     public PageResponse<ShiftView> list(long actor, String scope, ListQuery query, String employeeId, String mine, String status,
