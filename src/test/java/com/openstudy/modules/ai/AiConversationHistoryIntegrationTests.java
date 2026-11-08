@@ -286,6 +286,40 @@ class AiConversationHistoryIntegrationTests {
                 Long.class, conversation)).isZero();
     }
 
+    /** M10-D06: an employee without sales:read never receives sales figures, whatever the question was about. */
+    @Test void aQuestionAboutSomethingElseCarriesNoSalesFigures() throws Exception {
+        String conversation = conversation(analyst, "매출 아닌 질문");
+        String saved = execution(conversation, analyst, "만료 예정 이용권 알려줘", "READY", OpenStudyAnalyses.ID_POC_006, "passes",
+                "2026-11-01 01:00:00", Long.toString(branch));
+        try (var s = login(analyst)) {
+            JsonNode execution = ok(s, "/api/executions/" + saved);
+            assertThat(execution.get("rows")).isEmpty();
+            assertThat(execution.toString()).doesNotContain("\"approved\"", "\"refunds\"", "\"net\"");
+
+            String asked = "conv-" + UUID.randomUUID().toString().substring(0, 12);
+            conversations.add(asked);
+            var response = send(s, "POST", "/api/ai/queries", Map.of("question", "만료 예정 이용권 알려줘", "scope", Long.toString(branch),
+                    "conversationId", asked));
+            assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+            JsonNode body = json.readTree(response.body());
+            assertThat(body.get("status").asString()).isEqualTo("COMPLETED");
+            assertThat(body.get("legacyExecution").get("rows")).isEmpty();
+            assertThat(body.get("legacyExecution").toString()).doesNotContain("\"approved\"");
+        }
+    }
+
+    /** A sales question still carries the rows, since it already required sales:read on every branch. */
+    @Test void aSalesQuestionStillCarriesItsBranchRows() throws Exception {
+        String conversation = conversation(stranger, "매출 질문");
+        String saved = execution(conversation, stranger, "지점별 매출을 비교해줘", "READY", OpenStudyAnalyses.ID_POC_001, "sales",
+                "2026-11-01 01:00:00", Long.toString(branch));
+        try (var s = login(stranger)) {
+            JsonNode rows = ok(s, "/api/executions/" + saved).get("rows");
+            assertThat(rows).hasSize(1);
+            assertThat(rows.get(0).get("branchId").asString()).isEqualTo(Long.toString(branch));
+        }
+    }
+
     // ---- fixtures -------------------------------------------------------------------------------------------
 
     long person(String role) {
