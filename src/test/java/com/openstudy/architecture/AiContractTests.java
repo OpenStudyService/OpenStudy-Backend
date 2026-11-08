@@ -130,4 +130,30 @@ class AiContractTests {
         var view = spec.at("/components/schemas/AiViewSpec/properties/components/items/properties/componentRef/properties/id/enum");
         assertThat(view.toString()).contains("\"KPI\"", "\"DATA_TABLE\"", "\"LINE_CHART\"");
     }
+
+    /**
+     * The document is OpenAPI 3.0.3, so a nullable field uses "nullable": true (with allOf for a $ref), never the 3.1
+     * type array or a {"type": "null"} branch, which swagger-cli rejects.
+     */
+    @Test void nullableFieldsUseOpenApi30Syntax() {
+        assertThat(spec.get("openapi").asString()).startsWith("3.0.");
+        var offenders = new ArrayList<String>();
+        collect3_1Nullables(spec, "#", offenders);
+        assertThat(offenders).isEmpty();
+        var execution = spec.at("/components/schemas/AiExecution/properties");
+        for (String field : List.of("pocCode", "resultCategory", "querySpec"))
+            assertThat(execution.get(field).get("nullable").asBoolean()).as(field).isTrue();
+        assertThat(execution.at("/querySpec/allOf/0/$ref").asString()).isEqualTo("#/components/schemas/AiQuerySpec");
+    }
+
+    static void collect3_1Nullables(JsonNode node, String pointer, List<String> offenders) {
+        if (node.isObject()) {
+            JsonNode type = node.get("type");
+            if (type != null && (type.isArray() || "null".equals(type.asString(""))))
+                offenders.add(pointer);
+            node.properties().forEach(e -> collect3_1Nullables(e.getValue(), pointer + "/" + e.getKey(), offenders));
+        } else if (node.isArray()) {
+            for (int i = 0; i < node.size(); i++) collect3_1Nullables(node.get(i), pointer + "/" + i, offenders);
+        }
+    }
 }
