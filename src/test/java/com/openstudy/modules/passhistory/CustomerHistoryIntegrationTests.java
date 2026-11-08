@@ -472,7 +472,10 @@ class CustomerHistoryIntegrationTests extends PassUsageFixture {
         try (var session = login(clerk)) {
             assertThat(get(session, "/api/customers/" + customer + "/space-history?scope=" + second).statusCode()).as("a branch outside the membership").isEqualTo(403);
             var history = ok(session, "/api/customers/" + customer + "/space-history");
-            assertThat(history.toString()).doesNotContain(thereRoom.get("id").asString() + "\"").doesNotContain("\"branchId\":\"" + second + "\"");
+            // Compare IDs, not text: a bare ID can appear inside any other number in the response.
+            assertThat(items(history.get("reservations")).stream().map(row -> row.get("id").asString()))
+                    .doesNotContain(thereRoom.get("id").asString());
+            assertThat(history.toString()).doesNotContain("\"branchId\":\"" + second + "\"");
         }
     }
 

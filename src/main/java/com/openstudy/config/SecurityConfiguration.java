@@ -8,6 +8,7 @@ import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -49,9 +50,14 @@ public class SecurityConfiguration {
     @Bean
     SessionBoundaryPolicy sessionBoundaryPolicy(Clock clock) { return new SessionBoundaryPolicy(clock); }
 
+    /**
+     * Cost 12 in every real environment. Only the test profile lowers it ({@code application-test.yaml}): hashing for
+     * fixtures and logins dominated the integration suite's run time, and a lower cost does not change any behaviour
+     * under test. A hash made with any cost is still verified, since the cost travels inside the hash.
+     */
     @Bean
-    PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder(12);
+    PasswordEncoder passwordEncoder(@Value("${openstudy.security.bcrypt-strength:12}") int strength) {
+        return new BCryptPasswordEncoder(strength);
     }
 
     @Bean
