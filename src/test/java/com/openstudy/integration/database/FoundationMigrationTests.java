@@ -55,9 +55,9 @@ class FoundationMigrationTests {
     }
     long count(String sql) { return jdbc.queryForObject(sql, Long.class); }
     @Test void createsTheConsolidatedBaselineWithIncrementalMigrationsAndPreservesDataOnRestart() {
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(10);
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(11);
         assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank", String.class))
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11");
         assertThat(count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name <> 'flyway_schema_history'"))
                 .isEqualTo(73); // V7 adds the seven ai_* tables of the AI workspace (DomainLens)
         assertThat(count("SELECT COUNT(*) FROM employees")).isZero();
@@ -271,7 +271,7 @@ class FoundationMigrationTests {
         jdbc.update("INSERT INTO conversation_members(conversation_id,employee_id,last_read_message_id,last_read_at) VALUES(30,10,NULL,NULL),(30,11,41,'2026-11-01 00:00:00'),(30,12,42,'2026-11-01 00:00:00'),(31,10,NULL,NULL)");
         jdbc.update("INSERT INTO messages(id,conversation_id,sender_employee_id,parent_message_id,body,client_message_key) VALUES(40,30,10,NULL,'original','k1'),(41,30,10,40,'reply','k2'),(42,30,10,NULL,'later','k3'),(43,31,10,NULL,'other','k4'),(44,30,10,40,'reply 2','k5')");
 
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(5); // V6, V7, V8, V9 and V10
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(6); // V6, V7, V8, V9, V10 and V11
         assertThat(flyway(null).validateWithResult().validationSuccessful).isTrue();
 
         // A position on a reply (41) carries over as it is, and no position stays none.
@@ -294,6 +294,32 @@ class FoundationMigrationTests {
         assertThatThrownBy(() -> jdbc.update(insert.formatted("31,10,40,43"))).hasStackTraceContaining("fk_conversation_thread_reads_2");
         assertThatThrownBy(() -> jdbc.update(insert.formatted("30,12,40,43"))).hasStackTraceContaining("fk_conversation_thread_reads_3");
         assertThatThrownBy(() -> jdbc.update(insert.formatted("31,11,43,43"))).hasStackTraceContaining("fk_conversation_thread_reads_1");
+    }
+
+    /** #108 (M12-D02): every leave request names its deciding branch, which must exist. */
+    @Test void v11AddsTheRequiredLeaveRequestBranch() {
+        flyway("10").migrate();
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(count("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='leave_requests' "
+                + "AND column_name='branch_id' AND is_nullable='NO'")).isEqualTo(1);
+        jdbc.update("INSERT INTO employees(id,email,password_hash,name,nickname,global_role,status) VALUES(10,'a@example.com','hash','A','A','EMPLOYEE','ACTIVE')");
+        jdbc.update("INSERT INTO branches(id,code,name,address,status) VALUES(20,'B1','B','서울','ACTIVE')");
+        jdbc.update("INSERT INTO leave_requests(employee_id,branch_id,request_year,starts_on,ends_on,requested_days,reason) "
+                + "VALUES(10,20,2026,'2026-11-10','2026-11-10',1,'사유')");
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO leave_requests(employee_id,branch_id,request_year,starts_on,ends_on,requested_days,reason) "
+                + "VALUES(10,99,2026,'2026-11-11','2026-11-11',1,'사유')")).isInstanceOf(org.springframework.dao.DataAccessException.class);
+    }
+
+    /** No branch is guessed for a request that predates V11: the migration fails and leaves the table as it was. */
+    @Test void v11RefusesExistingLeaveRequestsWithoutChangingThem() {
+        flyway("10").migrate();
+        jdbc.update("INSERT INTO employees(id,email,password_hash,name,nickname,global_role,status) VALUES(10,'a@example.com','hash','A','A','EMPLOYEE','ACTIVE')");
+        jdbc.update("INSERT INTO leave_requests(employee_id,request_year,starts_on,ends_on,requested_days,reason) "
+                + "VALUES(10,2026,'2026-11-10','2026-11-10',1,'사유')");
+        assertThatThrownBy(() -> flyway(null).migrate()).hasStackTraceContaining("fk_leave_requests_branch");
+        assertThat(count("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='leave_requests' "
+                + "AND column_name='branch_id'")).isZero();
+        assertThat(count("SELECT COUNT(*) FROM leave_requests")).isEqualTo(1);
     }
 
     @Test void v4RefusesAV3DatabaseWithNonHourReservationsWithoutChangingAnything() {
