@@ -5,6 +5,7 @@ import com.openstudy.domainlens.api.spi.UserContext;
 import com.openstudy.modules.authorization.dto.AuthorizationState;
 import com.openstudy.modules.authorization.dto.BranchAction;
 import com.openstudy.modules.authorization.service.AuthorizationService;
+import com.openstudy.modules.branch.service.SessionBranchService;
 import jakarta.persistence.EntityManager;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -26,9 +27,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional(readOnly = true)
 public class OpenStudyUserContextResolver {
-    public static final long GANGNAM_BRANCH_ID = 9_100_001L;
-    public static final long SEONGSU_BRANCH_ID = 9_100_002L;
-    public static final long NEW_BRANCH_ID = 9_100_003L;
 
     public record ResolvedActor(
             long employeeId,
@@ -81,9 +79,13 @@ public class OpenStudyUserContextResolver {
     private final AuthorizationService authorizationService;
     private final EntityManager entityManager;
 
-    public OpenStudyUserContextResolver(AuthorizationService authorizationService, EntityManager entityManager) {
+    private final SessionBranchService branches;
+
+    public OpenStudyUserContextResolver(AuthorizationService authorizationService, EntityManager entityManager,
+            SessionBranchService branches) {
         this.authorizationService = authorizationService;
         this.entityManager = entityManager;
+        this.branches = branches;
     }
 
     /**
@@ -133,18 +135,13 @@ public class OpenStudyUserContextResolver {
                 aiBranches.add(branchId);
                 grants.add("ai:read");
             }
-            if (authorizationService.permits(state, branchId, BranchAction.READ_SALES) && employeeId != 9_200_003L) {
+            if (authorizationService.permits(state, branchId, BranchAction.READ_SALES)) {
                 salesBranches.add(branchId);
                 grants.add("sales:read");
             }
             var m = state.memberships().get(branchId);
             if (m != null && "ACTIVE".equals(m.status())) {
-                for (String g : m.grants()) {
-                    if (employeeId == 9_200_003L && "sales:read".equals(g)) {
-                        continue;
-                    }
-                    grants.add(g);
-                }
+                grants.addAll(m.grants());
             }
         }
         if (state.owner()) {
@@ -175,7 +172,7 @@ public class OpenStudyUserContextResolver {
     ) {
         String q = question == null ? "" : question.trim();
 
-        // 1. Basic ai:read permission check (NEG-003 in negative_cases.json / NEG-002 in task spec: 9200004 osdemo.ss.noai)
+        // 1. Basic ai:read permission check
         if (actor.aiBranches().isEmpty()) {
             return ScopeDecision.denied(
                     403,
@@ -187,7 +184,7 @@ public class OpenStudyUserContextResolver {
         }
 
         // 2. Detect explicit branch mentions in question text
-        Set<Long> mentionedBranches = extractMentionedBranches(q);
+        Set<Long> mentionedBranches = mentionedBranches(q);
         boolean mentionsAllBranches = q.contains("모든 지점") || q.contains("전 지점") || q.contains("전체 지점") || q.contains("지점별");
 
         // 3. Explicit branch scope parameter if numeric
@@ -224,7 +221,7 @@ public class OpenStudyUserContextResolver {
                         "BRANCH_SCOPE_DENIED",
                         "AUTHORIZATION_DENIED",
                         "403_OR_SCOPE_REINPUT",
-                        "요청하신 지점(" + branchLabel(mentionedBranch) + ")에 대한 조회 권한이 없습니다. 허용된 지점만 지정해 주세요."
+                        "요청하신 지점에 대한 조회 권한이 없습니다. 허용된 지점만 지정해 주세요."
                 );
             }
             if (isSalesDomain && !actor.salesBranches().contains(mentionedBranch)) {
@@ -233,13 +230,13 @@ public class OpenStudyUserContextResolver {
                         "SALES_PERMISSION_DENIED",
                         "AUTHORIZATION_DENIED",
                         "403_OR_SCOPE_REINPUT",
-                        "요청하신 지점(" + branchLabel(mentionedBranch) + ")의 매출 조회(sales:read) 권한이 없습니다."
+                        "요청하신 지점의 매출 조회(sales:read) 권한이 없습니다."
                 );
             }
         }
 
         // 5. If non-owner asks for "모든 지점" / "지점별" when they only have single-branch access (NEG-001, NEG-004)
-        if (!actor.owner() && mentionsAllBranches && actor.aiBranches().size() < 3) {
+        if (!actor.owner() && mentionsAllBranches && !actor.aiBranches().containsAll(branches.allNames().keySet())) {
             return ScopeDecision.denied(
                     403,
                     "BRANCH_SCOPE_DENIED",
@@ -256,15 +253,8 @@ public class OpenStudyUserContextResolver {
         } else if (explicitScopeBranch != null) {
             targetBranches.add(explicitScopeBranch);
         } else if (actor.owner()) {
-            // Owner with scope="all" defaults to the 3 PoC branches (9100001, 9100002, 9100003)
-            for (Long bId : actor.aiBranches()) {
-                if (bId >= GANGNAM_BRANCH_ID) {
-                    targetBranches.add(bId);
-                }
-            }
-            if (targetBranches.isEmpty()) {
-                targetBranches.addAll(actor.aiBranches());
-            }
+            // An owner's "all" is every branch they may read (M9-D04 union).
+            targetBranches.addAll(actor.aiBranches());
         } else {
             // Non-owner with scope="all" and no explicit branch mentioned in the question (NEG-015, NEG-016)
             return ScopeDecision.denied(
@@ -294,26 +284,26 @@ public class OpenStudyUserContextResolver {
         return ScopeDecision.ok(targetBranches);
     }
 
-    public static Set<Long> extractMentionedBranches(String question) {
+    /**
+     * Branches named in the question, matched against the real branch names: the full name ("강남점") or, for a name
+     * ending in "점", its stem ("강남"). The result is only used to check access and pick the target; a branch the
+     * requester cannot read is refused without repeating its name (#94).
+     */
+    public Set<Long> mentionedBranches(String question) {
         if (question == null || question.isBlank()) return Set.of();
-        Set<Long> branches = new LinkedHashSet<>();
-        if (question.contains("강남점") || question.contains("강남")) {
-            branches.add(GANGNAM_BRANCH_ID);
-        }
-        if (question.contains("성수점") || question.contains("성수")) {
-            branches.add(SEONGSU_BRANCH_ID);
-        }
-        if (question.contains("신규점")) {
-            branches.add(NEW_BRANCH_ID);
-        }
-        return Set.copyOf(branches);
+        Set<Long> found = new LinkedHashSet<>();
+        branches.allNames().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(branch -> {
+            String name = branch.getValue() == null ? "" : branch.getValue().trim();
+            if (name.isEmpty()) return;
+            String stem = name.endsWith("점") && name.length() >= 3 ? name.substring(0, name.length() - 1) : null;
+            if (question.contains(name) || (stem != null && question.contains(stem))) found.add(branch.getKey());
+        });
+        return Set.copyOf(found);
     }
 
-    public static String branchLabel(long branchId) {
-        if (branchId == GANGNAM_BRANCH_ID) return "강남점";
-        if (branchId == SEONGSU_BRANCH_ID) return "성수점";
-        if (branchId == NEW_BRANCH_ID) return "신규점";
-        return "지점#" + branchId;
+    /** The branch's real name, for result titles and choices the requester may already see. */
+    public String branchName(long branchId) {
+        return branches.names(List.of(branchId)).getOrDefault(branchId, "지점 " + branchId);
     }
 
     public static String toCsv(Collection<Long> branchIds) {

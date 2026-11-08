@@ -57,7 +57,8 @@ openstudy:
         window-minutes: 15
       capacity: 10000
   ai:
-    fixed-as-of: ${OPENSTUDY_AI_FIXED_AS_OF:2026-11-02T05:00:00Z}
+    # Empty = real current time (ADR-M10-003). Set it only to replay the PoC fixtures (2026-11-02T05:00:00Z).
+    fixed-as-of: ${OPENSTUDY_AI_FIXED_AS_OF:}
     # playback replays recorded model answers; live calls Qwen and needs QWEN_API_KEY (e.g. in .env.qwen.local).
     model-mode: ${OPENSTUDY_AI_MODEL_MODE:playback}
     rate-limit:

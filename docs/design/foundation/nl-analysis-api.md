@@ -76,8 +76,21 @@ Backend [#92](https://github.com/OpenStudyService/OpenStudy-Backend/issues/92)�
 | 권한·범위 | `AI_PERMISSION_DENIED`, `BRANCH_SCOPE_DENIED`, `SALES_PERMISSION_DENIED`, `AUTHORIZATION_SCOPE_CHECK` | 403 |
 | 범위 입력 | `VALIDATION_FAILED` | 422 |
 | 지원 불가 | `OUT_OF_DOMAIN` | 200(`UNSUPPORTED`) |
-| 조건 확인 | `CLARIFICATION_REQUIRED`, `CLARIFICATION_OR_POLICY_PENDING` | 200(`CLARIFICATION`) |
+| 조건 확인 | `CLARIFICATION_REQUIRED`, `CLARIFICATION_OR_POLICY_PENDING`, `BRANCH_REQUIRED` | 200(`CLARIFICATION`) |
 | 빈도 | `RATE_LIMITED` | 429 |
+
+### 지점 선택(ADR-M10-003 M10-D17)
+
+좌석 혼잡도·실시간 빈자리처럼 한 지점만 보는 분석을 여러 지점 범위에서 물으면 `CLARIFICATION`(`BRANCH_REQUIRED`)을 돌려준다.
+
+- `clarificationOptions`는 요청 범위 안의 지점마다 하나다. `id`는 `branch:{지점 ID}:{분석 ID}`, `label`은 지점 이름, `targetScope`는 지점 ID다.
+- 그 `id`를 `clarificationChoice`로 다시 보내면 범위를 그 지점으로 좁혀 실행한다. 범위는 다시 검사하므로 권한 밖 지점의 `id`를 만들어 보내면 403이다.
+- 범위가 한 지점이면 묻지 않고 바로 실행한다.
+
+### 지점 이름과 기준 시각
+
+- 질문 속 지점은 실제 지점 이름(전체 이름, 또는 "점"으로 끝나면 그 앞부분)으로 찾는다. 권한 없는 지점이면 그 이름을 응답에 담지 않고 거절한다.
+- 기준 시각은 실제 현재 시각이다. `openstudy.ai.fixed-as-of`를 설정했을 때만 고정 시각을 쓴다(playback 재현·테스트, M10-D15).
 
 변경 의도 질문(예: "예약 전부 취소해줘")은 실행하지 않고 400 `UNSUPPORTED_MODIFICATION_INTENT`로 끝난다. 질문은 `DENIED` 상태로만 저장되고 결과는 없다.
 
@@ -165,6 +178,7 @@ Backend [#92](https://github.com/OpenStudyService/OpenStudy-Backend/issues/92)�
 - 모드(`openstudy.ai.model-mode`, `domainlens.model.mode`)
   - `playback`(기본): 녹화된 응답을 재생하는 **고정 생성기**다. 테스트와 개발에서 쓴다. 등록된 대표 질문(POC-001~010)과 부정 사례(NEG-001~018)만 재현하고, 그 밖의 질문은 규칙 기반 판정으로 처리한다. 실제 모델 품질은 검증하지 않는다.
   - `live`: 실제 모델(Qwen)을 부른다. API 키가 필요하다.
+- 모델은 등록된 분석 ID와 정해진 부가 조건만 고를 수 있다(등록 분석 방식, [ADR-M10-003](../../db/ADR-M10-003.md) M10-D14). 범용 IR 생성·검증·실행은 연결돼 있지 않고 #97에서 다시 판단한다.
 - 질문 처리에서 모델로 들어가는 입구는 하나다. 다시 열기와 실행 다시 조회는 이 입구를 거치지 않는다(#180 테스트로 확인).
 
 ## 요구사항 연결

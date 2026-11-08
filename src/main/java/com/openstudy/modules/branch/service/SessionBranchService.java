@@ -30,6 +30,14 @@ public class SessionBranchService {
         return repository.findByIdIn(branchIds).stream().collect(Collectors.toMap(Branch::getId, Branch::getName));
     }
 
+    /**
+     * Every branch's name, for matching a branch named in an AI question (#93·#94). Server-side only: the AI never
+     * shows a name for a branch the requester cannot read, so no authorization is implied here either.
+     */
+    public Map<Long, String> allNames() {
+        return repository.findAll().stream().collect(Collectors.toMap(Branch::getId, Branch::getName));
+    }
+
     private static SessionBranch toSessionBranch(Branch b) {
         String id = Long.toString(b.getId());
         return new SessionBranch(id, id, ApiVersion.fromDatabase(b.getVersion()), b.getCreatedAt().toString(),
