@@ -20,16 +20,23 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import com.openstudy.modules.ai.service.OpenStudyAnalyses;
+import com.openstudy.modules.ai.service.OpenStudyPlaybackGateway;
 import com.openstudy.modules.branch.dto.Branch.WeeklyHours;
 import com.openstudy.modules.branch.dto.BranchRequests;
 import com.openstudy.modules.branch.service.BranchService;
 import com.openstudy.support.database.MySqlIntegrationTest;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 /**
  * Saved AI conversations (#168, ADR-M10-002 M10-D12): the list is the employee's own, reopening re-runs the saved
@@ -44,6 +51,8 @@ class AiConversationHistoryIntegrationTests {
     @Autowired PasswordEncoder passwords;
     @Autowired ObjectMapper json;
     @Autowired BranchService branchService;
+    /** Every model call goes through planQuestion; counting it shows that reopening never asks the model (M10-D12). */
+    @MockitoSpyBean OpenStudyPlaybackGateway gateway;
     @LocalServerPort int port;
 
     final List<Long> people = new ArrayList<>(), branches = new ArrayList<>();
@@ -194,6 +203,87 @@ class AiConversationHistoryIntegrationTests {
             assertThat(ok(s, "/api/executions/" + original).get("refundBasis").asString()).isEqualTo("original");
             assertThat(ok(s, "/api/executions/" + plain).get("refundBasis").asString()).isEqualTo("processed");
         }
+    }
+
+    @Test void reopeningNeverCallsTheModelWhileAskingDoes() throws Exception {
+        String conversation = conversation(owner, "모델 호출 확인");
+        execution(conversation, owner, "지점별 매출을 비교해줘", "READY", OpenStudyAnalyses.ID_POC_001, "sales", "2026-11-01 01:00:00");
+        execution(conversation, owner, "매출", "CLARIFICATION", null, "sales", "2026-11-01 01:01:00");
+        try (var s = login(owner)) {
+            clearInvocations(gateway);
+            JsonNode turns = ok(s, "/api/ai/conversations/" + conversation + "?scope=all").get("turns");
+            assertThat(turns.get(0).get("response").get("status").asString()).isEqualTo("COMPLETED");
+            ok(s, "/api/ai/conversations/" + conversation);
+            verify(gateway, never()).planQuestion(any(), any(), any(), any());
+
+            // The control: asking a question does go through the model entry point.
+            var asked = send(s, "POST", "/api/ai/queries", Map.of("question", "지점별 매출을 비교해줘", "scope", "all",
+                    "conversationId", conversation));
+            assertThat(asked.statusCode()).as(asked.body()).isLessThan(500);
+            verify(gateway, times(1)).planQuestion(any(), any(), any(), any());
+        }
+    }
+
+    @Test void theListFollowsTheLastQuestionAndARenameDoesNotMoveIt() throws Exception {
+        String older = conversation(owner, "먼저 만든 대화");
+        String newer = conversation(owner, "나중 만든 대화");
+        jdbc.update("UPDATE ai_conversations SET updated_at='2026-11-01 01:00:00' WHERE id=?", older);
+        jdbc.update("UPDATE ai_conversations SET updated_at='2026-11-01 02:00:00' WHERE id=?", newer);
+        try (var s = login(owner)) {
+            assertThat(ids(ok(s, "/api/ai/conversations"))).containsExactly(newer, older);
+            assertThat(send(s, "PATCH", "/api/ai/conversations/" + older, Map.of("title", "이름만 바꿈")).statusCode()).isEqualTo(200);
+            JsonNode renamed = ok(s, "/api/ai/conversations");
+            assertThat(ids(renamed)).containsExactly(newer, older);
+            assertThat(renamed.get(1).get("title").asString()).isEqualTo("이름만 바꿈");
+            assertThat(renamed.get(1).get("lastAskedAt").asString()).startsWith("2026-11-01T01:00");
+
+            var asked = send(s, "POST", "/api/ai/queries", Map.of("question", "지점별 매출을 비교해줘", "scope", "all",
+                    "conversationId", older));
+            assertThat(asked.statusCode()).as(asked.body()).isLessThan(500);
+            assertThat(ids(ok(s, "/api/ai/conversations"))).containsExactly(older, newer);
+        }
+    }
+
+    static List<String> ids(JsonNode list) {
+        var result = new ArrayList<String>();
+        for (var item : list) result.add(item.get("id").asString());
+        return result;
+    }
+
+    @Test void aSavedAnalysisTheCatalogNoLongerOffersShowsAReasonCodeInsteadOfFailing() throws Exception {
+        String conversation = conversation(owner, "카탈로그 변경");
+        String retired = execution(conversation, owner, "없어진 분석", "READY", "openstudy.retired.analysis", "sales",
+                "2026-11-01 01:00:00", Long.toString(branch));
+        execution(conversation, owner, "지점별 매출을 비교해줘", "READY", OpenStudyAnalyses.ID_POC_001, "sales", "2026-11-01 01:01:00");
+        try (var s = login(owner)) {
+            JsonNode turns = ok(s, "/api/ai/conversations/" + conversation + "?scope=all").get("turns");
+            JsonNode gone = turns.get(0).get("response");
+            assertThat(gone.get("status").asString()).isEqualTo("REFUSED");
+            assertThat(gone.get("errorCode").asString()).isEqualTo("ANALYSIS_UNAVAILABLE");
+            assertThat(gone.get("httpStatus").asInt()).isEqualTo(422);
+            assertThat(gone.get("envelope").isNull()).isTrue();
+            // The rest of the conversation still runs.
+            assertThat(turns.get(1).get("response").get("status").asString()).isEqualTo("COMPLETED");
+
+            var execution = send(s, "GET", "/api/executions/" + retired, null);
+            assertThat(execution.statusCode()).as(execution.body()).isEqualTo(422);
+            assertThat(json.readTree(execution.body()).get("code").asString()).isEqualTo("ANALYSIS_UNAVAILABLE");
+        }
+    }
+
+    @Test void aQuestionThatAsksForAChangeIsNotRunAndEndsAsUnsupported() throws Exception {
+        String conversation = "conv-" + UUID.randomUUID().toString().substring(0, 12);
+        conversations.add(conversation);
+        try (var s = login(owner)) {
+            var response = send(s, "POST", "/api/ai/queries", Map.of("question", "이번 주 스터디룸 예약 전부 취소해줘", "scope", "all",
+                    "conversationId", conversation));
+            assertThat(response.statusCode()).as(response.body()).isEqualTo(400);
+            JsonNode body = json.readTree(response.body());
+            assertThat(body.get("errorCode").asString()).isEqualTo("UNSUPPORTED_MODIFICATION_INTENT");
+            assertThat(body.get("envelope").isNull()).isTrue();
+        }
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM ai_executions WHERE conversation_id=? AND status='READY'",
+                Long.class, conversation)).isZero();
     }
 
     // ---- fixtures -------------------------------------------------------------------------------------------
