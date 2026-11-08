@@ -8,6 +8,7 @@ import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -24,6 +25,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
+import org.springframework.security.web.authentication.logout.CookieClearingLogoutHandler;
+import org.springframework.security.web.authentication.logout.LogoutHandler;
 import org.springframework.security.web.authentication.session.ChangeSessionIdAuthenticationStrategy;
 import org.springframework.security.web.authentication.session.CompositeSessionAuthenticationStrategy;
 import org.springframework.security.web.authentication.session.SessionAuthenticationStrategy;
@@ -33,6 +36,7 @@ import org.springframework.security.web.csrf.CsrfAuthenticationStrategy;
 import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
+import org.springframework.session.web.http.CookieSerializer;
 import tools.jackson.databind.ObjectMapper;
 
 import com.openstudy.common.exception.ApiError;
@@ -94,7 +98,9 @@ public class SecurityConfiguration {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, SecurityContextRepository contexts,
-            CsrfTokenRepository csrf, EmployeeAccountService employees, ObjectMapper json, SessionBoundaryPolicy sessions) throws Exception {
+            CsrfTokenRepository csrf, EmployeeAccountService employees, ObjectMapper json, SessionBoundaryPolicy sessions,
+            ObjectProvider<CookieSerializer> sessionCookies) throws Exception {
+        LogoutHandler goneSessionCookie = goneSessionCookie(sessionCookies.getIfAvailable());
         return http
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
@@ -121,7 +127,12 @@ public class SecurityConfiguration {
                                     csrfError ? "인증 요청을 다시 시도해 주세요." : "접근 권한이 없습니다.");
                         }))
                 .logout(logout -> logout.logoutUrl("/api/auth/logout")
-                        .invalidateHttpSession(true).clearAuthentication(true).deleteCookies("SESSION")
+                        .invalidateHttpSession(true).clearAuthentication(true)
+                        // Spring Session expires the cookie of the session it invalidates, with the configured attributes
+                        // (Secure in prod). deleteCookies("SESSION") added a second header without Secure behind the
+                        // TLS-terminating proxy (#29). Only a cookie whose session is already gone is cleared here, and
+                        // through the same serializer so every attribute matches. This handler runs before invalidation.
+                        .addLogoutHandler(goneSessionCookie)
                         .logoutSuccessHandler((request, response, authentication) -> {
                             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
                             response.setHeader("Cache-Control", "no-store");
@@ -129,6 +140,19 @@ public class SecurityConfiguration {
                         }))
                 .addFilterBefore(new AccountSessionFilter(employees, json, sessions), AuthorizationFilter.class)
                 .build();
+    }
+
+    /**
+     * Clears a SESSION cookie whose session no longer exists. With Spring Session it writes through the session cookie
+     * serializer, so the header carries the configured attributes; without it (MVC slice tests) it falls back to a plain
+     * expiring cookie, as deleteCookies("SESSION") did.
+     */
+    static LogoutHandler goneSessionCookie(CookieSerializer serializer) {
+        if (serializer == null) return new CookieClearingLogoutHandler("SESSION");
+        return (request, response, authentication) -> {
+            if (request.getSession(false) == null)
+                serializer.writeCookieValue(new CookieSerializer.CookieValue(request, response, ""));
+        };
     }
 
     public static void error(HttpServletRequest request, HttpServletResponse response, ObjectMapper json,

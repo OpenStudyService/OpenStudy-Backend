@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -232,6 +233,25 @@ class SessionBoundaryIntegrationTests {
         jdbc.update("UPDATE employees SET status='LEFT' WHERE id=?", employeeId);
         assertThat(get("/api/invitations/approval-status").statusCode()).isEqualTo(401);
         assertThat(sessions.findById(id)).isNull();
+    }
+
+    /** #29: one expiring SESSION header per logout, whether the session is live or already gone, with the cookie's attributes. */
+    @Test void logoutExpiresTheSessionCookieOnceWithTheConfiguredAttributes() throws Exception {
+        login();
+        var live = post("/api/auth/logout", csrf(), Map.of());
+        assertThat(live.statusCode()).isEqualTo(200);
+        assertThat(sessionCookies(live)).singleElement().asString().contains("Max-Age=0", "Path=/", "HttpOnly", "SameSite=Lax");
+
+        login();
+        String id = sessionId();
+        sessions.deleteById(id);
+        var stale = post("/api/auth/logout", "no-session-no-token", Map.of());
+        assertThat(stale.statusCode()).isEqualTo(200);
+        assertThat(sessionCookies(stale)).singleElement().asString().contains("Max-Age=0", "Path=/", "HttpOnly", "SameSite=Lax");
+    }
+
+    static List<String> sessionCookies(HttpResponse<String> response) {
+        return response.headers().allValues("Set-Cookie").stream().filter(cookie -> cookie.startsWith("SESSION=")).toList();
     }
 
     void activate() { jdbc.update("UPDATE employees SET status='ACTIVE' WHERE id=?", employeeId); }
