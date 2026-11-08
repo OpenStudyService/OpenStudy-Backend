@@ -582,10 +582,11 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
      * shown with a reason instead of being run, so the failure never reaches a transaction.
      */
     public boolean offers(String analysisId) {
-        return analysisId != null && OFFERED.contains(normalizeAnalysisId(analysisId));
+        return analysisId != null && REGISTERED.contains(normalizeAnalysisId(analysisId));
     }
 
-    private static final java.util.Set<String> OFFERED = java.util.Set.of(ID_POC_001, ID_POC_002, ID_POC_003, ID_POC_004,
+    /** The registered analyses (ADR-M10-003 M10-D14). */
+    public static final java.util.Set<String> REGISTERED = java.util.Set.of(ID_POC_001, ID_POC_002, ID_POC_003, ID_POC_004,
             ID_POC_005, ID_POC_006, ID_POC_007, ID_POC_008, ID_POC_009, ID_POC_010);
 
     public PocExecutionResult executeCase(String caseOrAnalysisId, Collection<Long> branchScope) {

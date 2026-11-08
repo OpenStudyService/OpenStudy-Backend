@@ -21,6 +21,10 @@ public class AiExecutionEntity {
     @Column(name = "request_ref", length = 64, nullable = false, unique = true)
     private String requestRef;
 
+    /** #96: the client's key for this question; a resubmission with the same key replays this execution. */
+    @Column(name = "client_request_key", length = 100)
+    private String clientRequestKey;
+
     @Column(name = "conversation_id", length = 64)
     private String conversationId;
 
@@ -129,6 +133,10 @@ public class AiExecutionEntity {
         this.createdAt = createdAt;
         this.refundBasis = refundBasis;
         this.zeroFillRequested = zeroFillRequested;
+    }
+
+    public void assignClientRequestKey(String key) {
+        this.clientRequestKey = key;
     }
 
     public void markCanceled() {

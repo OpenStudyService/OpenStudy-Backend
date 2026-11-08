@@ -10,4 +10,13 @@ public interface AiTraceRepository extends JpaRepository<AiTraceEntity, String> 
     Optional<AiTraceEntity> findByExecutionId(String executionId);
     List<AiTraceEntity> findAllByOrderByCreatedAtDesc();
     List<AiTraceEntity> findByEmployeeIdOrderByCreatedAtDesc(long employeeId);
+
+    /**
+     * M10-D04: the question text of a trace is kept for 30 days ({@code question_expires_at}); after that only the text
+     * is removed. Request IDs, stages, scope and the security-gate record stay.
+     */
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query(value = "UPDATE ai_traces SET sanitized_question = NULL "
+            + "WHERE question_expires_at <= :now AND sanitized_question IS NOT NULL", nativeQuery = true)
+    int clearExpiredQuestions(java.time.Instant now);
 }

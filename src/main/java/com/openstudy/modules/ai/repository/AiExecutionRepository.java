@@ -7,6 +7,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface AiExecutionRepository extends JpaRepository<AiExecutionEntity, String> {
     Optional<AiExecutionEntity> findByRequestRef(String requestRef);
+
+    /** #96: the execution an employee already made with this client request key. */
+    Optional<AiExecutionEntity> findByEmployeeIdAndClientRequestKey(long employeeId, String clientRequestKey);
     List<AiExecutionEntity> findByEmployeeIdOrderByCreatedAtDesc(long employeeId);
 
     /** The saved questions of one conversation in the order they were asked. */

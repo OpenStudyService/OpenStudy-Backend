@@ -15585,7 +15585,7 @@
         "tags": [
           "ai"
         ],
-        "description": "의미 카탈로그·모델 모드·기준 시각을 돌려준다. 화면이 AI 채팅을 열 때 읽는다.",
+        "description": "카탈로그 준비 상태(ready, reasons, warnings)·모델 모드·기준 시각을 돌려준다. 카탈로그 전체가 일관될 때만 ready이며, 준비 안 됨이면 질문을 실행하지 않는다(#93).",
         "x-requirement-ids": [
           "FR-NL-01",
           "NFR-OPS-07"
@@ -15855,7 +15855,8 @@
           "AI_PERMISSION_DENIED",
           "BRANCH_SCOPE_DENIED",
           "SALES_PERMISSION_DENIED",
-          "AUTHORIZATION_SCOPE_CHECK"
+          "AUTHORIZATION_SCOPE_CHECK",
+          "AI_NOT_READY"
         ],
         "x-adr-decisions": [
           "M10-D12"
@@ -16113,6 +16114,23 @@
           },
           "500": {
             "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "description": "카탈로그 준비 안 됨(AI_NOT_READY)",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "parameters": [
@@ -16162,7 +16180,8 @@
           "CLARIFICATION_OR_POLICY_PENDING",
           "BRANCH_REQUIRED",
           "RATE_LIMITED",
-          "NOT_FOUND"
+          "NOT_FOUND",
+          "AI_NOT_READY"
         ],
         "x-adr-decisions": [
           "M10-D01",
@@ -16315,6 +16334,23 @@
           },
           "500": {
             "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "description": "카탈로그 준비 안 됨(AI_NOT_READY)",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiQueryResponse"
+                }
+              }
+            }
           }
         },
         "parameters": [
@@ -16353,7 +16389,8 @@
           "CLARIFICATION_OR_POLICY_PENDING",
           "BRANCH_REQUIRED",
           "RATE_LIMITED",
-          "NOT_FOUND"
+          "NOT_FOUND",
+          "AI_NOT_READY"
         ],
         "x-adr-decisions": [
           "M10-D01",
@@ -16511,6 +16548,23 @@
           },
           "500": {
             "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "description": "카탈로그 준비 안 됨(AI_NOT_READY)",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "parameters": [
@@ -16530,7 +16584,8 @@
           "NOT_FOUND",
           "FORBIDDEN",
           "NOT_EXECUTABLE",
-          "ANALYSIS_UNAVAILABLE"
+          "ANALYSIS_UNAVAILABLE",
+          "AI_NOT_READY"
         ],
         "x-adr-decisions": [
           "M10-D06",
@@ -26732,6 +26787,8 @@
         "type": "object",
         "required": [
           "ready",
+          "reasons",
+          "warnings",
           "mode",
           "version",
           "asOfKst"
@@ -26766,6 +26823,20 @@
           },
           "message": {
             "type": "string"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "준비 안 됨의 이유. 비어 있으면 ready=true"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "준비 상태를 바꾸지 않는 안내(예: 임베딩 모델 없음)"
           }
         }
       },
@@ -26933,6 +27004,11 @@
           "conversationId": {
             "type": "string",
             "description": "없으면 새 대화"
+          },
+          "clientRequestKey": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:-]{1,100}$",
+            "description": "#96 중복 제출 방지. 같은 직원·같은 키는 새 실행 없이 저장된 질문을 돌려준다"
           }
         }
       },
@@ -26952,6 +27028,11 @@
           },
           "clarificationChoice": {
             "type": "string"
+          },
+          "clientRequestKey": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:-]{1,100}$",
+            "description": "#96 중복 제출 방지. 같은 직원·같은 키는 새 실행 없이 저장된 질문을 돌려준다"
           }
         }
       },
@@ -27556,7 +27637,8 @@
               "INVALID",
               "DENIED",
               "RATE_LIMITED",
-              "REFUSED"
+              "REFUSED",
+              "NOT_READY"
             ],
             "description": "REFUSED는 다시 열기에서 지금 실행할 수 없는 질문"
           },
@@ -27580,7 +27662,7 @@
               "string",
               "null"
             ],
-            "description": "REOPEN이면 다시 열기 결과"
+            "description": "REOPEN이면 다시 열기 결과, REPLAY면 같은 clientRequestKey의 재제출"
           },
           "message": {
             "type": [

@@ -30,7 +30,12 @@ public class AiWorkspaceController {
 
     public record ConversationCreateRequest(String scope, String title) {}
 
-    public record ConversationQueryRequest(String question, String scope, String clarificationChoice, String actor) {}
+    public record ConversationQueryRequest(String question, String scope, String clarificationChoice, String actor,
+            String clientRequestKey) {
+        public ConversationQueryRequest(String question, String scope, String clarificationChoice, String actor) {
+            this(question, scope, clarificationChoice, actor, null);
+        }
+    }
 
     public record WorkRecordCreateRequest(String executionId, String title, Boolean pinned) {}
 
@@ -120,13 +125,15 @@ public class AiWorkspaceController {
                     ));
         }
         try {
-            var response = workspaceService.executeQuery(auth, new AiWorkspaceService.AiQueryRequest(
+            var request = new AiWorkspaceService.AiQueryRequest(
                     body == null ? null : body.question(),
                     body == null ? "all" : body.scope(),
                     body == null ? null : body.clarificationChoice(),
                     conversationId,
-                    body == null ? null : body.actor()
-            ));
+                    body == null ? null : body.actor(),
+                    body == null ? null : body.clientRequestKey()
+            );
+            var response = askOnce(auth, request);
             if (response.httpStatus() >= 400) {
                 Map<String, Object> err = new LinkedHashMap<>();
                 err.put("code", response.errorCode() == null ? "REQUEST_FAILED" : response.errorCode());
@@ -179,14 +186,26 @@ public class AiWorkspaceController {
                     .body(rateLimited);
         }
         try {
-            var response = workspaceService.executeQuery(auth, body);
+            var response = askOnce(auth, body);
             return ResponseEntity.status(response.httpStatus()).body(response);
         } finally {
             playbackGateway.releaseRateLimit(actor.employeeId());
         }
     }
 
-    @PostMapping({"/api/requests/{requestId}/cancel", "/api/ai/requests/{requestId}/cancel"})
+    /**
+     * #96: two submissions with the same client key can race past the lookup; the unique key lets one save and the
+     * other gets that saved question back instead of an error.
+     */
+    private AiWorkspaceService.AiQueryResponse askOnce(Authentication auth, AiWorkspaceService.AiQueryRequest request) {
+        try {
+            return workspaceService.executeQuery(auth, request);
+        } catch (org.springframework.dao.DataIntegrityViolationException duplicate) {
+            return workspaceService.replay(auth, request).orElseThrow(() -> duplicate);
+        }
+    }
+
+        @PostMapping({"/api/requests/{requestId}/cancel", "/api/ai/requests/{requestId}/cancel"})
     public Map<String, Object> cancelRequest(Authentication auth, @PathVariable String requestId) {
         return workspaceService.cancelRequest(auth, requestId);
     }
