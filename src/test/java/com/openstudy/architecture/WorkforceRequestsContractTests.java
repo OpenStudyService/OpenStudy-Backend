@@ -135,12 +135,14 @@ class WorkforceRequestsContractTests {
         OPERATIONS.forEach((id, route) -> {
             String issue = route.contains("leave") ? "#108" : route.contains("correction") ? "#107" : "#109";
             assertThat(operation(id).get("x-implementation-issue").asString()).as(id).isEqualTo(issue);
-            // #108 implemented the leave operations; corrections (#107) and swaps (#109) are still design targets.
+            // #108 implemented the leave operations and #109 the swaps; corrections (#107) are still design targets.
             assertThat(operation(id).get("x-implementation-status").asString()).as(id)
-                    .isEqualTo("#108".equals(issue) ? "implemented" : "design-target");
+                    .isEqualTo("#107".equals(issue) ? "design-target" : "implemented");
         });
         assertThat(spec.at("/info/description").asString()).contains("operation 13개는 #108에서 구현됐다");
-        assertThat(contract()).contains("휴가 부여·잔여량·신청 operation 13개는 #108에서 구현됐다(`implemented`");
+        assertThat(spec.at("/info/description").asString()).contains("operation 7개는 #109에서 구현됐다");
+        assertThat(contract()).contains("휴가 부여·잔여량·신청 operation 13개는 #108에서 구현됐다(`implemented`",
+                "대체근무 operation 7개는 #109에서 구현됐다(`implemented`)");
         assertThat(spec.at("/info/description").asString()).contains("Issue #106", "workforce-requests-api.md");
         assertThat(contract()).contains("`0.1.13-m12-workforce-requests`", "operation은 모두 설계 계약(`design-target`)");
         assertThat(Files.readString(DESIGN.resolve("README.md"))).contains("workforce-requests-api.md",

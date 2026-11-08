@@ -4,7 +4,7 @@ Backend [#106](https://github.com/OpenStudyService/OpenStudy-Backend/issues/106)
 
 정책 근거는 [ADR-M12-001](../../db/ADR-M12-001.md)(M12-D01~D09)이다. 근무·근태의 권한·조회 범위·충돌 응답·시각 규칙은 [근무표·근태 API 계약](workforce-api.md)(M8)을 그대로 쓴다. 공통 요청·응답·오류·목록 규칙은 [API 계약](api.md)을 따른다.
 
-2026-11-09: 이 문서의 operation은 모두 설계 계약(`design-target`)이다. 2026-11-09: 휴가 부여·잔여량·신청 operation 13개는 #108에서 구현됐다(`implemented`, `leave_requests` 신청 지점 칼럼은 V11). 근태 정정(#107)과 대체근무(#109)는 아직 구현되지 않았다.
+2026-11-09: 이 문서의 operation은 모두 설계 계약(`design-target`)이다. 2026-11-09: 휴가 부여·잔여량·신청 operation 13개는 #108에서 구현됐다(`implemented`, `leave_requests` 신청 지점 칼럼은 V11). 2026-11-09: 대체근무 operation 7개는 #109에서 구현됐다(`implemented`). 근태 정정(#107)은 아직 구현되지 않았다.
 
 ## 제공 범위
 
@@ -409,7 +409,7 @@ stateDiagram-v2
 | 4 | 상태가 `신청`이 아님 | 409 `INVALID_STATE` |
 | 5 | version이 다름 | 409 `VERSION_CONFLICT` |
 | 6 | 근무가 취소됨 | 409 `INVALID_STATE` |
-| 7 | `shiftVersion`이 근무의 현재 version과 다름 | 409 `SHIFT_VERSION_CONFLICT` |
+| 7 | `shiftVersion`이 근무의 현재 version과 다름, 신청 이후 근무가 바뀜, 또는 근무 담당자가 신청자가 아님 | 409 `SHIFT_VERSION_CONFLICT` |
 | 8 | 근무가 이미 시작함 | 409 `SHIFT_ALREADY_STARTED` |
 | 9 | 지점 운영 중지 | 409 `BRANCH_NOT_ACTIVE` |
 | 10 | 대체 직원이 더 이상 근무 지점의 활성 소속 활성 직원이 아님 | 422 `INVALID_SHIFT_EMPLOYEE` |
@@ -417,7 +417,8 @@ stateDiagram-v2
 | 12 | 성공 | 200, 상태 `승인`, 근무 반영 |
 
 - **버전 불일치의 대상 정보**: 신청 뒤 관리자가 근무를 수정했으면, 관리자가 본 근무와 실제 근무가 다를 수 있다. 그래서 승인에 `shiftVersion`을 받는다. 409 `SHIFT_VERSION_CONFLICT`에는 `shiftId`, 근무의 `latestVersion`, `reloadUrl`(`/api/shifts/{id}`)을 담는다. 대체근무 신청 자체의 version 불일치는 기존 `VERSION_CONFLICT`(`reloadUrl`=`/api/shift-swaps/{id}`)다.
-- **반영**: 근무의 `employee_id`를 대체 직원으로, `starts_at`, `ends_at`을 제안 시각으로 바꾸고 근무 version을 올린다. `shift_events`에 `SWAPPED`(바뀌기 전·후 근무 값, 사유=신청 사유)를 남긴다.
+- **신청 당시와의 비교**(2026-11-09 #109 구현에서 추가, 이슈 #109 인수 조건 "원근무의 버전·담당자가 신청 당시와 다르면 거부"): V1 `shift_swaps`에는 신청 당시 근무 version이 없다. 그래서 신청 시각 이후에 그 근무의 `shift_events`가 생겼으면 근무가 바뀐 것으로 보고 거부한다. 근무 담당자가 신청자와 다른 경우도 같다. 승인자가 보낸 `shiftVersion` 비교와 함께 같은 409 `SHIFT_VERSION_CONFLICT`다.
+- **반영**: 근무의 `employee_id`를 대체 직원으로, `starts_at`, `ends_at`을 제안 시각으로 바꾸고 근무 version을 올린다. `shift_events`에 `SWAPPED`(바뀌기 전·후 근무 값, 사유=신청 사유)를 남긴다. `after_json`에는 근무 값에 더해 `swapId`(대체근무 ID)와 `swap`(`APPROVED` 또는 `RESTORED`)을 담아, 원래 시각과 승인 직후 version을 이 행에서 찾는다.
 - 승인 뒤의 근무는 일반 근무다. M8 충돌 검사·주간 근무표·출근 연결이 대체 직원 기준으로 동작한다. M8-D06의 "대체근무 반영"은 이렇게 근무 행이 바뀌는 것으로 연결된다.
 
 ### 반려와 신청 취소
@@ -456,7 +457,7 @@ stateDiagram-v2
 - `decision`, `cancellation`
 - `canApprove`, `canReject`, `canCancel`, `canCancelApproval`
 
-목록 필터: `scope`(근무 지점), `employeeId`(신청자 또는 대체 직원), `mine`(본인이 신청자 또는 대체 직원), `status`, `from`, `to`(원래 근무의 `workDate`). 정렬은 `createdAt` 내림차순, 같으면 `id` 내림차순이다.
+목록 필터: `scope`(근무 지점), `employeeId`(신청자 또는 대체 직원), `mine`(본인이 신청자 또는 대체 직원), `status`, `from`, `to`(제안 시작 시각 `proposedStartsAt`의 Asia/Seoul 날짜. 2026-11-09 #109 구현에서 정정: 승인 뒤에는 근무의 시각이 제안 시각으로 바뀌어 "원래 근무의 workDate"가 행마다 달라지기 때문이다). 정렬은 `createdAt` 내림차순, 같으면 `id` 내림차순이다.
 
 ## 요청 키와 반복·동시 요청
 
