@@ -503,11 +503,22 @@ public class AiWorkspaceService {
     }
 
     @Transactional
-    public Map<String, Object> cancelRequest(String requestId) {
-        var execOpt = executionRepository.findByRequestRef(requestId)
-                .or(() -> executionRepository.findById(requestId));
-        execOpt.ifPresent(AiExecutionEntity::markCanceled);
+    public Map<String, Object> cancelRequest(Authentication auth, String requestId) {
+        var actor = userResolver.resolve(auth, null);
+        ownExecution(actor.employeeId(), requestId).markCanceled();
         return Map.of("ok", true, "requestId", requestId, "status", "CANCELED");
+    }
+
+    /**
+     * An execution is part of the employee's own conversation (ADR-M10-002 M10-D12): another employee's execution,
+     * OWNER included, is the same 404 as a missing one so its existence is not revealed.
+     */
+    private AiExecutionEntity ownExecution(long employeeId, String executionId) {
+        String id = executionId == null ? "" : executionId;
+        return executionRepository.findById(id)
+                .or(() -> executionRepository.findByRequestRef(id))
+                .filter(e -> e.getEmployeeId() == employeeId)
+                .orElseThrow(() -> ApiException.notFound("AI 실행 결과를 찾을 수 없습니다."));
     }
 
     /**
@@ -517,9 +528,7 @@ public class AiWorkspaceService {
     @Transactional(readOnly = true)
     public Map<String, Object> getExecution(Authentication auth, String executionId) {
         var actor = userResolver.resolve(auth, null);
-        AiExecutionEntity entity = executionRepository.findById(executionId)
-                .or(() -> executionRepository.findByRequestRef(executionId))
-                .orElseThrow(() -> ApiException.unprocessable("NOT_FOUND", "요청한 실행 결과를 찾을 수 없습니다."));
+        AiExecutionEntity entity = ownExecution(actor.employeeId(), executionId);
 
         Set<Long> branches = parseBranchCsv(entity.getBranchIdsCsv());
         var rerun = rerunSaved(actor, entity);
@@ -571,9 +580,7 @@ public class AiWorkspaceService {
             boolean pinned
     ) {
         var actor = userResolver.resolve(auth, null);
-        AiExecutionEntity exec = executionRepository.findById(executionId)
-                .or(() -> executionRepository.findByRequestRef(executionId))
-                .orElseThrow(() -> ApiException.validation("executionId", "유효한 실행 ID를 지정해 주세요."));
+        AiExecutionEntity exec = ownExecution(actor.employeeId(), executionId);
 
         verifyBranchReaccess(actor, parseBranchCsv(exec.getBranchIdsCsv()), "sales".equals(exec.getIntentDomain()));
 
@@ -632,9 +639,7 @@ public class AiWorkspaceService {
         if (reason == null || reason.isBlank()) {
             throw ApiException.validation("reason", "반출 요청 사유를 입력해 주세요.");
         }
-        AiExecutionEntity exec = executionRepository.findById(executionId)
-                .or(() -> executionRepository.findByRequestRef(executionId))
-                .orElseThrow(() -> ApiException.validation("executionId", "유효한 실행 ID를 지정해 주세요."));
+        AiExecutionEntity exec = ownExecution(actor.employeeId(), executionId);
 
         verifyBranchReaccess(actor, parseBranchCsv(exec.getBranchIdsCsv()), "sales".equals(exec.getIntentDomain()));
 
