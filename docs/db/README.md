@@ -9,6 +9,7 @@
 - [개발 DB 전환 방침과 순서](foundation-upgrade.md)
 - [전체 구축 SQL](schema-full.sql): 통합 V1과 이후 마이그레이션(현재 V6)을 적용한 일회용 MySQL에서 추출하고 복원 검증한 대체 설치 경로. 실제 Flyway 이력과 기준 권한 시드가 포함된다. 빈 DB에만 적용한다.
 - [ERD](erd.mmd): 적용된 DB의 전체 컬럼과 외래 키에서 생성한다. `flyway_schema_history`는 도표에서 제외한다.
+- [M9 집계 실행 계획과 인덱스](sales-aggregation-query-plans.md): 대표 데이터량에서의 매출·이용권·추세·원장 실행 계획, V10 인덱스의 전후 비교, 남은 전체 탐색의 이유(#89).
 - [당시 검토 초안](proposals/consolidated-v1/README.md): 채택 전의 검토 맥락이며 실행 정본이 아니다.
 
 ## 새 개발 DB 준비
