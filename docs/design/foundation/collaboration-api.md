@@ -12,6 +12,8 @@ Backend [#74](https://github.com/OpenStudyService/OpenStudy-Backend/issues/74)�
 
 2026-11-06: **팀 채팅을 서비스 범위에서 뺐다**([ADR-M10-002](../../db/ADR-M10-002.md) M10-D09·D10, SRS v1.14 POL-50). 아래 [채널](#채널fr-chat-0109-m7-d04d07)·[메시지](#메시지fr-chat-020407)·읽음·업무 카드 절은 구현된 동작의 기록으로 남는다. 이 operation들은 설정 플래그로 비활성화할 예정이며, `openapi.json`의 비활성 표시와 계약 테스트 갱신은 그 구현 이슈에서 함께 한다. 새 클라이언트는 이 operation을 쓰지 않는다. DM과 채팅 실시간 전송(M14)도 범위에서 빠졌다. 업무·시설·문의·공지 절은 바뀌지 않았다.
 
+2026-11-08: **팀 채팅 operation을 비활성화했다**([#167](https://github.com/OpenStudyService/OpenStudy-Backend/issues/167)). 플래그는 `openstudy.team-chat.enabled`(환경 변수 `OPENSTUDY_TEAM_CHAT_ENABLED`, 기본값 `false`)다. 꺼져 있으면 `/api/channels/**` 컨트롤러를 등록하지 않아 인증된 요청도 404(경로 없음)를 받는다. 미인증 요청은 그 전에 401이다. `openapi.json`의 채널·메시지·읽음·업무 카드 operation 15개는 `deprecated: true`, `x-feature-flag`, `x-disabled-by-default: true`로 표시했다. 직원 접근 축소 시 채널 참여 종료(M7-D07)는 플래그와 상관없이 계속 동작한다. 테이블과 `modules/chat` 코드는 그대로다(M10-D10).
+
 ## 제공 범위
 
 ### 업무

@@ -20,6 +20,8 @@ import com.openstudy.modules.employee.service.EmployeeAccountService;
  * guard the command already holds. The rule is evaluated again rather than inferred from the change, so a channel for
  * everyone ends only with the last active membership. Getting access back never rejoins anyone. A member list changed
  * here advances the channel version like any other change. DM rows stay out of it until M14 defines them.
+ * <p>This keeps running while team chat is off (#167): the remaining rows stay consistent with who still has access, so
+ * turning the flag back on never shows a channel to someone who lost access in the meantime.
  */
 @Component
 @RequiredArgsConstructor

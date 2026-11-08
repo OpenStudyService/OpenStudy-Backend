@@ -25,6 +25,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.context.TestPropertySource;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import com.openstudy.modules.branch.dto.Branch.WeeklyHours;
@@ -32,7 +33,11 @@ import com.openstudy.modules.branch.dto.BranchRequests;
 import com.openstudy.modules.branch.service.BranchService;
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Fixture and HTTP vocabulary of the channel tests: two branches, staff with every kind of relation to them. */
+/**
+ * Fixture and HTTP vocabulary of the channel tests: two branches, staff with every kind of relation to them. Team chat is
+ * off by default (#167), so the M7 behaviour is checked with the flag on.
+ */
+@TestPropertySource(properties = "openstudy.team-chat.enabled=true")
 abstract class ChannelTestSupport {
     static final String PASSWORD = "channel-test-password";
 
