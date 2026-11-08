@@ -15,17 +15,27 @@ public class MySqlTestConfiguration {
     public static final String MYSQL_IMAGE =
             "mysql@sha256:24989179f58856db763f418010c1169fecc944e3ec1ea7e921572d83eb070f70";
 
-    @Bean
+    /**
+     * One MySQL for the whole test JVM. Each distinct test configuration builds its own Spring context; with the
+     * container as a per-context bean every one of them (23 at the time) started a MySQL and re-ran the migrations, and
+     * all of them stayed up until the JVM exited, enough to lose connections when another suite ran alongside. Tests
+     * already share the database within a context and clean up their own rows, so sharing it across contexts changes
+     * nothing they rely on. Testcontainers' reaper removes it when the JVM ends.
+     */
+    private static final MySQLContainer SHARED = new MySQLContainer(DockerImageName.parse(MYSQL_IMAGE))
+            .withDatabaseName("openstudy_test")
+            .withUsername("openstudy_test")
+            .withPassword(UUID.randomUUID().toString())
+            .withUrlParam("connectionTimeZone", "UTC")
+            .withUrlParam("forceConnectionTimeZoneToSession", "true")
+            .withCommand("--character-set-server=utf8mb4",
+                    "--collation-server=utf8mb4_0900_ai_ci", "--default-time-zone=+00:00")
+            .withReuse(false);
+
+    /** No destroy method: closing one cached context must not stop the database the others still use. */
+    @Bean(destroyMethod = "")
     @ServiceConnection
     MySQLContainer mysqlContainer() {
-        return new MySQLContainer(DockerImageName.parse(MYSQL_IMAGE))
-                .withDatabaseName("openstudy_test")
-                .withUsername("openstudy_test")
-                .withPassword(UUID.randomUUID().toString())
-                .withUrlParam("connectionTimeZone", "UTC")
-                .withUrlParam("forceConnectionTimeZoneToSession", "true")
-                .withCommand("--character-set-server=utf8mb4",
-                        "--collation-server=utf8mb4_0900_ai_ci", "--default-time-zone=+00:00")
-                .withReuse(false);
+        return SHARED;
     }
 }

@@ -16,6 +16,9 @@ spring:
     jdbc:
       cleanup-cron: "-"
 openstudy:
+  security:
+    # Production cost is 12. Fixture hashing and logins at that cost took most of the suite's run time.
+    bcrypt-strength: 4
   auth:
     login-limit:
       source:
