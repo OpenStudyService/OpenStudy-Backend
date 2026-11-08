@@ -75,14 +75,15 @@ docker build --platform linux/amd64 \
 | `OPENSTUDY_AI_MODEL_MODE`, `DOMAINLENS_MODEL_MODE` | `playback` | 저장된 모델 응답을 재생한다. `live`는 `QWEN_API_KEY`가 있을 때만 켜진다 |
 | `QWEN_API_KEY` | 없음 | 넣는다면 `service_secret_parameters`(SSM SecureString)로만 넣는다 |
 | `QWEN_BASE_URL`, `QWEN_MODEL` | 코드 기본값 | `live`일 때만 쓴다 |
-| `DOMAINLENS_EMBEDDING_DIRECTORY` | `.models/koen-e5-tiny-q8` | 이미지에는 임베딩 모델이 **없다**. 기동은 되지만 AI 검색이 `NOT_READY`가 된다(기동 로그 WARN) |
+| `DOMAINLENS_EMBEDDING_DIRECTORY` | `.models/koen-e5-tiny-q8` | 이미지와 Git에는 임베딩 모델이 **없다**. Infra가 별도로 받아 마운트하고 컨테이너 안 경로를 지정한다([11절](#11-임베딩-모델)) |
 | `OPENSTUDY_AI_FIXED_AS_OF` | 빈 값 | 운영에서는 비워 둔다. 값이 있으면 AI 기준 시각이 고정된다 |
 | `OPENSTUDY_AI_RATE_LIMIT_MAX_CONCURRENT`, `..._MAX_PER_MINUTE` | 10, 120 | 사용자별 AI 요청 한도 |
 | `OPENSTUDY_INVITATIONMAIL_ENABLED`(`openstudy.invitation-mail.enabled`) | `false` | 켜려면 `SPRING_MAIL_*`, 발신 주소, 수락 URL이 함께 필요하다. 운영 SMTP 결정 전에는 켜지 않는다 |
 
 - **운영 AI는 아직 정해지지 않았다.**
   - 이 이미지 그대로 배포하면 자연어 분석은 재생 모드이고, 임베딩 모델도 없다.
-  - 실제 모델 연결, 모델 파일 배포 방식(이미지 포함 또는 볼륨), 키 관리는 [Backend #97](https://github.com/OpenStudyService/OpenStudy-Backend/issues/97)과 사용자 결정에 따른다.
+  - 실제 모델 연결과 키 관리는 [Backend #97](https://github.com/OpenStudyService/OpenStudy-Backend/issues/97)과 사용자 결정에 따른다.
+  - 임베딩 모델 파일은 2026-11-09 사용자 결정에 따라 Git·이미지에 넣지 않는다. Infra가 비공개 S3에 보관하고 배포 때 마운트한다([11절](#11-임베딩-모델)).
 - 설정 가져오기의 `.env`·`.env.qwen.local`은 선택 파일이다. 이미지에는 없고, 컨테이너에 마운트하지 않는다.
 
 ## 4. 요청 경로
@@ -247,3 +248,63 @@ docker compose --profile tools down -v
 - [ ] 앱 계정 생성·권한 부여, Flyway SQL 출처를 Backend 커밋으로 교체(Infra #1)
 - [ ] OWNER 초기화 실행 위치와 비밀값 전달 방법
 - [ ] 공개 HTTPS에서 `smoke.sh`와 브라우저로 쿠키·로그아웃·CSRF 확인 결과
+- [ ] 임베딩 모델: 사용자에게서 받은 파일을 비공개 S3에 보관하고, 배포 때 체크섬 확인 후 읽기 전용으로 마운트([11절](#11-임베딩-모델))
+
+## 11. 임베딩 모델
+
+AI 자연어 분석의 의미 검색은 로컬 ONNX 임베딩 모델 `koen-e5-tiny-q8`을 쓴다.
+
+**2026-11-09 결정**
+- 모델 파일은 Git(일반·LFS)과 이미지에 넣지 않는다.
+- 사용자가 모델 파일과 아래 전달 정보를 Infra 담당자에게 직접 넘긴다.
+- Infra는 모델을 비공개 S3에 보관하고 배포 때 사용한다.
+
+### 전달 정보
+
+| 항목 | 값 |
+| --- | --- |
+| 원본 | Hugging Face `exp-models/dragonkue-KoEn-E5-Tiny-ONNX`, 리비전 `5cf599a8cd6577f2f12a026130ad50132e472cfd` |
+| 원본 모델 | `intfloat/multilingual-e5-small`(MIT), `dragonkue/multilingual-e5-small-ko`(Apache-2.0) |
+| 라이선스 | Apache-2.0(ONNX 저장소). 재배포 시 라이선스 문구와 출처를 함께 둔다 |
+| 변환 | `model_quint8_x86_64.onnx`는 위 리비전에 없는 x86_64용 uint8 양자화본이다(그 리비전에는 arm64용 `model_qint8_arm64.onnx`만 있다). 변환에 쓴 스크립트(`scripts/download-embedding-model.py`)는 이 저장소에 없어 정확한 변환 옵션은 기록되어 있지 않다 |
+| 차원·최대 토큰 | 384, 512 |
+| 매니페스트 | 저장소 `config/models/koen-e5-tiny-q8-x86_64.json`과 같은 내용을 `manifest.json`으로 둔다 |
+| 대상 플랫폼 | `linux/amd64`(이미지와 같음). ARM JVM에서는 이 파일을 거부한다 |
+
+| 파일 | 크기(바이트) | SHA-256 |
+| --- | --- | --- |
+| `manifest.json` | 426 | `c1ef84e7200635659580ea2e057f0b6c4d2fe9f56b5bc80f4b4ccf3385450f98` |
+| `model_quint8_x86_64.onnx` | 38,275,821 | `ef00d6227284038a3338a92273ca0e89971f93f966ab5eabfd6a8fc0bea9459e` |
+| `tokenizer.json` | 2,931,715 | `a6dd38d692ac1caa6d5dbc195d92f1f978b5c74ec60e02ed15fdf04404742fe3` |
+
+- 매니페스트 안의 두 해시는 커밋된 `config/models/koen-e5-tiny-q8-x86_64.json`과 같다.
+- 앱은 기동할 때 이 두 해시로 파일을 다시 검증한다.
+- 모델을 바꾸면 매니페스트와 이 표를 함께 갱신한다.
+
+### 배포 절차
+
+1. S3에서 세 파일을 호스트의 한 디렉터리로 내려받는다(예: `/opt/openstudy/models/koen-e5-tiny-q8`).
+2. 위 SHA-256과 대조한다(`sha256sum -c`). 하나라도 다르면 마운트하지 않는다.
+3. 파일을 컨테이너 사용자(uid 10001)가 읽을 수 있게 둔다(예: `0644`, 디렉터리 `0755`).
+4. Service 컨테이너에 **읽기 전용**으로 마운트하고 `DOMAINLENS_EMBEDDING_DIRECTORY`에 컨테이너 안 경로를 준다.
+
+   ```text
+   volume: /opt/openstudy/models/koen-e5-tiny-q8 → /opt/openstudy/models/koen-e5-tiny-q8 (read-only)
+   DOMAINLENS_EMBEDDING_DIRECTORY=/opt/openstudy/models/koen-e5-tiny-q8
+   ```
+
+- **빈 디렉터리나 일부 파일만 있는 디렉터리를 마운트하지 않는다.**
+  - 디렉터리가 있으면 앱은 모델을 쓰려고 시도한다. 파일이 없거나 해시가 다르면 기동이 실패하고(종료 코드 1), ECS가 태스크를 계속 다시 시작한다.
+  - 모델을 준비하지 못했다면 마운트와 환경 변수를 모두 빼고 배포한다. 그러면 임베딩만 꺼진 채 기동한다.
+
+### 동작과 확인 방법
+
+| 상태 | 기동 | 기동 로그 | `GET /api/ai/catalog/readiness` |
+| --- | --- | --- | --- |
+| 모델 마운트 | 정상 | `Local embedding ready: JVM=linux-x86_64, model=model_quint8_x86_64.onnx, ... dimensions=384` | `ready: true`, `warnings: []` |
+| 모델 없음(마운트·환경 변수 없음) | 정상 | `WARN ... DomainLens embedding model not found at ...; AI retrieval is disabled until it is installed` | `ready: true`, `warnings`에 "임베딩 모델이 설치되지 않아 의미 검색 후보 없이 동작합니다." |
+| 빈 디렉터리 마운트 | **실패**(종료 코드 1) | `Local ONNX artifacts or runtime ...` | — |
+
+- 2026-11-09 로컬 HTTPS 구성에서 세 경우를 확인했다. 기동 시간은 모델이 있을 때 약 11초, 없을 때 약 8.5초였다.
+- 모델이 없어도 `ready`가 `true`인 것은 의도된 동작이다(#93). 임베딩은 의미 검색 후보만 보태므로 경고로만 알린다.
+- 준비 상태 API는 로그인이 필요하다. 배포 확인은 기동 로그나, 로그인한 사용자의 이 API 응답에서 `warnings`를 본다.
