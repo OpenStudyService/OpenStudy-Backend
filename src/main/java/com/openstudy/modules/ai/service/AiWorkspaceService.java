@@ -306,7 +306,7 @@ public class AiWorkspaceService {
         long started = System.nanoTime();
         OpenStudyAnalyses.PocExecutionResult result;
         try {
-            result = executeWithOverrides(saved.getAnalysisId(), decision.effectiveBranches(),
+            result = executeWithOverrides(actor.employeeId(), saved.getAnalysisId(), decision.effectiveBranches(),
                     saved.getRefundBasis(), saved.isZeroFillRequested());
         } catch (AccessDeniedException | IllegalArgumentException | IllegalStateException e) {
             return reopenedWithoutData(requestId, conversationId, "REFUSED", 422, "REOPEN_NOT_EXECUTABLE",
@@ -548,6 +548,7 @@ public class AiWorkspaceService {
 
         long execStart = System.nanoTime();
         OpenStudyAnalyses.PocExecutionResult pocResult = executeWithOverrides(
+                actor.employeeId(),
                 plan.analysisId(),
                 targetBranches,
                 plan.refundBasisOverride(),
@@ -680,7 +681,7 @@ public class AiWorkspaceService {
         if (!analyses.offers(saved.getAnalysisId())) {
             throw ApiException.unprocessable(ANALYSIS_UNAVAILABLE, ANALYSIS_UNAVAILABLE_MESSAGE);
         }
-        return executeWithOverrides(saved.getAnalysisId(), branches, saved.getRefundBasis(), saved.isZeroFillRequested());
+        return executeWithOverrides(actor.employeeId(), saved.getAnalysisId(), branches, saved.getRefundBasis(), saved.isZeroFillRequested());
     }
 
     // =========================================================================
@@ -913,7 +914,8 @@ public class AiWorkspaceService {
                 String pocCode = String.format("POC-%03d", i);
                 String analysisId = analyses.normalizeAnalysisId(pocCode);
                 var res = analyses.executeCase(pocCode,
-                        OpenStudyAnalyses.SINGLE_BRANCH.contains(analysisId) ? List.of(evaluated.getFirst()) : evaluated);
+                        OpenStudyAnalyses.SINGLE_BRANCH.contains(analysisId) ? List.of(evaluated.getFirst()) : evaluated,
+                        owner.employeeId());
                 boolean passed = res.envelope() != null && !res.envelope().datasets().isEmpty() && res.envelope().view() != null;
                 caseResults.add(Map.of(
                         "id", pocCode,
@@ -991,6 +993,7 @@ public class AiWorkspaceService {
     }
 
     private OpenStudyAnalyses.PocExecutionResult executeWithOverrides(
+            long requester,
             String analysisId,
             Set<Long> targetBranches,
             String refundBasisOverride,
@@ -998,13 +1001,13 @@ public class AiWorkspaceService {
     ) {
         if ("ORIGINAL_PAYMENT_DATE".equals(refundBasisOverride) && OpenStudyAnalyses.ID_POC_008.equals(analysisId)) {
             var period = clock.lastMonth();
-            var byPurpose = salesService.aggregateByPurpose(
+            var byPurpose = salesService.aggregateByPurpose(requester,
                     targetBranches,
                     period.startInclusive(),
                     period.endExclusive(),
                     RefundBasis.ORIGINAL_PAYMENT_DATE
             );
-            var base = analyses.executePoc008SalesByItemType(targetBranches);
+            var base = analyses.executePoc008SalesByItemType(targetBranches, requester);
             Map<String, Object> updatedSummary = new LinkedHashMap<>(base.summary());
             updatedSummary.put("refund_basis", "ORIGINAL_PAYMENT_DATE");
             updatedSummary.put("purpose_rows", byPurpose.purposeRows());
@@ -1020,7 +1023,7 @@ public class AiWorkspaceService {
             );
         }
         if (zeroFillOverrideRequested && OpenStudyAnalyses.ID_POC_007.equals(analysisId)) {
-            var base = analyses.executePoc007DailySalesTrend(targetBranches);
+            var base = analyses.executePoc007DailySalesTrend(targetBranches, requester);
             Map<String, Object> updatedSummary = new LinkedHashMap<>(base.summary());
             updatedSummary.put("zero_fill_policy_review", "M9/M10 공통 기준(ADR-M9-001 D05)에 따라 0원 일자 버킷을 유지하며 정책 검토 배지를 표시합니다.");
             return new OpenStudyAnalyses.PocExecutionResult(
@@ -1039,7 +1042,7 @@ public class AiWorkspaceService {
                     ? analyses.executePoc002HourlyCongestion(branchId)
                     : analyses.executePoc004RealtimeSeats(branchId);
         }
-        return analyses.executeCase(analysisId, targetBranches);
+        return analyses.executeCase(analysisId, targetBranches, requester);
     }
 
     /**
@@ -1067,7 +1070,7 @@ public class AiWorkspaceService {
         Set<Long> salesBranches = new LinkedHashSet<>(targetBranches);
         salesBranches.retainAll(actor.salesBranches());
         List<Map<String, Object>> legacyRows = salesQuestion && !salesBranches.isEmpty()
-                ? legacyRows(salesBranches, refundBasisOverride) : List.of();
+                ? legacyRows(actor.employeeId(), salesBranches, refundBasisOverride) : List.of();
 
 
         Map<String, Object> map = new LinkedHashMap<>();
@@ -1084,8 +1087,8 @@ public class AiWorkspaceService {
         return map;
     }
 
-    private List<Map<String, Object>> legacyRows(Set<Long> branches, String refundBasisOverride) {
-        var branchSummary = salesService.aggregateByBranch(
+    private List<Map<String, Object>> legacyRows(long requester, Set<Long> branches, String refundBasisOverride) {
+        var branchSummary = salesService.aggregateByBranch(requester,
                 branches,
                 clock.thisMonth().startInclusive(),
                 clock.thisMonth().endExclusive(),

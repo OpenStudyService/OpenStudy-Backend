@@ -87,16 +87,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             double sampledOccupancyPct
     ) {}
 
-    public record TopPassProductRow(
-            long productId,
-            String product,
-            long issuedUnits,
-            long refundedUnits,
-            long netUnits,
-            long approvedKrw,
-            long refundKrw,
-            long netKrw
-    ) {}
+    /** One ranked pass product, in M9's pass quantities (sold, refunded, net sold). */
+    public record TopPassProductRow(long productId, String product, long issuedUnits, long refundedUnits, long netUnits) {}
 
     public record RealtimeSeatSummary(
             long branchId,
@@ -290,10 +282,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                                 string("product"),
                                 integer("issued_units", "건"),
                                 integer("refunded_units", "건"),
-                                integer("net_units", "건"),
-                                krw("approved_krw"),
-                                krw("refund_krw"),
-                                krw("net_krw")
+                                integer("net_units", "건")
                         )
                 ),
                 true
@@ -527,7 +516,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
     public List<TypedDataset> executeAll(ExecutionPlan plan, UserContext user, Cancellation cancellation) {
         cancellation.check();
         Collection<Long> branches = extractBranchScope(user);
-        PocExecutionResult res = executeCase(plan.query().analysisId(), branches);
+        PocExecutionResult res = executeCase(plan.query().analysisId(), branches, Long.parseLong(user.subjectId()));
         cancellation.check();
         return res.envelope().datasets();
     }
@@ -589,21 +578,29 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
     public static final java.util.Set<String> REGISTERED = java.util.Set.of(ID_POC_001, ID_POC_002, ID_POC_003, ID_POC_004,
             ID_POC_005, ID_POC_006, ID_POC_007, ID_POC_008, ID_POC_009, ID_POC_010);
 
-    public PocExecutionResult executeCase(String caseOrAnalysisId, Collection<Long> branchScope) {
+    public PocExecutionResult executeCase(String caseOrAnalysisId, Collection<Long> branchScope, long requester) {
         String analysisId = resolveFromQuestion(caseOrAnalysisId).orElseGet(() -> normalizeAnalysisId(caseOrAnalysisId));
         return switch (analysisId) {
-            case ID_POC_001 -> executePoc001BranchSales(branchScope);
+            case ID_POC_001 -> executePoc001BranchSales(branchScope, requester);
             case ID_POC_002 -> executePoc002HourlyCongestion(singleBranch(branchScope));
-            case ID_POC_003 -> executePoc003Top5Passes(branchScope);
+            case ID_POC_003 -> executePoc003Top5Passes(branchScope, requester);
             case ID_POC_004 -> executePoc004RealtimeSeats(singleBranch(branchScope));
             case ID_POC_005 -> executePoc005WeeklyRoomReservations(branchScope);
             case ID_POC_006 -> executePoc006ExpiringPasses(branchScope);
-            case ID_POC_007 -> executePoc007DailySalesTrend(branchScope);
-            case ID_POC_008 -> executePoc008SalesByItemType(branchScope);
+            case ID_POC_007 -> executePoc007DailySalesTrend(branchScope, requester);
+            case ID_POC_008 -> executePoc008SalesByItemType(branchScope, requester);
             case ID_POC_009 -> executePoc009UrgentTasks(branchScope);
             case ID_POC_010 -> executePoc010WeeklyAttendance(branchScope);
             default -> throw new EngineException(EngineErrorCode.IR_UNSUPPORTED, "Unsupported analysis ID: " + caseOrAnalysisId);
         };
+    }
+
+    /** An analysis always names its branches; an empty scope is a caller error, never "every branch". */
+    static Collection<Long> requireBranches(Collection<Long> branchScope) {
+        if (branchScope == null || branchScope.isEmpty()) {
+            throw new IllegalArgumentException("An analysis needs its branches");
+        }
+        return branchScope;
     }
 
     /** A one-branch analysis needs exactly one branch; anything else is a caller error, never a default branch. */
@@ -621,11 +618,11 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
     /**
      * {@code POC-001}: "이번 달 지점별 매출을 비교해줘" ({@code 2026-11-01T00:00+09:00} ~ {@code 2026-11-03T00:00+09:00}).
      */
-    public PocExecutionResult executePoc001BranchSales(Collection<Long> branchScope) {
+    public PocExecutionResult executePoc001BranchSales(Collection<Long> branchScope, long requester) {
         var period = clock.thisMonth();
-        var processed = salesService.aggregateByBranch(
+        var processed = salesService.aggregateByBranch(requester,
                 branchScope, period.startInclusive(), period.endExclusive(), RefundBasis.REFUND_PROCESSED_AT);
-        var original = salesService.aggregateByBranch(
+        var original = salesService.aggregateByBranch(requester,
                 branchScope, period.startInclusive(), period.endExclusive(), RefundBasis.ORIGINAL_PAYMENT_DATE);
 
         Instant now = clock.asOf();
@@ -859,89 +856,16 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
     /**
      * {@code POC-003}: "지난달 가장 잘 팔린 이용권 TOP 5를 보여줘" ({@code 2026-10-01T00:00+09:00} ~ {@code 2026-11-01T00:00+09:00}).
      */
-    public PocExecutionResult executePoc003Top5Passes(Collection<Long> branchScope) {
+    public PocExecutionResult executePoc003Top5Passes(Collection<Long> branchScope, long requester) {
         var period = clock.lastMonth();
         Instant now = clock.asOf();
         var def = definitions.get(ID_POC_003);
-        Collection<Long> effectiveBranches = (branchScope == null || branchScope.isEmpty()) ? salesService.allBranchIds() : branchScope;
-
-        List<Object[]> paymentTuples = entityManager.createQuery(
-                        "SELECT p.id, p.productId, p.productNameSnapshot, p.amountKrw, p.status FROM Payment p "
-                                + "WHERE p.branchId IN :branchIds AND CAST(p.purpose AS string) = 'PASS' "
-                                + "AND p.createdAt >= :startInclusive AND p.createdAt < :endExclusive",
-                        Object[].class)
-                .setParameter("branchIds", effectiveBranches)
-                .setParameter("startInclusive", period.startInclusive())
-                .setParameter("endExclusive", period.endExclusive())
-                .getResultList();
-
-        List<Object[]> refundTuples = entityManager.createQuery(
-                        "SELECT p.productId, p.productNameSnapshot, r.amountKrw, p.status FROM Refund r, Payment p "
-                                + "WHERE p.id = r.paymentId AND p.branchId IN :branchIds AND CAST(p.purpose AS string) = 'PASS' "
-                                + "AND r.refundedAt >= :startInclusive AND r.refundedAt < :endExclusive",
-                        Object[].class)
-                .setParameter("branchIds", effectiveBranches)
-                .setParameter("startInclusive", period.startInclusive())
-                .setParameter("endExclusive", period.endExclusive())
-                .getResultList();
-
-        Map<Long, String> productNames = new LinkedHashMap<>();
-        // [0]=issuedUnits, [1]=refundedUnits, [2]=approvedKrw, [3]=refundKrw
-        Map<Long, long[]> productAcc = new LinkedHashMap<>();
-
-        for (Object[] tuple : paymentTuples) {
-            if (tuple[1] == null) continue;
-            long productId = ((Number) tuple[1]).longValue();
-            String productName = String.valueOf(tuple[2]);
-            long amountKrw = ((Number) tuple[3]).longValue();
-            String status = String.valueOf(tuple[4]);
-            if (SalesAggregationService.isApprovedTransaction(status)) {
-                productNames.putIfAbsent(productId, productName);
-                long[] acc = productAcc.computeIfAbsent(productId, k -> new long[4]);
-                acc[0] += 1;
-                acc[2] += amountKrw;
-            }
-        }
-
-        for (Object[] tuple : refundTuples) {
-            if (tuple[0] == null) continue;
-            long productId = ((Number) tuple[0]).longValue();
-            String productName = String.valueOf(tuple[1]);
-            long refundKrw = ((Number) tuple[2]).longValue();
-            String status = String.valueOf(tuple[3]);
-            if (SalesAggregationService.isApprovedTransaction(status)) {
-                productNames.putIfAbsent(productId, productName);
-                long[] acc = productAcc.computeIfAbsent(productId, k -> new long[4]);
-                acc[1] += 1;
-                acc[3] += refundKrw;
-            }
-        }
-
-        List<TopPassProductRow> allProducts = new ArrayList<>(productAcc.size());
-        for (var entry : productAcc.entrySet()) {
-            long productId = entry.getKey();
-            long[] acc = entry.getValue();
-            long issued = acc[0];
-            long refunded = acc[1];
-            long netUnits = issued - refunded;
-            long approvedKrw = acc[2];
-            long refundKrw = acc[3];
-            long netKrw = approvedKrw - refundKrw;
-            allProducts.add(new TopPassProductRow(
-                    productId,
-                    productNames.get(productId),
-                    issued,
-                    refunded,
-                    netUnits,
-                    approvedKrw,
-                    refundKrw,
-                    netKrw
-            ));
-        }
-
-        allProducts.sort(Comparator.comparingLong(TopPassProductRow::netUnits).reversed()
-                .thenComparingLong(TopPassProductRow::productId));
-        List<TopPassProductRow> top5 = allProducts.stream().limit(5).toList();
+        // GET /sales/passes/products with the same condition (#95, M10-D05): M9's ranking by net sold quantity.
+        List<TopPassProductRow> top5 = salesService.topPassProducts(requester, branchScope, period.startInclusive(),
+                period.endExclusive(), 5).stream()
+                .map(item -> new TopPassProductRow(Long.parseLong(item.productId()), item.productName(), item.soldQuantity(),
+                        item.refundedQuantity(), item.netSoldQuantity()))
+                .toList();
 
         List<Map<String, Object>> datasetRows = new ArrayList<>(top5.size());
         for (var r : top5) {
@@ -951,9 +875,6 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             row.put("issued_units", r.issuedUnits());
             row.put("refunded_units", r.refundedUnits());
             row.put("net_units", r.netUnits());
-            row.put("approved_krw", r.approvedKrw());
-            row.put("refund_krw", r.refundKrw());
-            row.put("net_krw", r.netKrw());
             datasetRows.add(row);
         }
 
@@ -968,14 +889,14 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                                 new ViewSpec.Ref("RANKED_BAR_CHART", COMPONENT_VERSION),
                                 "topProducts",
                                 Map.of("category", "product", "value", "net_units"),
-                                Map.of("title", "지난달 인기 이용권 TOP 5 (순판매 건수)", "unit", "건"),
+                                Map.of("title", "지난달 인기 이용권 TOP 5 (순판매 수량)", "unit", "개"),
                                 List.of()
                         ),
                         new ViewSpec.Component(
                                 "table",
                                 new ViewSpec.Ref("DATA_TABLE", COMPONENT_VERSION),
                                 "topProducts",
-                                Map.of("columns", List.of("product_id", "product", "issued_units", "refunded_units", "net_units", "approved_krw", "refund_krw", "net_krw")),
+                                Map.of("columns", List.of("product_id", "product", "issued_units", "refunded_units", "net_units")),
                                 Map.of("title", "이용권 상품별 판매·환불 상세"),
                                 List.of()
                         )
@@ -986,7 +907,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         var envelope = buildEnvelope("POC-003", datasets, view, null);
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("top5", top5);
-        summary.put("tie_break", "net_units DESC, product_id ASC");
+        summary.put("ranking", "M9 /sales/passes/products: netSoldQuantity DESC, competition rank");
         summary.put("only_purpose", "PASS");
 
         return new PocExecutionResult(
@@ -1123,7 +1044,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         var period = clock.thisWeek();
         Instant now = clock.asOf();
         var def = definitions.get(ID_POC_005);
-        Collection<Long> effectiveBranches = (branchScope == null || branchScope.isEmpty()) ? salesService.allBranchIds() : branchScope;
+        Collection<Long> effectiveBranches = requireBranches(branchScope);
 
         List<Object[]> branchTuples = entityManager.createQuery(
                         "SELECT b.id, b.name FROM Branch b WHERE b.id IN :branchIds ORDER BY b.id ASC",
@@ -1293,7 +1214,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         var period = clock.next7Days();
         Instant now = clock.asOf();
         var def = definitions.get(ID_POC_006);
-        Collection<Long> effectiveBranches = (branchScope == null || branchScope.isEmpty()) ? salesService.allBranchIds() : branchScope;
+        Collection<Long> effectiveBranches = requireBranches(branchScope);
 
         List<Object[]> branchTuples = entityManager.createQuery(
                         "SELECT b.id, b.name FROM Branch b WHERE b.id IN :branchIds ORDER BY b.id ASC",
@@ -1419,12 +1340,12 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
     /**
      * {@code POC-007}: "지난달 일별 매출 추이를 그래프로 보여줘" ({@code 2026-10-01} ~ {@code 2026-10-31}, 31 days zero-filled).
      */
-    public PocExecutionResult executePoc007DailySalesTrend(Collection<Long> branchScope) {
+    public PocExecutionResult executePoc007DailySalesTrend(Collection<Long> branchScope, long requester) {
         var period = clock.lastMonth();
         Instant now = clock.asOf();
         var def = definitions.get(ID_POC_007);
 
-        var trend = salesService.aggregateDailyTrend(
+        var trend = salesService.aggregateDailyTrend(requester,
                 branchScope,
                 period.startDateKst(),
                 period.endDateExclusiveKst(),
@@ -1499,12 +1420,12 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
     /**
      * {@code POC-008}: "지난달 이용권, 스터디룸, 사물함 중 어디서 매출이 가장 많이 나왔어?" ({@code 2026-10-01} ~ {@code 2026-11-01} KST).
      */
-    public PocExecutionResult executePoc008SalesByItemType(Collection<Long> branchScope) {
+    public PocExecutionResult executePoc008SalesByItemType(Collection<Long> branchScope, long requester) {
         var period = clock.lastMonth();
         Instant now = clock.asOf();
         var def = definitions.get(ID_POC_008);
 
-        var byPurpose = salesService.aggregateByPurpose(
+        var byPurpose = salesService.aggregateByPurpose(requester,
                 branchScope,
                 period.startInclusive(),
                 period.endExclusive(),
@@ -1584,7 +1505,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         var today = clock.today();
         Instant now = clock.asOf();
         var def = definitions.get(ID_POC_009);
-        Collection<Long> effectiveBranches = (branchScope == null || branchScope.isEmpty()) ? salesService.allBranchIds() : branchScope;
+        Collection<Long> effectiveBranches = requireBranches(branchScope);
 
         List<Object[]> branchTuples = entityManager.createQuery(
                         "SELECT b.id, b.name FROM Branch b WHERE b.id IN :branchIds ORDER BY b.id ASC",
@@ -1690,7 +1611,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         var period = clock.lastWeek();
         Instant now = clock.asOf();
         var def = definitions.get(ID_POC_010);
-        Collection<Long> effectiveBranches = (branchScope == null || branchScope.isEmpty()) ? salesService.allBranchIds() : branchScope;
+        Collection<Long> effectiveBranches = requireBranches(branchScope);
 
         List<Object[]> branchTuples = entityManager.createQuery(
                         "SELECT b.id, b.name FROM Branch b WHERE b.id IN :branchIds ORDER BY b.id ASC",

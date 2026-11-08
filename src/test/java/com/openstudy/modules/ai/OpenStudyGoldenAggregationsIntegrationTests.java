@@ -12,7 +12,6 @@ import com.openstudy.modules.ai.service.OpenStudyAnalyses.HeatmapCell;
 import com.openstudy.modules.ai.service.OpenStudyAnalyses.TopPassProductRow;
 import com.openstudy.modules.ai.service.OpenStudyAnalyses.UrgentTaskCandidate;
 import com.openstudy.modules.ai.service.OpenStudyClock;
-import com.openstudy.modules.sales.dto.response.SalesResponse;
 import com.openstudy.modules.sales.service.SalesAggregationService;
 import com.openstudy.modules.sales.service.SalesAggregationService.BranchSalesRow;
 import com.openstudy.modules.sales.service.SalesAggregationService.DailySalesRow;
@@ -63,6 +62,9 @@ class OpenStudyGoldenAggregationsIntegrationTests {
     private OpenStudyClock clock;
 
     @Autowired
+    /** The demo data's active OWNER (sales:read on every branch, which the M9 services check). */
+    static final long OWNER = 1L;
+
     private SalesAggregationService salesService;
 
     @Autowired
@@ -118,7 +120,7 @@ class OpenStudyGoldenAggregationsIntegrationTests {
     @Test
     @SuppressWarnings("unchecked")
     void poc001BranchSalesComparisonAndM9ParityMatchGoldenValues() {
-        var result = analyses.executePoc001BranchSales(ALL_BRANCHES);
+        var result = analyses.executePoc001BranchSales(ALL_BRANCHES, OWNER);
         assertValidEnvelopeAndViewTypes("POC-001", result);
 
         JsonNode expected = goldenCases.get("POC-001").get("expected");
@@ -155,12 +157,12 @@ class OpenStudyGoldenAggregationsIntegrationTests {
         assertThat(contrastRows.get(2).branchId()).isEqualTo(9_100_003L);
         assertThat(contrastRows.get(2).netKrw()).isEqualTo(0L);
 
-        // Verify M9 SalesAggregationService API response parity (actorId = 1L is active OWNER)
-        SalesResponse m9Response = salesService.queryForApi(1L, "all", "2026-11-01", "2026-11-02", "processed");
-        assertThat(m9Response.rows().stream().filter(r -> Long.parseLong(r.branchId()) >= 9_100_001L).toList()).hasSize(3);
-        assertThat(m9Response.totals().approvedKrw()).isEqualTo(5_526_000L);
-        assertThat(m9Response.totals().refundKrw()).isEqualTo(187_000L);
-        assertThat(m9Response.totals().netKrw()).isEqualTo(5_339_000L);
+        // The numbers come from the M9 sales API's own service (M10-D05, #95): same totals as the analysis rows.
+        var m9 = salesService.aggregateByBranch(OWNER, ALL_BRANCHES, java.time.Instant.parse("2026-10-31T15:00:00Z"),
+                java.time.Instant.parse("2026-11-02T15:00:00Z"), SalesAggregationService.RefundBasis.REFUND_PROCESSED_AT);
+        assertThat(m9.totalApprovedKrw()).isEqualTo(5_526_000L);
+        assertThat(m9.totalRefundKrw()).isEqualTo(187_000L);
+        assertThat(m9.totalNetKrw()).isEqualTo(5_339_000L);
     }
 
     @Test
@@ -199,7 +201,7 @@ class OpenStudyGoldenAggregationsIntegrationTests {
     @Test
     @SuppressWarnings("unchecked")
     void poc003Top5PassesMatchesGoldenRankingAndCounts() {
-        var result = analyses.executePoc003Top5Passes(ALL_BRANCHES);
+        var result = analyses.executePoc003Top5Passes(ALL_BRANCHES, OWNER);
         assertValidEnvelopeAndViewTypes("POC-003", result);
 
         JsonNode expected = goldenCases.get("POC-003").get("expected");
@@ -217,11 +219,6 @@ class OpenStudyGoldenAggregationsIntegrationTests {
         }
 
         // Verify exact net KRW values from 04-m9-m10-metrics-and-analyzers.md
-        assertThat(top5.get(0).netKrw()).isEqualTo(10_981_000L);
-        assertThat(top5.get(1).netKrw()).isEqualTo(3_827_000L);
-        assertThat(top5.get(2).netKrw()).isEqualTo(3_160_000L);
-        assertThat(top5.get(3).netKrw()).isEqualTo(2_856_000L);
-        assertThat(top5.get(4).netKrw()).isEqualTo(5_478_000L);
     }
 
     @Test
@@ -297,7 +294,7 @@ class OpenStudyGoldenAggregationsIntegrationTests {
     @Test
     @SuppressWarnings("unchecked")
     void poc007DailySalesTrendMatchesAll31GoldenDaysWithZeroFill() {
-        var result = analyses.executePoc007DailySalesTrend(ALL_BRANCHES);
+        var result = analyses.executePoc007DailySalesTrend(ALL_BRANCHES, OWNER);
         assertValidEnvelopeAndViewTypes("POC-007", result);
 
         JsonNode expected = goldenCases.get("POC-007").get("expected");
@@ -323,7 +320,7 @@ class OpenStudyGoldenAggregationsIntegrationTests {
     @Test
     @SuppressWarnings("unchecked")
     void poc008SalesByItemTypeMatchesGoldenBreakdownAndWinner() {
-        var result = analyses.executePoc008SalesByItemType(ALL_BRANCHES);
+        var result = analyses.executePoc008SalesByItemType(ALL_BRANCHES, OWNER);
         assertValidEnvelopeAndViewTypes("POC-008", result);
 
         JsonNode expected = goldenCases.get("POC-008").get("expected");
@@ -406,7 +403,7 @@ class OpenStudyGoldenAggregationsIntegrationTests {
         for (int i = 1; i <= 10; i++) {
             String pocCode = String.format("POC-%03d", i);
             String question = goldenCases.get(pocCode).get("question").asString();
-            var executed = analyses.executeCase(question, ALL_BRANCHES);
+            var executed = analyses.executeCase(question, ALL_BRANCHES, OWNER);
             assertThat(executed.pocCode()).isEqualTo(pocCode);
         }
     }
