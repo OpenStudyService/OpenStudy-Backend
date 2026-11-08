@@ -83,7 +83,7 @@ class AiContractTests {
                 "/ai/evaluation/suites", "/ai/evaluation/run")) {
             assertThat(spec.at("/paths/" + path.replace("~", "~0").replace("/", "~1")).isMissingNode()).as(path).isTrue();
         }
-        assertThat(contract()).contains("폐지 예정", "/api/ai/records", "/api/ai/approvals", "/api/ai/traces", "/api/ai/evaluation");
+        assertThat(contract()).contains("2026-11-08에 서버에서 지웠다", "/api/ai/records", "/api/ai/approvals", "/api/ai/traces", "/api/ai/evaluation");
     }
 
     /** Every published route is served by the controller, so the contract cannot drift from the code. */
@@ -115,13 +115,12 @@ class AiContractTests {
         assertThat(doc).contains("모델을 호출하지 않는다", "결과 행·합계·건수는 저장하지 않는다", "UNSUPPORTED_MODIFICATION_INTENT");
     }
 
-    /** M10-D06 and #182: the older result shape is deprecated and its sales rows are documented as permission-bound. */
-    @Test void theOlderResultShapeIsDeprecatedAndItsSalesRowsArePermissionBound() throws Exception {
-        var legacy = spec.at("/components/schemas/AiLegacyExecution");
-        assertThat(legacy.get("deprecated").asBoolean()).isTrue();
-        assertThat(legacy.get("description").asString()).contains("sales:read", "#182");
-        assertThat(spec.at("/components/schemas/AiQueryResponse/properties/legacyExecution/$ref").asString()).endsWith("/AiLegacyExecution");
-        assertThat(contract()).contains("매출 질문일 때 요청자가 `sales:read`를 가진 지점만");
+    /** Frontend #84 moved to envelope and viewSpec, so the older result shape is gone from the contract. */
+    @Test void theOlderResultShapeIsGone() throws Exception {
+        assertThat(spec.at("/components/schemas/AiLegacyExecution").isMissingNode()).isTrue();
+        assertThat(spec.at("/components/schemas/AiQueryResponse/properties/legacyExecution").isMissingNode()).isTrue();
+        assertThat(spec.at("/components/schemas/AiExecution").toString()).doesNotContain("\"rows\"", "AiLegacyExecution");
+        assertThat(contract()).contains("옛 경로와 옛 형식 결과는 2026-11-08에 지웠다");
     }
 
     /** ADR-COM-001: a question is one request and one response; nothing streams. */

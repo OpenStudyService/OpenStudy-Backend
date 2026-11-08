@@ -23,7 +23,7 @@ Backend [#92](https://github.com/OpenStudyService/OpenStudy-Backend/issues/92)�
 
 ### 계약에 넣지 않은 것(2026-11-08 사용자 결정)
 
-- **옛 경로**: `/api/conversations`, `/api/conversations/{id}/requests`, `/api/requests/{id}/cancel`, `/api/executions/{id}`, `/api/catalog/readiness`는 위 `/api/ai/*`와 같은 동작이다. Frontend가 일부를 쓰고 있어 서버에는 남기되 **폐지 예정**이다. Frontend가 `/api/ai/*`로 옮긴 뒤 별도 이슈에서 지운다. OpenAPI에는 넣지 않는다.
+- **옛 경로**: `/api/conversations`, `/api/conversations/{id}/requests`, `/api/executions/{id}`, `/api/catalog/readiness`, `/api/requests/{id}/cancel`은 `/api/ai/*`와 같은 동작의 이식 경로였다. Frontend가 `/api/ai/*`로 옮긴 뒤(Frontend #84) 2026-11-08에 서버에서 지웠다. 이제 404다.
 - **이식된 부가 기능**: 업무 기록(`/api/ai/records`), CSV 반출 승인(`/api/ai/approvals`), 진단 로그(`/api/ai/traces`), 품질 평가(`/api/ai/evaluation`)는 서버에 있지만 이 계약 범위가 아니다. 권한 기준이 확정되지 않았다. M15(#124·#127)와 운영 범위에서 계약한다.
 - **SSE·상태 polling**: ADR-COM-001 COM-D08에 따라 없다. 질문은 한 번의 요청·응답으로 끝나고, 화면은 사용자가 요청할 때 다시 조회한다.
 
@@ -188,12 +188,9 @@ Backend [#92](https://github.com/OpenStudyService/OpenStudy-Backend/issues/92)�
 - 한 결과 최대 1,000행, 표 페이지 50행, 차트 상위 20개 항목, 기간 366일 이하
 - 상한에 걸리면 `truncation{isTruncated, warningCode(ROW_LIMIT_CLAMPED), message}`로 알린다.
 
-### 옛 형식 결과(폐지 예정)
+### 옛 형식 결과(삭제됨)
 
-질문 응답의 `legacyExecution`과 실행 다시 조회의 `rows`·`viewSpec`·`start`·`end` 등은 첫 AI 화면이 쓰던 형식이다.
-
-- `rows`는 지점별 매출이며, **매출 질문일 때 요청자가 `sales:read`를 가진 지점만** 채운다(#182). 그 외 질문은 빈 목록이다.
-- 새 화면은 `envelope`·`viewSpec`만 쓴다. Frontend가 옮긴 뒤 제거한다.
+옛 경로와 옛 형식 결과는 2026-11-08에 지웠다. 질문 응답의 `legacyExecution`과, 실행 다시 조회의 `rows`·`viewSpec`·`start`·`end`·`currency`·`timeZone`은 첫 AI 화면이 쓰던 형식이었다. 결과는 `envelope`(데이터셋·기준 시각)와 `viewSpec`으로만 받는다. 실행 다시 조회는 저장된 질문의 조건(`refundBasis`)과 상태를 함께 준다.
 
 ## 명세 생성 포트(M10-D01)
 
@@ -212,7 +209,6 @@ Backend [#92](https://github.com/OpenStudyService/OpenStudy-Backend/issues/92)�
 
 ## 남은 작업
 
-- 옛 경로와 옛 형식 결과 제거(Frontend가 `/api/ai/*`·`envelope`로 옮긴 뒤)
 - 업무 기록·CSV 반출·진단 로그·품질 평가 계약(M15·운영)
 - 빈도 제한 값 확정(M10-D02)
 - 실제 엔진 연동과 호환성 검증(#97, NFR-OPS-07)

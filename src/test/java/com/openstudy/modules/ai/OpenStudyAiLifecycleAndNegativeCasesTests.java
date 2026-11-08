@@ -283,9 +283,8 @@ class OpenStudyAiLifecycleAndNegativeCasesTests {
         Map<String, Object> execContract = controller.getExecution(ownerAuth, executionId);
         assertThat(execContract.get("id")).isEqualTo(executionId);
         assertThat(execContract.get("status")).isEqualTo("READY");
-        assertThat(execContract.get("currency")).isEqualTo("KRW");
-        assertThat(execContract.get("timeZone")).isEqualTo("Asia/Seoul");
-        assertThat((List<?>) execContract.get("rows")).hasSize(3);
+        assertThat(execContract.get("envelope")).isNotNull();
+        assertThat(execContract).doesNotContainKeys("rows", "viewSpec", "currency", "timeZone");
 
         // 3. Work Records creation, listing, and permission re-verification on reopen
         Map<String, Object> savedRecord = controller.createWorkRecord(

@@ -111,8 +111,7 @@ public class AiWorkspaceService {
             List<OpenStudyPlaybackGateway.ClarificationOption> clarificationOptions,
             List<StageSpan> stages,
             List<OpenStudyPlaybackGateway.RetrievalCandidate> retrievedCandidates,
-            Map<String, Object> securityGate,
-            Map<String, Object> legacyExecution
+            Map<String, Object> securityGate
     ) {}
 
     private final OpenStudyUserContextResolver userResolver;
@@ -324,7 +323,7 @@ public class AiWorkspaceService {
                 result.pocCode(), result.analysisId(), saved.getIntentDomain(), result.semanticStatus(),
                 playbackGateway.buildQuerySpec(saved.getAnalysisId()), result.envelope().view(), result.envelope(),
                 result.summary(), OpenStudyPlaybackGateway.TruncationInfo.defaultUntruncated(), List.of(), stages,
-                List.of(), Map.of("reopened", true), null);
+                List.of(), Map.of("reopened", true));
     }
 
     /** #96: an optional client key; a malformed one is a validation error rather than silently ignored. */
@@ -348,7 +347,7 @@ public class AiWorkspaceService {
                 response.message(), response.pocCode(), response.analysisId(), response.intentDomain(),
                 response.semanticStatus(), response.querySpec(), response.viewSpec(), response.envelope(), response.summary(),
                 response.truncation(), response.clarificationOptions(), response.stages(), response.retrievedCandidates(),
-                Map.of("replayed", true), null);
+                Map.of("replayed", true));
     }
 
     /** #96: the execution a lost race already saved for this key, for the controller's duplicate-key path. */
@@ -368,7 +367,7 @@ public class AiWorkspaceService {
                 requestId, null, conversationId, null, status, httpStatus, errorCode, resultCategory, "REOPEN", message,
                 saved.getPocCode(), saved.getAnalysisId(), saved.getIntentDomain(), null, null, null, null, Map.of(),
                 OpenStudyPlaybackGateway.TruncationInfo.defaultUntruncated(), List.of(), List.of(), List.of(),
-                Map.of("reopened", true), null);
+                Map.of("reopened", true));
     }
 
     /**
@@ -398,7 +397,7 @@ public class AiWorkspaceService {
                     request == null ? null : request.conversationId(), null, "NOT_READY", 503, AI_NOT_READY, AI_NOT_READY,
                     "503", AI_NOT_READY_MESSAGE, null, null, null, null, null, null, null, Map.of(),
                     OpenStudyPlaybackGateway.TruncationInfo.defaultUntruncated(), List.of(), List.of(), List.of(),
-                    Map.of("ready", false), null);
+                    Map.of("ready", false));
         }
 
         long startNanos = System.nanoTime();
@@ -495,9 +494,7 @@ public class AiWorkspaceService {
                     plan.clarificationOptions(),
                     stages,
                     plan.retrievedCandidates(),
-                    securityGate,
-                    null
-            );
+                    securityGate);
         }
 
         // Resolve target branches
@@ -530,7 +527,7 @@ public class AiWorkspaceService {
             );
             return new AiQueryResponse(requestId, executionId, convId, traceId, "CLARIFICATION", 200, "BRANCH_REQUIRED",
                     "CLARIFICATION", "QUESTION", message, null, plan.analysisId(), plan.intentDomain(), null, null, null, null,
-                    Map.of(), plan.truncation(), options, stages, plan.retrievedCandidates(), securityGate, null);
+                    Map.of(), plan.truncation(), options, stages, plan.retrievedCandidates(), securityGate);
         }
 
         var querySpec = playbackGateway.buildQuerySpec(plan.analysisId());
@@ -560,14 +557,6 @@ public class AiWorkspaceService {
         stages.add(new StageSpan("completed", "ViewSpec 바인딩 및 결과 검증", "COMPLETED", 2L,
                 "컴포넌트: " + pocResult.expectedViewTypes()));
 
-        Map<String, Object> legacyExecution = buildLegacyExecutionContract(
-                executionId,
-                pocResult,
-                targetBranches,
-                plan.refundBasisOverride(),
-                actor,
-                "sales".equals(plan.intentDomain())
-        );
 
         long totalMs = Math.max(5L, Duration.ofNanos(System.nanoTime() - startNanos).toMillis());
         persistExecutionAndTrace(
@@ -606,9 +595,7 @@ public class AiWorkspaceService {
                 List.of(),
                 stages,
                 plan.retrievedCandidates(),
-                securityGate,
-                legacyExecution
-        );
+                securityGate);
     }
 
     @Transactional
@@ -639,11 +626,11 @@ public class AiWorkspaceService {
         var actor = userResolver.resolve(auth, null);
         AiExecutionEntity entity = ownExecution(actor.employeeId(), executionId);
 
-        Set<Long> branches = parseBranchCsv(entity.getBranchIdsCsv());
         var rerun = rerunSaved(actor, entity);
-        Map<String, Object> result = new LinkedHashMap<>(
-                buildLegacyExecutionContract(entity.getId(), rerun, branches, entity.getRefundBasis(), actor,
-                "sales".equals(entity.getIntentDomain())));
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("status", entity.getStatus());
+        // The saved question's condition (#168): processed (default) or original payment date.
+        result.put("refundBasis", "ORIGINAL_PAYMENT_DATE".equals(entity.getRefundBasis()) ? "original" : "processed");
         result.put("id", entity.getId());
         result.put("requestId", entity.getRequestRef());
         result.put("conversationId", entity.getConversationId());
@@ -1043,69 +1030,6 @@ public class AiWorkspaceService {
                     : analyses.executePoc004RealtimeSeats(branchId);
         }
         return analyses.executeCase(analysisId, targetBranches, requester);
-    }
-
-    /**
-     * The older result shape the first AI screen still reads. Its rows are per-branch sales figures, so they are only
-     * filled for a sales question, which already required sales:read on every branch (M10-D06), and only for branches
-     * the employee may read sales of. Any other question gets no rows: before this, a seat or pass question returned the
-     * branches' sales to an employee without sales:read.
-     */
-    private Map<String, Object> buildLegacyExecutionContract(
-            String executionId,
-            OpenStudyAnalyses.PocExecutionResult pocResult,
-            Set<Long> targetBranches,
-            String refundBasisOverride,
-            OpenStudyUserContextResolver.ResolvedActor actor,
-            boolean salesQuestion
-    ) {
-        String component = "bar";
-        if (pocResult.expectedViewTypes().contains("LINE_CHART")) {
-            component = "line";
-        } else if (!pocResult.expectedViewTypes().contains("BAR_CHART")
-                && !pocResult.expectedViewTypes().contains("RANKED_BAR_CHART")) {
-            component = "table";
-        }
-
-        Set<Long> salesBranches = new LinkedHashSet<>(targetBranches);
-        salesBranches.retainAll(actor.salesBranches());
-        List<Map<String, Object>> legacyRows = salesQuestion && !salesBranches.isEmpty()
-                ? legacyRows(actor.employeeId(), salesBranches, refundBasisOverride) : List.of();
-
-
-        Map<String, Object> map = new LinkedHashMap<>();
-        map.put("id", executionId);
-        map.put("status", "READY");
-        map.put("asOf", clock.asOfOffsetKst().toString());
-        map.put("start", clock.thisMonth().startDateKst().toString());
-        map.put("end", clock.thisMonth().endDateExclusiveKst().toString());
-        map.put("currency", "KRW");
-        map.put("timeZone", "Asia/Seoul");
-        map.put("refundBasis", "ORIGINAL_PAYMENT_DATE".equals(refundBasisOverride) ? "original" : "processed");
-        map.put("viewSpec", Map.of("component", component, "title", pocResult.question()));
-        map.put("rows", legacyRows);
-        return map;
-    }
-
-    private List<Map<String, Object>> legacyRows(long requester, Set<Long> branches, String refundBasisOverride) {
-        var branchSummary = salesService.aggregateByBranch(requester,
-                branches,
-                clock.thisMonth().startInclusive(),
-                clock.thisMonth().endExclusive(),
-                "ORIGINAL_PAYMENT_DATE".equals(refundBasisOverride) ? RefundBasis.ORIGINAL_PAYMENT_DATE : RefundBasis.REFUND_PROCESSED_AT
-        );
-
-        return branchSummary.rows().stream()
-                .map(r -> {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("branchId", Long.toString(r.branchId()));
-                    m.put("branch", r.branchName());
-                    m.put("approved", r.approvedKrw());
-                    m.put("refunds", r.refundKrw());
-                    m.put("net", r.netKrw());
-                    return m;
-                })
-                .toList();
     }
 
     private void persistExecutionAndTrace(
