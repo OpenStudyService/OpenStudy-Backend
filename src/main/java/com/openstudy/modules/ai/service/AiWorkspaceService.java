@@ -467,7 +467,9 @@ public class AiWorkspaceService {
                 executionId,
                 pocResult,
                 targetBranches,
-                plan.refundBasisOverride()
+                plan.refundBasisOverride(),
+                actor,
+                "sales".equals(plan.intentDomain())
         );
 
         long totalMs = Math.max(5L, Duration.ofNanos(System.nanoTime() - startNanos).toMillis());
@@ -543,7 +545,8 @@ public class AiWorkspaceService {
         Set<Long> branches = parseBranchCsv(entity.getBranchIdsCsv());
         var rerun = rerunSaved(actor, entity);
         Map<String, Object> result = new LinkedHashMap<>(
-                buildLegacyExecutionContract(entity.getId(), rerun, branches, entity.getRefundBasis()));
+                buildLegacyExecutionContract(entity.getId(), rerun, branches, entity.getRefundBasis(), actor,
+                "sales".equals(entity.getIntentDomain())));
         result.put("id", entity.getId());
         result.put("requestId", entity.getRequestRef());
         result.put("conversationId", entity.getConversationId());
@@ -929,11 +932,19 @@ public class AiWorkspaceService {
         return analyses.executeCase(analysisId, targetBranches);
     }
 
+    /**
+     * The older result shape the first AI screen still reads. Its rows are per-branch sales figures, so they are only
+     * filled for a sales question, which already required sales:read on every branch (M10-D06), and only for branches
+     * the employee may read sales of. Any other question gets no rows: before this, a seat or pass question returned the
+     * branches' sales to an employee without sales:read.
+     */
     private Map<String, Object> buildLegacyExecutionContract(
             String executionId,
             OpenStudyAnalyses.PocExecutionResult pocResult,
             Set<Long> targetBranches,
-            String refundBasisOverride
+            String refundBasisOverride,
+            OpenStudyUserContextResolver.ResolvedActor actor,
+            boolean salesQuestion
     ) {
         String component = "bar";
         if (pocResult.expectedViewTypes().contains("LINE_CHART")) {
@@ -943,24 +954,11 @@ public class AiWorkspaceService {
             component = "table";
         }
 
-        var branchSummary = salesService.aggregateByBranch(
-                targetBranches,
-                clock.thisMonth().startInclusive(),
-                clock.thisMonth().endExclusive(),
-                "ORIGINAL_PAYMENT_DATE".equals(refundBasisOverride) ? RefundBasis.ORIGINAL_PAYMENT_DATE : RefundBasis.REFUND_PROCESSED_AT
-        );
+        Set<Long> salesBranches = new LinkedHashSet<>(targetBranches);
+        salesBranches.retainAll(actor.salesBranches());
+        List<Map<String, Object>> legacyRows = salesQuestion && !salesBranches.isEmpty()
+                ? legacyRows(salesBranches, refundBasisOverride) : List.of();
 
-        List<Map<String, Object>> legacyRows = branchSummary.rows().stream()
-                .map(r -> {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("branchId", Long.toString(r.branchId()));
-                    m.put("branch", r.branchName());
-                    m.put("approved", r.approvedKrw());
-                    m.put("refunds", r.refundKrw());
-                    m.put("net", r.netKrw());
-                    return m;
-                })
-                .toList();
 
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("id", executionId);
@@ -974,6 +972,27 @@ public class AiWorkspaceService {
         map.put("viewSpec", Map.of("component", component, "title", pocResult.question()));
         map.put("rows", legacyRows);
         return map;
+    }
+
+    private List<Map<String, Object>> legacyRows(Set<Long> branches, String refundBasisOverride) {
+        var branchSummary = salesService.aggregateByBranch(
+                branches,
+                clock.thisMonth().startInclusive(),
+                clock.thisMonth().endExclusive(),
+                "ORIGINAL_PAYMENT_DATE".equals(refundBasisOverride) ? RefundBasis.ORIGINAL_PAYMENT_DATE : RefundBasis.REFUND_PROCESSED_AT
+        );
+
+        return branchSummary.rows().stream()
+                .map(r -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("branchId", Long.toString(r.branchId()));
+                    m.put("branch", r.branchName());
+                    m.put("approved", r.approvedKrw());
+                    m.put("refunds", r.refundKrw());
+                    m.put("net", r.netKrw());
+                    return m;
+                })
+                .toList();
     }
 
     private void persistExecutionAndTrace(
