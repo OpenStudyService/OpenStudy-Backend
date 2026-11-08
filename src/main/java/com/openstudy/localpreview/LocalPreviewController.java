@@ -27,7 +27,6 @@ import org.springframework.web.server.ResponseStatusException;
 public class LocalPreviewController {
     private static final List<String> LOOKUPS = List.of("branches", "employees", "members", "products", "passes", "rooms",
             "seats", "shifts", "attendance", "channels");
-    private static final List<String> HOME = List.of("tasks", "seats", "facilities", "inquiries", "notices", "shifts", "messages");
     private final LocalPreviewData preview;
 
     public LocalPreviewController(LocalPreviewData preview) {
@@ -43,14 +42,7 @@ public class LocalPreviewController {
         return result;
     }
 
-    @GetMapping("/api/home")
-    public Map<String, Object> home(Authentication auth, @RequestParam(defaultValue = "all") String scope) {
-        var snapshot = preview.snapshot(Long.parseLong(auth.getName()), scope);
-        Map<String, Object> result = new LinkedHashMap<>();
-        HOME.forEach(key -> result.put(key, snapshot.get(key)));
-        return result;
-    }
-
+    // #92 retired the sample /api/home: the home reads the operational GET /api/home/summary (#90, Frontend #31).
     // #84 retired the sample /api/attendance list: attendance is read from /api/attendance-records and /api/me/attendance/current.
     @GetMapping("/api/{resource:products|members|employees|branches|passes|payments|reservations|usage|invitations|corrections|leaveGrants|leaveRequests|substitutions|audit}")
     public PageResponse<Map<String, Object>> list(Authentication auth, @PathVariable String resource,

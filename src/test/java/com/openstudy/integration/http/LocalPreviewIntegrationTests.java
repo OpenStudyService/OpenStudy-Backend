@@ -75,7 +75,7 @@ class LocalPreviewIntegrationTests {
     }
 
     @Test
-    void homeAndLookupsContainConsistentSampleDataAfterRealLogin() throws Exception {
+    void lookupsContainConsistentSampleDataAndTheRetiredHomeSampleIsGone() throws Exception {
         var me = json.readTree(get("/api/me").body());
         assertThat(me.get("branches").size()).isEqualTo(2);
         var lookups = get("/api/local-preview/lookups?scope=all");
@@ -85,13 +85,8 @@ class LocalPreviewIntegrationTests {
         assertThat(lookupData.get("branches").size()).isEqualTo(2);
         assertThat(lookupData.get("employees").size()).isEqualTo(3);
         assertThat(lookupData.get("seats").size()).isEqualTo(24);
-        var homeResponse = get("/api/home?scope=all");
-        assertThat(homeResponse.statusCode()).isEqualTo(200);
-        var home = json.readTree(homeResponse.body());
-        assertThat(home.get("tasks").size()).isEqualTo(6);
-        assertThat(home.get("seats").size()).isEqualTo(24);
-        assertThat(home.get("notices").size()).isEqualTo(2);
-        assertThat(home.get("shifts").size()).isEqualTo(2);
+        // #92: the home reads GET /api/home/summary; the sample /api/home is gone in the local profile too.
+        assertThat(get("/api/home?scope=all").statusCode()).isEqualTo(404);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM work_tasks", Integer.class)).isZero();
         try (var anonymous = HttpClient.newHttpClient()) {
             assertThat(anonymous.send(request("/api/lookups").GET().build(), HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(401);
@@ -101,10 +96,10 @@ class LocalPreviewIntegrationTests {
     @Test
     void scopesPagesAndDetailsCannotAccessUnauthorizedBranches() throws Exception {
         String branch = json.readTree(get("/api/me").body()).at("/branches/0/id").asString();
-        var scoped = json.readTree(get("/api/home?scope=" + branch).body());
+        var scoped = json.readTree(get("/api/local-preview/lookups?scope=" + branch).body());
         assertThat(scoped.get("seats").size()).isEqualTo(12);
         for (var seat : scoped.get("seats")) assertThat(seat.get("branchId").asString()).isEqualTo(branch);
-        assertThat(get("/api/home?scope=999999999").statusCode()).isEqualTo(403);
+        assertThat(get("/api/local-preview/lookups?scope=999999999").statusCode()).isEqualTo(403);
         var page = json.readTree(get("/api/members?scope=" + branch + "&page=1&pageSize=5").body());
         assertThat(page.at("/meta/total").asInt()).isEqualTo(1);
         assertThat(page.get("items").size()).isEqualTo(1);
@@ -123,15 +118,12 @@ class LocalPreviewIntegrationTests {
         jdbc.update("UPDATE employees SET global_role='EMPLOYEE' WHERE id=?", employeeId);
         jdbc.update("INSERT INTO branch_memberships (employee_id,branch_id,role,status) VALUES (?,?,'STAFF','ACTIVE')",
                 employeeId, Long.parseLong(branch));
-        var home = get("/api/home?scope=" + branch);
-        assertThat(home.statusCode()).isEqualTo(200);
-        var homeData = json.readTree(home.body());
-        assertThat(homeData.get("seats").size()).isEqualTo(12);
-        for (var seat : homeData.get("seats")) assertThat(seat.get("branchId").asString()).isEqualTo(branch);
         var lookups = get("/api/local-preview/lookups?scope=" + branch);
         assertThat(lookups.statusCode()).isEqualTo(200);
-        assertThat(json.readTree(lookups.body()).get("employees").size()).isZero();
-        assertThat(get("/api/home?scope=" + other).statusCode()).isEqualTo(403);
+        var lookupData = json.readTree(lookups.body());
+        assertThat(lookupData.get("seats").size()).isEqualTo(12);
+        for (var seat : lookupData.get("seats")) assertThat(seat.get("branchId").asString()).isEqualTo(branch);
+        assertThat(lookupData.get("employees").size()).isZero();
         assertThat(get("/api/local-preview/lookups?scope=" + other).statusCode()).isEqualTo(403);
     }
 

@@ -18,6 +18,8 @@
 
 2026-11-05 추가: Issue #86의 M9 정형 집계(매출·지점 비교·이용권 판매량·상품 순위·추세)·최소 원장·운영 홈 요약 API는 [정형 집계 API 계약](aggregation-api.md)과 OpenAPI `0.1.11-m9-aggregation`의 설계 계약(`design-target`)을 따른다. 정책은 [ADR-M9-001](../../db/ADR-M9-001.md)이며 구현은 매출·지점 비교·최소 원장 #87, 판매량·순위·추세 #88, 홈 요약 #90, 실행 계획 검토는 #89에서 진행한다. 지표 정의는 OpenAPI 최상위 `x-metric-definitions`에 있고 M10이 같은 정의를 쓴다. 스키마 변경은 없다.
 
+2026-11-08 추가: Issue #92의 M10 자연어 분석(AI 채팅) API는 [자연어 분석 API 계약](nl-analysis-api.md)과 OpenAPI `0.1.12-m10-ai-chat`을 따른다. 이미 구현된 operation 10개(`/ai/*`)를 계약으로 정리했다. 정책은 [ADR-M10-001](../../db/ADR-M10-001.md)·[ADR-M10-002](../../db/ADR-M10-002.md)이며 상태 전달은 SSE 없이 한 번의 요청·응답이다([ADR-COM-001](../../db/ADR-COM-001.md)). 스키마 변경은 없다.
+
 2026-10-27 추가: Issue #15의 초대 미리보기·신규/기존 계정 수락·최종 승인은 [초대 수락·승인 구현 계약](invitation-acceptance-api.md)을 따른다. 기존 요청·응답 모델과 계약 버전은 유지하고 해당 operation의 구현 상태만 OpenAPI에 표시한다.
 
 2026-10-27 추가: Issue #14의 초대 발송 worker·SMTP·lease·재시도는 [메일 발송·장애 복구 계약](invitation-delivery.md)을 따른다. 기본 비활성이며 실제 운영 SMTP 수신 및 공개 수락·승인(#15)의 검증 범위를 구분한다.

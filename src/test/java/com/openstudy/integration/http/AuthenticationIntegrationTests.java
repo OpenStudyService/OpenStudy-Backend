@@ -113,7 +113,7 @@ class AuthenticationIntegrationTests {
         assertThat(me.statusCode()).isEqualTo(200);
         assertThat(json.readTree(me.body()).at("/user/email").asString()).isEqualTo(email);
         // Local preview handlers must be absent from the regular application profile.
-        assertThat(get("/api/home").statusCode()).isEqualTo(404);
+        assertThat(get("/api/local-preview/lookups").statusCode()).isEqualTo(404);
 
         var oldTokenLogout = post("/api/auth/logout", token, Map.of());
         assertThat(oldTokenLogout.statusCode()).isEqualTo(403);
