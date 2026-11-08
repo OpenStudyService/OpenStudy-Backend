@@ -231,4 +231,23 @@ class CollaborationContractTests {
         assertThat(spec.at("/components/schemas/WorkspaceEvent").isMissingNode()).isTrue();
         assertThat(spec.toString()).doesNotContain("text/event-stream");
     }
+
+    /** #167 (ADR-M10-002 M10-D10): every team chat operation is kept as a record but marked off by default. */
+    @Test void everyTeamChatOperationIsMarkedDisabledAndNothingElseIs() {
+        var chat = new ArrayList<String>();
+        spec.get("paths").properties().forEach(path -> path.getValue().properties().forEach(method -> {
+            var operation = method.getValue();
+            if (!operation.has("operationId")) return;
+            boolean channel = path.getKey().startsWith("/channels");
+            if (channel) chat.add(operation.get("operationId").asString());
+            assertThat(operation.path("deprecated").asBoolean(false)).as(path.getKey()).isEqualTo(channel);
+            assertThat(operation.has("x-feature-flag")).as(path.getKey()).isEqualTo(channel);
+            if (!channel) return;
+            assertThat(operation.get("x-feature-flag").asString()).isEqualTo("openstudy.team-chat.enabled");
+            assertThat(operation.get("x-disabled-by-default").asBoolean()).isTrue();
+            assertThat(operation.get("description").asString()).startsWith("**비활성(#167");
+        }));
+        assertThat(chat).hasSize(15).containsAll(OPERATIONS.keySet().stream().filter(id -> OPERATIONS.get(id).contains(" /channels")).toList());
+        assertThat(spec.get("info").get("description").asString()).contains("#167", "openstudy.team-chat.enabled");
+    }
 }

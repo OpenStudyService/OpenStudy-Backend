@@ -6,6 +6,7 @@ import java.util.Set;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,8 +37,12 @@ import com.openstudy.modules.chat.service.MessageService;
 /**
  * There is deliberately no DELETE for a channel, no edit or delete for a message, and no DM. {@code before} and
  * {@code limit} arrive as text so that a non-participant gets 404 whatever they send (MessageService).
+ * <p>Team chat left the service (ADR-M10-002 M10-D10, #167): unless {@code openstudy.team-chat.enabled} is true this
+ * controller is not registered, so every {@code /api/channels/**} request ends as an unknown path (404) before any
+ * channel or message is read. The tables and services stay; participation still ends with access (ChannelParticipationEnding).
  */
 @RestController
+@ConditionalOnProperty(name = "openstudy.team-chat.enabled", havingValue = "true")
 @RequestMapping("/api/channels")
 @RequiredArgsConstructor
 public class ChannelController {

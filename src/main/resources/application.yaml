@@ -40,6 +40,9 @@ server:
   # Keep NONE: ClientAddressResolver applies X-Forwarded-For itself, only behind TRUSTED_PROXIES.
   forward-headers-strategy: none
 openstudy:
+  # Team chat left the service (ADR-M10-002 M10-D10, #167). Off hides every /api/channels/** operation (404).
+  team-chat:
+    enabled: ${OPENSTUDY_TEAM_CHAT_ENABLED:false}
   web:
     # Comma-separated IPs/CIDRs of the reverse proxy directly in front of this app. Empty ignores X-Forwarded-For.
     trusted-proxies: ${TRUSTED_PROXIES:}
