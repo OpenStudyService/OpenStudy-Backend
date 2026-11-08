@@ -19,6 +19,70 @@ erDiagram
     tinyint_unsigned id PK
     datetime_6 updated_at
   }
+  ai_conversations {
+    varchar_64 id PK
+    bigint_unsigned employee_id FK
+    varchar_64 scope_key
+    varchar_200 title
+    datetime_6 created_at
+    datetime_6 updated_at
+  }
+  ai_embedding_cache {
+    bigint_unsigned id PK
+    varchar_80 model_id
+    varchar_64 text_hash
+    smallint_unsigned dimensions
+    mediumtext vector_json
+    datetime_6 created_at
+  }
+  ai_executions {
+    varchar_64 id PK
+    varchar_64 request_ref UK
+    varchar_100 client_request_key
+    varchar_64 conversation_id
+    bigint_unsigned employee_id FK
+    varchar_64 scope_key
+    varchar_255 branch_ids_csv
+    varchar_1000 question
+    varchar_32 poc_code
+    varchar_120 analysis_id
+    varchar_64 intent_domain
+    varchar_40 status
+    varchar_80 result_category
+    varchar_80 error_code
+    text query_spec_json
+    text view_spec_json
+    varchar_40 refund_basis
+    tinyint_1 zero_fill_requested
+    datetime_6 as_of_utc
+    varchar_64 snapshot_version
+    varchar_64 policy_version
+    datetime_6 created_at
+  }
+  ai_export_approvals {
+    varchar_64 id PK
+    varchar_64 execution_id
+    varchar_80 dataset_id
+    bigint_unsigned requester_employee_id FK
+    bigint_unsigned approver_employee_id FK
+    varchar_64 scope_key
+    varchar_255 branch_ids_csv
+    varchar_500 reason
+    varchar_500 decision_note
+    int_unsigned row_count
+    varchar_32 status
+    datetime_6 requested_at
+    datetime_6 decided_at
+    datetime_6 expires_at
+  }
+  ai_messages {
+    bigint_unsigned id PK
+    varchar_64 conversation_id FK
+    varchar_32 role
+    text content
+    varchar_64 execution_id
+    datetime_6 created_at
+  }
   ai_requests {
     bigint_unsigned id PK
     bigint_unsigned thread_id FK
@@ -34,6 +98,35 @@ erDiagram
     bigint_unsigned employee_id FK
     datetime_6 created_at
     datetime_6 last_used_at
+  }
+  ai_traces {
+    varchar_64 id PK
+    varchar_64 request_ref
+    varchar_64 execution_id
+    bigint_unsigned employee_id FK
+    varchar_64 scope_key
+    varchar_1000 sanitized_question
+    varchar_40 status
+    bigint_unsigned total_duration_ms
+    mediumtext stages_json
+    mediumtext retrieval_json
+    text security_gate_json
+    datetime_6 created_at
+    datetime_6 question_expires_at
+  }
+  ai_work_records {
+    varchar_64 id PK
+    varchar_64 execution_id
+    bigint_unsigned employee_id FK
+    varchar_200 title
+    varchar_1000 question
+    varchar_64 domain
+    varchar_64 scope_key
+    varchar_255 branch_ids_csv
+    tinyint_1 pinned
+    tinyint_1 archived
+    datetime_6 created_at
+    datetime_6 updated_at
   }
   announcement_branches {
     bigint_unsigned announcement_id PK,FK
@@ -773,8 +866,15 @@ erDiagram
     varchar_100 worker_id
   }
   SPRING_SESSION ||--o{ SPRING_SESSION_ATTRIBUTES : "fk_SPRING_SESSION_ATTRIBUTES_1: SESSION_PRIMARY_ID"
+  employees ||--o{ ai_conversations : "fk_ai_conversations_emp: employee_id"
+  employees ||--o{ ai_executions : "fk_ai_executions_emp: employee_id"
+  employees |o--o{ ai_export_approvals : "fk_ai_export_approvals_app: approver_employee_id"
+  employees ||--o{ ai_export_approvals : "fk_ai_export_approvals_req: requester_employee_id"
+  ai_conversations ||--o{ ai_messages : "fk_ai_messages_conv: conversation_id"
   ai_threads ||--o{ ai_requests : "fk_ai_requests_1: thread_id"
   employees ||--o{ ai_threads : "fk_ai_threads_1: employee_id"
+  employees ||--o{ ai_traces : "fk_ai_traces_emp: employee_id"
+  employees ||--o{ ai_work_records : "fk_ai_work_records_emp: employee_id"
   announcements ||--o{ announcement_branches : "fk_announcement_branches_1: announcement_id"
   branches ||--o{ announcement_branches : "fk_announcement_branches_2: branch_id"
   employees ||--o{ announcements : "fk_announcements_1: author_employee_id"
@@ -808,6 +908,7 @@ erDiagram
   branch_memberships ||--o{ customer_service_interactions : "fk_customer_service_interactions_2: branch_id,employee_id"
   customers ||--o{ customer_status_events : "fk_customer_status_events_1: customer_id"
   employees ||--o{ customer_status_events : "fk_customer_status_events_2: actor_employee_id"
+  branches |o--o{ customers : "fk_customers_registered_branch: registered_branch_id"
   branches ||--o{ employee_invitations : "fk_employee_invitations_1: branch_id"
   permission_presets |o--o{ employee_invitations : "fk_employee_invitations_2: preset_id"
   employees ||--o{ employee_invitations : "fk_employee_invitations_3: created_by"
@@ -863,7 +964,6 @@ erDiagram
   customers ||--o{ passes : "fk_passes_1: customer_id"
   products ||--o{ passes : "fk_passes_2: product_id"
   payments ||--o| passes : "fk_passes_3: purchase_payment_id,customer_id,purchase_branch_id,product_id"
-  branches |o--o{ customers : "fk_customers_registered_branch: registered_branch_id"
   branches ||--o{ passes : "fk_passes_4: purchase_branch_id"
   product_revisions ||--o{ passes : "fk_passes_purchase_revision_product: purchase_product_revision_id,product_id"
   customers ||--o{ payments : "fk_payments_1: customer_id"
