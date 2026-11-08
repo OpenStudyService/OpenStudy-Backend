@@ -30214,17 +30214,13 @@
             "type": "boolean"
           },
           "warningCode": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": "string",
+            "nullable": true,
             "description": "ROW_LIMIT_CLAMPED"
           },
           "message": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string",
+            "nullable": true
           }
         },
         "description": "M10-D03 상한과 잘림 여부"
@@ -30318,10 +30314,8 @@
             }
           },
           "filter": {
-            "type": [
-              "object",
-              "null"
-            ]
+            "type": "object",
+            "nullable": true
           },
           "orderBy": {
             "type": "array",
@@ -30365,10 +30359,8 @@
             "maximum": 1000
           },
           "analysisId": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string",
+            "nullable": true
           }
         },
         "description": "서버가 검증한 조회 명세. 모델이 만든 SQL·JPQL은 실행하지 않는다(M10-D07)"
@@ -30422,10 +30414,8 @@
                   }
                 },
                 "datasetId": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
+                  "type": "string",
+                  "nullable": true
                 },
                 "bindings": {
                   "type": "object"
@@ -30451,10 +30441,8 @@
             }
           },
           "layout": {
-            "type": [
-              "object",
-              "null"
-            ]
+            "type": "object",
+            "nullable": true
           }
         },
         "description": "화면 명세. catalogVersion openstudy-ui-1.0.0"
@@ -30496,16 +30484,12 @@
                   ]
                 },
                 "unit": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
+                  "type": "string",
+                  "nullable": true
                 },
                 "precision": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
+                  "type": "integer",
+                  "nullable": true
                 }
               }
             }
@@ -30548,10 +30532,8 @@
             "type": "string"
           },
           "executionId": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string",
+            "nullable": true
           },
           "status": {
             "type": "string"
@@ -30563,14 +30545,12 @@
             }
           },
           "view": {
-            "oneOf": [
+            "allOf": [
               {
                 "$ref": "#/components/schemas/AiViewSpec"
-              },
-              {
-                "type": "null"
               }
-            ]
+            ],
+            "nullable": true
           },
           "warnings": {
             "type": "array",
@@ -30579,36 +30559,26 @@
             }
           },
           "errorCode": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string",
+            "nullable": true
           },
           "asOf": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": "string",
+            "nullable": true,
             "format": "date-time",
             "description": "기준 시각"
           },
           "snapshotVersion": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string",
+            "nullable": true
           },
           "policyVersion": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string",
+            "nullable": true
           },
           "notice": {
-            "type": [
-              "object",
-              "null"
-            ],
+            "type": "object",
+            "nullable": true,
             "properties": {
               "code": {
                 "type": "string"
@@ -30647,22 +30617,16 @@
             "type": "string"
           },
           "executionId": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string",
+            "nullable": true
           },
           "conversationId": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string",
+            "nullable": true
           },
           "traceId": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string",
+            "nullable": true
           },
           "status": {
             "type": "string",
@@ -30682,84 +30646,62 @@
             "type": "integer"
           },
           "errorCode": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string",
+            "nullable": true
           },
           "resultCategory": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string",
+            "nullable": true
           },
           "behavior": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": "string",
+            "nullable": true,
             "description": "REOPEN이면 다시 열기 결과, REPLAY면 같은 clientRequestKey의 재제출"
           },
           "message": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string",
+            "nullable": true
           },
           "pocCode": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string",
+            "nullable": true
           },
           "analysisId": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string",
+            "nullable": true
           },
           "intentDomain": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": "string",
+            "nullable": true,
             "description": "sales, seats, passes, rooms, tasks, attendance"
           },
           "semanticStatus": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string",
+            "nullable": true
           },
           "querySpec": {
-            "oneOf": [
+            "allOf": [
               {
                 "$ref": "#/components/schemas/AiQuerySpec"
-              },
-              {
-                "type": "null"
               }
-            ]
+            ],
+            "nullable": true
           },
           "viewSpec": {
-            "oneOf": [
+            "allOf": [
               {
                 "$ref": "#/components/schemas/AiViewSpec"
-              },
-              {
-                "type": "null"
               }
-            ]
+            ],
+            "nullable": true
           },
           "envelope": {
-            "oneOf": [
+            "allOf": [
               {
                 "$ref": "#/components/schemas/AiResultEnvelope"
-              },
-              {
-                "type": "null"
               }
-            ]
+            ],
+            "nullable": true
           },
           "summary": {
             "type": "object"
@@ -30849,10 +30791,8 @@
             "type": "string"
           },
           "pocCode": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string",
+            "nullable": true
           },
           "analysisId": {
             "type": "string"
@@ -30861,10 +30801,8 @@
             "type": "string"
           },
           "resultCategory": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string",
+            "nullable": true
           },
           "refundBasis": {
             "type": "string",
@@ -30878,14 +30816,12 @@
             "$ref": "#/components/schemas/AiResultEnvelope"
           },
           "querySpec": {
-            "oneOf": [
+            "allOf": [
               {
                 "$ref": "#/components/schemas/AiQuerySpec"
-              },
-              {
-                "type": "null"
               }
-            ]
+            ],
+            "nullable": true
           }
         }
       },
