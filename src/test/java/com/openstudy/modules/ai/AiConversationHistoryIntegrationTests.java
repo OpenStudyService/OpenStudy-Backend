@@ -162,7 +162,7 @@ class AiConversationHistoryIntegrationTests {
         String ran = execution(conversation, owner, "지점별 매출을 비교해줘", "READY", OpenStudyAnalyses.ID_POC_001, "sales",
                 "2026-11-01 01:00:00", Long.toString(branch));
         try (var s = login(owner)) {
-            JsonNode execution = ok(s, "/api/executions/" + ran);
+            JsonNode execution = ok(s, "/api/ai/executions/" + ran);
             assertThat(execution.get("envelope").get("datasets").isArray()).isTrue();
 
             var created = send(s, "POST", "/api/ai/records", Map.of("executionId", ran, "title", "매출 기록"));
@@ -180,7 +180,7 @@ class AiConversationHistoryIntegrationTests {
         String denied = execution(other, analyst, "지점별 매출을 비교해줘", "READY", OpenStudyAnalyses.ID_POC_001, "sales",
                 "2026-11-01 01:00:00", Long.toString(branch));
         try (var s = login(analyst)) {
-            assertThat(send(s, "GET", "/api/executions/" + denied, null).statusCode()).isEqualTo(403);
+            assertThat(send(s, "GET", "/api/ai/executions/" + denied, null).statusCode()).isEqualTo(403);
         }
     }
 
@@ -200,8 +200,8 @@ class AiConversationHistoryIntegrationTests {
             assertThat(turns.get(0).get("response").get("summary").get("refund_basis").asString()).isEqualTo("ORIGINAL_PAYMENT_DATE");
             assertThat(turns.get(1).get("response").get("semanticStatus").asString()).isEqualTo("EXPLICIT_ZERO_FILL_OVERRIDE_REVIEW");
             assertThat(turns.get(2).get("response").get("semanticStatus").asString()).isNotEqualTo("EXPLICIT_ORIGINAL_PAYMENT_DATE");
-            assertThat(ok(s, "/api/executions/" + original).get("refundBasis").asString()).isEqualTo("original");
-            assertThat(ok(s, "/api/executions/" + plain).get("refundBasis").asString()).isEqualTo("processed");
+            assertThat(ok(s, "/api/ai/executions/" + original).get("refundBasis").asString()).isEqualTo("original");
+            assertThat(ok(s, "/api/ai/executions/" + plain).get("refundBasis").asString()).isEqualTo("processed");
         }
     }
 
@@ -265,7 +265,7 @@ class AiConversationHistoryIntegrationTests {
             // The rest of the conversation still runs.
             assertThat(turns.get(1).get("response").get("status").asString()).isEqualTo("COMPLETED");
 
-            var execution = send(s, "GET", "/api/executions/" + retired, null);
+            var execution = send(s, "GET", "/api/ai/executions/" + retired, null);
             assertThat(execution.statusCode()).as(execution.body()).isEqualTo(422);
             assertThat(json.readTree(execution.body()).get("code").asString()).isEqualTo("ANALYSIS_UNAVAILABLE");
         }
@@ -292,9 +292,10 @@ class AiConversationHistoryIntegrationTests {
         String saved = execution(conversation, analyst, "만료 예정 이용권 알려줘", "READY", OpenStudyAnalyses.ID_POC_006, "passes",
                 "2026-11-01 01:00:00", Long.toString(branch));
         try (var s = login(analyst)) {
-            JsonNode execution = ok(s, "/api/executions/" + saved);
-            assertThat(execution.get("rows")).isEmpty();
-            assertThat(execution.toString()).doesNotContain("\"approved\"", "\"refunds\"", "\"net\"");
+            JsonNode execution = ok(s, "/api/ai/executions/" + saved);
+            // The older result shape (rows of branch sales) is gone (Frontend #84); nothing sales-shaped is left.
+            assertThat(execution.has("rows")).isFalse();
+            assertThat(execution.toString()).doesNotContain("\"approved\"", "\"refunds\"", "approved_krw");
 
             String asked = "conv-" + UUID.randomUUID().toString().substring(0, 12);
             conversations.add(asked);
@@ -303,20 +304,23 @@ class AiConversationHistoryIntegrationTests {
             assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
             JsonNode body = json.readTree(response.body());
             assertThat(body.get("status").asString()).isEqualTo("COMPLETED");
-            assertThat(body.get("legacyExecution").get("rows")).isEmpty();
-            assertThat(body.get("legacyExecution").toString()).doesNotContain("\"approved\"");
+            assertThat(body.has("legacyExecution")).isFalse();
+            assertThat(body.toString()).doesNotContain("approved_krw");
         }
     }
 
-    /** A sales question still carries the rows, since it already required sales:read on every branch. */
-    @Test void aSalesQuestionStillCarriesItsBranchRows() throws Exception {
+    /** A sales question carries its branch sales in the result itself, since it required sales:read on every branch. */
+    @Test void aSalesQuestionCarriesItsBranchSalesInTheResult() throws Exception {
         String conversation = conversation(stranger, "매출 질문");
         String saved = execution(conversation, stranger, "지점별 매출을 비교해줘", "READY", OpenStudyAnalyses.ID_POC_001, "sales",
                 "2026-11-01 01:00:00", Long.toString(branch));
         try (var s = login(stranger)) {
-            JsonNode rows = ok(s, "/api/executions/" + saved).get("rows");
-            assertThat(rows).hasSize(1);
-            assertThat(rows.get(0).get("branchId").asString()).isEqualTo(Long.toString(branch));
+            JsonNode execution = ok(s, "/api/ai/executions/" + saved);
+            assertThat(execution.has("rows")).isFalse();
+            JsonNode rows = null;
+            for (var dataset : execution.at("/envelope/datasets")) if (dataset.get("id").asString().equals("branchSales")) rows = dataset.get("rows");
+            assertThat(rows).as(execution.toString()).hasSize(1);
+            assertThat(rows.get(0).get("branch_id").asString()).isEqualTo(Long.toString(branch));
         }
     }
 

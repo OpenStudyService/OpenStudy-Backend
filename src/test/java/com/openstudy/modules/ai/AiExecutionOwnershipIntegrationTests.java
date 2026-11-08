@@ -89,10 +89,8 @@ class AiExecutionOwnershipIntegrationTests {
         for (long other : List.of(colleague, owner)) {
             try (var s = login(other)) {
                 for (String id : List.of(execution, "req-" + execution)) {
-                    assertNotFound(send(s, "GET", "/api/executions/" + id, null));
                     assertNotFound(send(s, "GET", "/api/ai/executions/" + id, null));
                     assertNotFound(send(s, "POST", "/api/ai/requests/" + id + "/cancel", null));
-                    assertNotFound(send(s, "POST", "/api/requests/" + id + "/cancel", null));
                 }
                 assertNotFound(send(s, "POST", "/api/ai/records", Map.of("executionId", execution, "title", "가로채기")));
                 assertNotFound(send(s, "POST", "/api/ai/approvals",
@@ -107,7 +105,7 @@ class AiExecutionOwnershipIntegrationTests {
     @Test void theAuthorCanStillLookUpReuseAndCancelTheirOwnExecution() throws Exception {
         String execution = execution(conversation(author), author);
         try (var s = login(author)) {
-            var found = send(s, "GET", "/api/executions/" + execution, null);
+            var found = send(s, "GET", "/api/ai/executions/" + execution, null);
             assertThat(found.statusCode()).as(found.body()).isEqualTo(200);
             assertThat(json.readTree(found.body()).get("id").asString()).isEqualTo(execution);
             assertThat(json.readTree(send(s, "GET", "/api/ai/executions/req-" + execution, null).body()).get("id").asString())
@@ -122,8 +120,17 @@ class AiExecutionOwnershipIntegrationTests {
             assertThat(body.get("status").asString()).isEqualTo("CANCELED");
 
             // An id that does not exist answers exactly like someone else's.
-            assertNotFound(send(s, "GET", "/api/executions/exec-missing", null));
-            assertNotFound(send(s, "POST", "/api/requests/req-missing/cancel", null));
+            assertNotFound(send(s, "GET", "/api/ai/executions/exec-missing", null));
+            assertNotFound(send(s, "POST", "/api/ai/requests/req-missing/cancel", null));
+
+            // The older aliases are gone (Frontend #84 moved to /api/ai): even the author's own execution is not there.
+            for (var gone : List.of(send(s, "GET", "/api/executions/" + execution, null),
+                    send(s, "GET", "/api/catalog/readiness", null),
+                    send(s, "POST", "/api/conversations", Map.of("title", "옛 경로")),
+                    send(s, "POST", "/api/conversations/conv-x/requests", Map.of("question", "지점별 매출을 비교해줘")),
+                    send(s, "POST", "/api/requests/req-" + execution + "/cancel", null))) {
+                assertThat(gone.statusCode()).as(gone.uri() + " " + gone.body()).isEqualTo(404);
+            }
         }
         assertThat(status(execution)).isEqualTo("CANCELED");
     }

@@ -21,9 +21,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Unified REST controller for OpenStudy M10 DomainLens AI Workspace (`OS-DL-0504`).
- * Supports both the legacy M10 frontend contract (`Ai.tsx` / `domainlens.ts`) and the Stage 6 5-view console
- * (`/api/ai/queries`, `/api/ai/records`, `/api/ai/approvals`, `/api/ai/traces`, `/api/ai/evaluation`).
+ * The AI chat API (nl-analysis-api.md, #92), under /api/ai only. The older aliases (/api/conversations,
+ * /api/executions, /api/catalog/readiness, /api/requests/{id}/cancel) were removed once the screens moved to /api/ai
+ * (Frontend #84). Records, approvals, traces and evaluation are outside the contract (M15 and operations).
  */
 @RestController
 public class AiWorkspaceController {
@@ -59,12 +59,12 @@ public class AiWorkspaceController {
         this.userResolver = userResolver;
     }
 
-    @GetMapping({"/api/catalog/readiness", "/api/ai/catalog/readiness"})
+    @GetMapping("/api/ai/catalog/readiness")
     public Map<String, Object> readiness() {
         return workspaceService.readiness();
     }
 
-    @PostMapping({"/api/conversations", "/api/ai/conversations"})
+    @PostMapping("/api/ai/conversations")
     public Map<String, Object> createConversation(
             Authentication auth,
             @RequestBody(required = false) ConversationCreateRequest body
@@ -109,7 +109,7 @@ public class AiWorkspaceController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping({"/api/conversations/{conversationId}/requests", "/api/ai/conversations/{conversationId}/requests"})
+    @PostMapping("/api/ai/conversations/{conversationId}/requests")
     public ResponseEntity<Map<String, Object>> submitConversationRequest(
             Authentication auth,
             @PathVariable String conversationId,
@@ -178,9 +178,7 @@ public class AiWorkspaceController {
                     List.of(),
                     List.of(),
                     List.of(),
-                    Map.of("rateLimited", true),
-                    null
-            );
+                    Map.of("rateLimited", true));
             return ResponseEntity.status(429)
                     .header(HttpHeaders.RETRY_AFTER, "60")
                     .body(rateLimited);
@@ -205,12 +203,12 @@ public class AiWorkspaceController {
         }
     }
 
-        @PostMapping({"/api/requests/{requestId}/cancel", "/api/ai/requests/{requestId}/cancel"})
+        @PostMapping("/api/ai/requests/{requestId}/cancel")
     public Map<String, Object> cancelRequest(Authentication auth, @PathVariable String requestId) {
         return workspaceService.cancelRequest(auth, requestId);
     }
 
-    @GetMapping({"/api/executions/{executionId}", "/api/ai/executions/{executionId}"})
+    @GetMapping("/api/ai/executions/{executionId}")
     public Map<String, Object> getExecution(Authentication auth, @PathVariable String executionId) {
         return workspaceService.getExecution(auth, executionId);
     }
