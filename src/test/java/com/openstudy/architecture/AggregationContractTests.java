@@ -109,7 +109,8 @@ class AggregationContractTests {
     }
 
     @Test void theContractIsSplitAcrossTheImplementationIssues() throws Exception {
-        assertThat(spec.at("/info/version").asString()).isEqualTo("0.1.11-m9-aggregation");
+        // M9 was published in 0.1.11-m9-aggregation; later contracts raise the version (0.1.12-m10-ai-chat, #92).
+        assertThat(Integer.parseInt(spec.at("/info/version").asString().split("[.-]")[2])).isGreaterThanOrEqualTo(11);
         assertThat(spec.at("/info/description").asString()).contains("Issue #86의 설계 계약(aggregation-api.md, ADR-M9-001)");
         OPERATIONS.keySet().forEach(id ->
                 assertThat(operation(id).get("x-implementation-issue").asString()).as(id).isEqualTo(ISSUES.get(id)));
@@ -397,7 +398,14 @@ class AggregationContractTests {
             var items = schema(card).at("/properties/items");
             assertThat(items.get("maxItems").asInt()).as(card).isEqualTo(5);
         }
-        spec.get("paths").properties().forEach(entry -> assertThat(entry.getKey()).doesNotContain("/ai", "natural", "query-spec"));
+        // Natural language is M10's own contract (#92, tag ai), never part of an M9 aggregation.
+        spec.get("paths").properties().forEach(entry -> {
+            if (entry.getKey().startsWith("/ai/")) {
+                entry.getValue().properties().forEach(method -> assertThat(method.getValue().get("tags").toString()).isEqualTo("[\"ai\"]"));
+            } else {
+                assertThat(entry.getKey()).doesNotContain("/ai", "natural", "query-spec");
+            }
+        });
         assertThat(contract()).contains("## 범위 밖(M10·M13)", "자연어 질의, 동적 시각화");
     }
 

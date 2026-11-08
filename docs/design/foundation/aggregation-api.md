@@ -511,6 +511,8 @@ M9-D08의 "직원"은 OWNER가 아닌 모든 사용자로 해석했다. MANAGER�
 
 `LocalPreviewController`(local 프로필 전용)에 `GET /api/home` 샘플이 있다. 이 계약의 홈은 `GET /home/summary`라 경로가 겹치지 않는다. 샘플은 지금 그대로 두고, #90이 운영 API를 구현하면서 Frontend 전환에 맞춰 정리한다. 샘플 목록 경로 `/api/payments`는 M4에서 이미 운영 경로와 겹쳐 있으며 이 계약과 무관하다. `/api/sales/*` 샘플 경로는 없다. `modules/home`은 구조 설명(`package-info.java`)만 있고 구현이 없다. `modules/sales`에는 #87의 공통 집계 기반과 매출·지점 비교·최소 원장, #88의 이용권 판매량·상품 순위·추세가 있다.
 
+2026-11-08: Frontend #31이 홈을 `GET /api/home/summary`로 바꿨으므로, #92에서 로컬 샘플 `GET /api/home`을 지웠다. local 프로필에서도 이 경로는 404다.
+
 ## 범위 밖(M10·M13)
 
 - 자연어 질의, 동적 시각화, 확인 질문(M10)
