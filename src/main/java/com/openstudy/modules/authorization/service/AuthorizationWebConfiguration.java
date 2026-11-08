@@ -33,7 +33,10 @@ public class AuthorizationWebConfiguration implements WebMvcConfigurer {
                 var state = authorization.current(Long.parseLong(authentication.getName()));
                 String scope = request.getParameter("scope");
                 authorization.scope(state, scope, BranchAction.READ);
-                BranchAction action = path.matches("/api/(employees|invitations)(/.*)?") ? BranchAction.MANAGE_PEOPLE
+                // A leave balance is read by the MANAGER role alone (M12, workforce-requests-api.md "잔여량 조회"); the
+                // leave service decides who sees whose, so it is not people administration.
+                boolean leaveBalance = path.matches("/api/employees/[0-9]+/leave-balance");
+                BranchAction action = !leaveBalance && path.matches("/api/(employees|invitations)(/.*)?") ? BranchAction.MANAGE_PEOPLE
                         // Selling and refunding need payments:write only; a cashier need not read the payment ledger.
                         : path.matches("/api/payments(/.*)?") && "POST".equals(request.getMethod()) ? BranchAction.WRITE_PAYMENT_HISTORY
                         : path.matches("/api/payments(/.*)?") ? BranchAction.READ_PAYMENTS

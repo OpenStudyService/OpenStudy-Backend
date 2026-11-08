@@ -69,7 +69,7 @@ class OwnerBootstrapTests {
 
     @Test void createsOneActiveOwnerAndAuditWithoutMembershipOrSecretAuditData() {
         assertThat(jdbc.queryForObject("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank DESC LIMIT 1", String.class))
-                .isEqualTo("10");
+                .isEqualTo("11");
         assertThat(run(environment).code()).isZero();
         var account = jdbc.queryForMap("SELECT * FROM employees");
         assertThat(account).containsEntry("email", "owner@example.com").containsEntry("global_role", "OWNER")

@@ -462,6 +462,7 @@ erDiagram
   leave_requests {
     bigint_unsigned id PK
     bigint_unsigned employee_id FK
+    bigint_unsigned branch_id FK
     smallint_unsigned request_year
     date starts_on
     date ends_on
@@ -945,6 +946,7 @@ erDiagram
   employees ||--o{ leave_grants : "fk_leave_grants_3: granted_by"
   employees ||--o{ leave_requests : "fk_leave_requests_1: employee_id"
   employees |o--o{ leave_requests : "fk_leave_requests_2: decided_by"
+  branches ||--o{ leave_requests : "fk_leave_requests_branch: branch_id"
   locker_assignments ||--o{ locker_assignment_charges : "fk_locker_assignment_charges_1: assignment_id"
   payments ||--o| locker_assignment_charges : "fk_locker_assignment_charges_2: payment_id"
   lockers ||--o{ locker_assignments : "fk_locker_assignments_1: locker_id"

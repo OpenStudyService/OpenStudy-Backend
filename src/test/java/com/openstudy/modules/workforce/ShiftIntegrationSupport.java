@@ -63,7 +63,10 @@ abstract class ShiftIntegrationSupport {
         for (long id : people) {
             jdbc.update("DELETE b FROM attendance_breaks b JOIN attendance_records a ON a.id=b.attendance_id WHERE a.employee_id=?", id);
             jdbc.update("DELETE FROM attendance_records WHERE employee_id=?", id);
+            jdbc.update("DELETE e FROM leave_balance_events e JOIN leave_grants g ON g.id=e.leave_grant_id WHERE g.employee_id=?", id);
+            jdbc.update("DELETE a FROM leave_allocations a JOIN leave_requests r ON r.id=a.leave_request_id WHERE r.employee_id=?", id);
             jdbc.update("DELETE FROM leave_requests WHERE employee_id=?", id);
+            jdbc.update("DELETE FROM leave_grants WHERE employee_id=?", id);
             jdbc.update("DELETE e FROM shift_events e JOIN shifts s ON s.id=e.shift_id WHERE s.employee_id=?", id);
             jdbc.update("DELETE FROM shifts WHERE employee_id=?", id);
         }
@@ -111,10 +114,11 @@ abstract class ShiftIntegrationSupport {
         jdbc.update("UPDATE branch_memberships SET status='REVOKED' WHERE employee_id=? AND branch_id=?", person, branch);
     }
 
-    /** An approved leave as M12 would leave it: whole days in Seoul, no branch. */
+    /** A leave written directly, as M12 leaves it: whole days in Seoul, at one of the person's branches (V11, M12-D02). */
     long leave(long person, String startsOn, String endsOn, String days, String status) {
-        jdbc.update("INSERT INTO leave_requests(employee_id,request_year,starts_on,ends_on,requested_days,reason,status) VALUES(?,?,?,?,?,?,?)",
-                person, Integer.parseInt(startsOn.substring(0, 4)), startsOn, endsOn, new java.math.BigDecimal(days), "개인 사유 비공개", status);
+        jdbc.update("INSERT INTO leave_requests(employee_id,branch_id,request_year,starts_on,ends_on,requested_days,reason,status) "
+                + "VALUES(?,(SELECT MIN(branch_id) FROM branch_memberships WHERE employee_id=?),?,?,?,?,?,?)",
+                person, person, Integer.parseInt(startsOn.substring(0, 4)), startsOn, endsOn, new java.math.BigDecimal(days), "개인 사유 비공개", status);
         return jdbc.queryForObject("SELECT MAX(id) FROM leave_requests WHERE employee_id=?", Long.class, person);
     }
 

@@ -129,14 +129,18 @@ class WorkforceRequestsContractTests {
         assertThat(published).containsExactlyInAnyOrderElementsOf(OPERATIONS.values());
     }
 
-    @Test void theContractIsADesignTargetSplitAcrossTheImplementationIssues() throws Exception {
+    @Test void theContractIsSplitAcrossTheImplementationIssuesAndLeaveIsImplemented() throws Exception {
         // M12 was published in 0.1.13-m12-workforce-requests; later contracts raise the version.
         assertThat(Integer.parseInt(spec.at("/info/version").asString().split("[.-]")[2])).isGreaterThanOrEqualTo(13);
         OPERATIONS.forEach((id, route) -> {
             String issue = route.contains("leave") ? "#108" : route.contains("correction") ? "#107" : "#109";
             assertThat(operation(id).get("x-implementation-issue").asString()).as(id).isEqualTo(issue);
-            assertThat(operation(id).get("x-implementation-status").asString()).as(id).isEqualTo("design-target");
+            // #108 implemented the leave operations; corrections (#107) and swaps (#109) are still design targets.
+            assertThat(operation(id).get("x-implementation-status").asString()).as(id)
+                    .isEqualTo("#108".equals(issue) ? "implemented" : "design-target");
         });
+        assertThat(spec.at("/info/description").asString()).contains("operation 13개는 #108에서 구현됐다");
+        assertThat(contract()).contains("휴가 부여·잔여량·신청 operation 13개는 #108에서 구현됐다(`implemented`");
         assertThat(spec.at("/info/description").asString()).contains("Issue #106", "workforce-requests-api.md");
         assertThat(contract()).contains("`0.1.13-m12-workforce-requests`", "operation은 모두 설계 계약(`design-target`)");
         assertThat(Files.readString(DESIGN.resolve("README.md"))).contains("workforce-requests-api.md",
@@ -200,7 +204,7 @@ class WorkforceRequestsContractTests {
                 "cancelShiftSwapApproval", "createLeaveRequest", "createAttendanceCorrection", "createShiftSwap")) {
             assertThat(conflictSchema(id)).as(id).isEqualTo("#/components/schemas/WorkforceRequestConflictError");
         }
-        assertThat(texts(operation("approveLeaveRequest").get("x-error-codes"))).contains("LEAVE_SHIFT_CONFLICT");
+        assertThat(texts(operation("approveLeaveRequest").get("x-error-codes"))).contains("LEAVE_OVERLAP", "LEAVE_SHIFT_CONFLICT");
         assertThat(texts(operation("approveAttendanceCorrection").get("x-error-codes"))).contains("CORRECTION_OVERLAP",
                 "CORRECTION_BREAK_OUTSIDE");
         assertThat(texts(operation("approveShiftSwap").get("x-error-codes"))).contains("SHIFT_VERSION_CONFLICT", "SHIFT_CONFLICT");
