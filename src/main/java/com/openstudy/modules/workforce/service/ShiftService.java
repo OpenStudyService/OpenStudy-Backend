@@ -310,7 +310,7 @@ public class ShiftService {
     }
 
     /** The shift values the contract keeps in shift_events; version is the API one, as the screen showed it. */
-    private static Map<String, Object> values(Shift shift) {
+    static Map<String, Object> values(Shift shift) {
         var values = new LinkedHashMap<String, Object>();
         values.put("branchId", Long.toString(shift.getBranchId()));
         values.put("employeeId", Long.toString(shift.getEmployeeId()));

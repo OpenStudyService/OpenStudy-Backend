@@ -112,9 +112,7 @@ public class LeaveController {
     /** The contract's WorkforceRequestConflictError: the common error fields plus the target information of the code. */
     @ExceptionHandler(WorkforceRequestRefusal.class)
     ResponseEntity<WorkforceRequestConflictError> refused(WorkforceRequestRefusal refusal, HttpServletRequest request) {
-        return ResponseEntity.status(refusal.status()).body(new WorkforceRequestConflictError(refusal.code(), refusal.getMessage(),
-                ApiRequestFilter.requestId(request), null, refusal.latestVersion(), refusal.reloadUrl(), refusal.conflicts(),
-                refusal.requiredDays(), refusal.availableDays(), refusal.overlappingRequestIds()));
+        return ResponseEntity.status(refusal.status()).body(refusal.error(ApiRequestFilter.requestId(request)));
     }
 
     private static ListQuery query(long page, int pageSize) {

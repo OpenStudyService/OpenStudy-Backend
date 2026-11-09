@@ -67,6 +67,8 @@ abstract class ShiftIntegrationSupport {
             jdbc.update("DELETE a FROM leave_allocations a JOIN leave_requests r ON r.id=a.leave_request_id WHERE r.employee_id=?", id);
             jdbc.update("DELETE FROM leave_requests WHERE employee_id=?", id);
             jdbc.update("DELETE FROM leave_grants WHERE employee_id=?", id);
+            jdbc.update("DELETE w FROM shift_swaps w JOIN shifts s ON s.id=w.original_shift_id WHERE s.employee_id=?", id);
+            jdbc.update("DELETE FROM shift_swaps WHERE requested_by=? OR replacement_employee_id=?", id, id);
             jdbc.update("DELETE e FROM shift_events e JOIN shifts s ON s.id=e.shift_id WHERE s.employee_id=?", id);
             jdbc.update("DELETE FROM shifts WHERE employee_id=?", id);
         }

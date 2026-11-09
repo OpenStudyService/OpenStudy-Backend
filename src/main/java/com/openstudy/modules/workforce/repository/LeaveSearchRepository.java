@@ -1,5 +1,6 @@
 package com.openstudy.modules.workforce.repository;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -13,9 +14,10 @@ import org.springframework.stereotype.Repository;
 
 import com.openstudy.modules.workforce.entity.LeaveGrant;
 import com.openstudy.modules.workforce.entity.LeaveRequest;
+import com.openstudy.modules.workforce.entity.ShiftSwap;
 
 /**
- * Leave grants and requests by their deciding branch (workforce-requests-api.md "조회 범위"): a branch the reader manages
+ * Leave grants, leave requests and shift swaps by their deciding branch (workforce-requests-api.md "조회 범위"): a branch the reader manages
  * shows everyone's, and the reader's own are shown whatever their branch, because the balance is per employee
  * (M12-D02). A branch scope narrows both parts; an employee filter only narrows further. Only fixed fragments are
  * concatenated and every value is bound.
@@ -50,6 +52,40 @@ public class LeaveSearchRepository {
         add(where, binds, "l.endsOn >= :from", "from", from);
         add(where, binds, "l.startsOn <= :to", "to", to);
         return page(where.toString(), "l", " ORDER BY l.startsOn DESC, l.id DESC", LeaveRequest.class, binds, offset, limit);
+    }
+
+    /**
+     * Swaps by their shift's branch (M8-D02): the readable branches of the scope, then a managed branch shows every swap,
+     * any other branch only those the reader requested or was named in. {@code person} narrows to swaps where that
+     * employee is the requester or the replacement. [from, to) is on the proposed start, the day the swap is worked.
+     */
+    public Page<ShiftSwap> swaps(Set<Long> readable, Set<Long> managed, long reader, Long person,
+            LeaveRequest.Status status, Instant from, Instant to, long offset, int limit) {
+        if (readable.isEmpty()) return new Page<>(List.of(), 0);
+        var binds = new LinkedHashMap<String, Object>();
+        var where = new StringBuilder(" FROM ShiftSwap w, Shift s WHERE s.id = w.originalShiftId AND s.branchId IN :readable AND (");
+        binds.put("readable", readable);
+        if (!managed.isEmpty()) {
+            where.append("s.branchId IN :managed OR ");
+            binds.put("managed", managed);
+        }
+        where.append("w.requestedBy = :reader OR w.replacementEmployeeId = :reader)");
+        binds.put("reader", reader);
+        if (person != null) {
+            where.append(" AND (w.requestedBy = :person OR w.replacementEmployeeId = :person)");
+            binds.put("person", person);
+        }
+        add(where, binds, "w.status = :status", "status", status);
+        add(where, binds, "w.proposedStartsAt >= :from", "from", from);
+        add(where, binds, "w.proposedStartsAt < :to", "to", to);
+        var rows = entityManager.createQuery("SELECT w" + where + " ORDER BY w.createdAt DESC, w.id DESC",
+                ShiftSwap.class);
+        Query count = entityManager.createQuery("SELECT COUNT(w)" + where);
+        binds.forEach(rows::setParameter);
+        binds.forEach(count::setParameter);
+        var found = offset > Integer.MAX_VALUE ? List.<ShiftSwap>of()
+                : rows.setFirstResult((int) offset).setMaxResults(limit).getResultList();
+        return new Page<>(found, ((Number) count.getSingleResult()).longValue());
     }
 
     private <T> Page<T> page(String where, String alias, String order, Class<T> type, Map<String, Object> binds, long offset, int limit) {

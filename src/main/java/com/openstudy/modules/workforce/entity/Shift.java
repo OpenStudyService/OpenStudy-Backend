@@ -18,9 +18,10 @@ import org.hibernate.annotations.Generated;
 import org.hibernate.generator.EventType;
 
 /**
- * A planned shift over [startsAt, endsAt). Its branch and employee never change: moving it means cancelling and
- * registering again (workforce-api.md "수정"). No constraint stops two shifts of one employee from overlapping; the
- * employee row lock does, across every branch (M8-D05).
+ * A planned shift over [startsAt, endsAt). Its branch never changes, and its employee only through an approved shift
+ * swap (M12-D04, workforce-requests-api.md): moving it otherwise means cancelling and registering again
+ * (workforce-api.md "수정"). No constraint stops two shifts of one employee from overlapping; the employee row lock
+ * does, across every branch (M8-D05).
  */
 @Entity
 @Table(name = "shifts")
@@ -29,7 +30,7 @@ import org.hibernate.generator.EventType;
 public class Shift {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    @Column(name = "employee_id", nullable = false, updatable = false)
+    @Column(name = "employee_id", nullable = false)
     private long employeeId;
     @Column(name = "branch_id", nullable = false, updatable = false)
     private long branchId;
@@ -60,6 +61,12 @@ public class Shift {
     public void reschedule(Instant startsAt, Instant endsAt, int plannedBreakMinutes) {
         if (cancelled()) throw new IllegalStateException("A cancelled shift cannot be changed");
         this.startsAt = startsAt; this.endsAt = endsAt; this.plannedBreakMinutes = plannedBreakMinutes;
+    }
+
+    /** An approved swap, or its cancellation: who works it and when, together (M12-D04·D09). */
+    public void reassign(long employeeId, Instant startsAt, Instant endsAt) {
+        if (cancelled()) throw new IllegalStateException("A cancelled shift cannot be swapped");
+        this.employeeId = employeeId; this.startsAt = startsAt; this.endsAt = endsAt;
     }
 
     public void cancel() {
