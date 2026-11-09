@@ -262,6 +262,8 @@ class AggregationContractTests {
         var definitions = spec.get("x-metric-definitions");
         var ids = new ArrayList<String>();
         for (var definition : definitions) {
+            // M13 usage metrics (#111) are checked by OperationsExtensionContractTests against their own contract.
+            if (definition.get("adr").toString().contains("M13-")) continue;
             ids.add(definition.get("id").asString());
             for (String field : List.of("name", "unit", "definition", "includes", "excludes", "branchAttribution", "timeBasis",
                     "refundBasisApplies", "dimensions", "source", "operations", "adr")) {

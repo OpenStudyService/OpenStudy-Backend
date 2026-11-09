@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "OpenStudy 1차 기반 기능 API 설계",
-    "version": "0.1.13-m12-workforce-requests",
-    "description": "검토 완료 8중분류/61요구사항의 구현 전 목표 계약. Q1~Q12의 2026-10-23 당시 사용자 답변을 기록하되 Q8은 SRS v1.1 정책으로 대체됨. decisions.md 참고. 기존 서버 전체 구현 명세가 아니다. ID문자열·API version=DB+1. 상태 변경은 CSRF, 지점과 행위 인가를 함께 검증한다. Issue #27의 /me/profile 및 CurrentUser는 구현된 M1 닉네임 계약이다. 나머지 operation의 구현 상태는 각각의 표기를 따른다. SRS v1.1 확정 상품 정책: 거래 유무와 무관하게 물리 삭제 미제공; 판매 중지·재개 및 기존 상품·거래·revision 보존. 이전 Q8 조건부 삭제안은 적용하지 않는다. /lookups는 workspace 선택 데이터 계약이다. 변경 알림 SSE는 ADR-COM-001에 따라 제거했다. 상품/분류 선택 데이터는 관련 업무 API 구현 전까지 빈 배열이다. M4 고객·Mock 결제·발급 이용권·환불 operation은 Issue #55의 설계 계약(customer-sales-api.md, ADR-M4-002)이며 구현은 #56~#58에서 진행한다. 결제·환불 요청에는 금액 필드가 없고 Idempotency-Key가 필수다. M5 좌석·입퇴실·차감·정확 일치 조회·수동 조정 operation은 Issue #60의 설계 계약(seat-usage-api.md, ADR-M5-001)이며 구현은 #61~#64에서 진행한다. 입실·퇴실·이동·조정은 Idempotency-Key가 필수이고, 퇴실·조정 요청에 차감량 필드는 없다. M7 업무·채널·메시지·업무 카드·시설·문의·공지 operation은 Issue #74의 설계 계약(collaboration-api.md, ADR-M7-001)이며 구현은 #75~#80에서 진행한다. 메시지 전송은 clientMessageKey가 필수이고 업무에는 삭제 API가 없다. 업무 operation과 담당자 후보는 #75에서, 시설 operation은 #78에서, 고객 문의 operation은 #79에서, 공지 operation은 #80에서 구현됐다. 채널·메시지 operation은 #76에서, 업무 카드 공유 operation은 #77에서 구현됐다. 좌석 목록·상세·등록·수정·운영 중단/재개·배치도·현황 operation은 #61에서 구현됐다. 입실용 정확 일치 조회·입실·이용 기록 상세·퇴실 operation은 #62에서, 이용 중 좌석 이동 operation은 #63에서, 입퇴실 이력·이용권 수동 조정·고객 구매·사용 내역 operation은 #64에서 구현됐다. M6 룸·예약·사물함·배정·타 지점 요약 operation은 Issue #67의 설계 계약(space-operations-api.md, ADR-M6-001)이며 구현은 #68~#72에서 진행한다. 예약·배정·연장·취소는 Idempotency-Key가 필수이고 요청에 금액 필드가 없다. 룸 등록·조회·수정·운영 중단/재개와 예약 생성·목록·달력·상세 operation은 #69에서, 예약 취소와 이용 시작·완료 operation은 #70에서 구현됐다. 사물함 목록·등록·현황·상세·수정·운영 중단/재개·지점 요금 일괄 적용과 배정 목록·생성·상세·연장·반납 operation은 #71에서 구현됐다. 타 지점 고객 최소 요약과 고객의 룸·사물함 이력 operation은 #72에서 구현됐다. 본문·스레드별 독립 읽음은 Issue #155에서 계약·구현됐다(collaboration-api.md, ADR-M7-001 M7-D08·D09). POST /channels/{id}/read는 본문 위치 전용으로 바뀌어 답글 ID를 받지 않고, POST /channels/{id}/messages/{messageId}/read가 원문별 스레드 위치를 갱신한다. M8 근무표·출퇴근·근태 operation은 Issue #82의 설계 계약(workforce-api.md, ADR-M8-001)이며 구현은 근무표 #83, 근태 #84에서 진행한다. 근무 등록과 출근은 Idempotency-Key가 필수이고, 근태 명령은 /me/attendance 아래에서 경로·본문에 직원·근태 ID 없이 본인의 진행 중 근태만 바꾼다. 근무 충돌은 409 SHIFT_CONFLICT와 ShiftConflictError의 겹친 구간으로 알리고, 요청자가 볼 수 없는 지점의 근무는 \"다른 지점 근무\"로만 표시한다. 주간 근무표·근무 목록·등록·상세·수정·취소 operation은 #83에서 구현됐다. 현재 근태·출근·휴게 시작·휴게 종료·퇴근·근태 목록·근태 상세 operation은 #84에서 구현됐다. M9 정형 집계·최소 원장·홈 요약 operation은 Issue #86의 설계 계약(aggregation-api.md, ADR-M9-001)이며 구현은 매출·지점 비교·최소 원장 #87, 이용권 판매량·상품 순위·추세 #88, 홈 요약 #90에서 진행한다. 매출·지점 비교·최소 원장 operation은 #87에서 구현됐다. 이용권 판매량·상품 순위·추세 operation은 #88에서 구현됐다. 운영 홈 요약 operation은 #90에서 구현됐다(메시지 카드 제외, ADR-M10-002 M10-D11). 매출 집계는 요청한 모든 지점에 sales:read가 필요하고 하나라도 없으면 403이다. 기간이 없으면 이번 달 1일 0시~내일 0시 미만(Asia/Seoul), 366일 초과는 422 PERIOD_TOO_LONG이다. 지표 정의는 최상위 x-metric-definitions에 있고 M10이 같은 정의를 쓴다. 2026-11-05 사용자 결정: 366일 초과 422 PERIOD_TOO_LONG 확정, 홈 요약 근무 카드의 colleagues에 같은 지점 동료의 이름·근무 시각만 공개(근무표·근태 API의 M8-D02 범위는 그대로). 팀 채팅 operation(/channels/**)은 #167에서 설정 플래그 openstudy.team-chat.enabled(기본값 false)로 비활성화했다. 꺼져 있으면 서버에 경로가 없어 404이고, 계약에는 deprecated와 x-feature-flag·x-disabled-by-default로 표시한다. 자연어 분석(AI 채팅) operation 10개는 #92에서 nl-analysis-api.md로 계약했고 모두 구현돼 있다(implemented). 업무 기록·CSV 반출·진단 로그·품질 평가는 계약 밖이고, 옛 경로(/conversations 등)와 옛 형식 결과(legacyExecution)는 2026-11-08에 지웠으며, 질문은 SSE 없이 한 번의 요청·응답으로 끝난다(ADR-COM-001). M12 근태 정정·휴가·대체근무 operation은 Issue #106의 설계 계약(workforce-requests-api.md, ADR-M12-001)이며 구현은 근태 정정 #107, 휴가 부여·신청·잔여량 #108, 대체근무 #109에서 진행한다. 신청 생성은 Idempotency-Key가 필수이고 승인·반려·취소는 version과 상태로 처리한다. 본인 신청은 본인이 승인·반려·승인 취소할 수 없고(403 SELF_DECISION_FORBIDDEN), 휴가 승인 취소는 시작일 전까지다(2026-11-09 사용자 결정). 휴가 부여·보정·잔여량·신청·승인·반려·신청 취소·승인 취소 operation 13개는 #108에서 구현됐다(leave_requests 신청 지점 칼럼 V11). 대체근무 신청·조회·승인·반려·신청 취소·승인 취소 operation 7개는 #109에서 구현됐다. 근태 정정 신청·조회·승인·반려·신청 취소 operation 6개는 #107에서 구현됐다(반려 사유는 필수이며 audit_events에 저장, 2026-11-09 사용자 결정)."
+    "version": "0.1.14-m13-operations-extension",
+    "description": "검토 완료 8중분류/61요구사항의 구현 전 목표 계약. Q1~Q12의 2026-10-23 당시 사용자 답변을 기록하되 Q8은 SRS v1.1 정책으로 대체됨. decisions.md 참고. 기존 서버 전체 구현 명세가 아니다. ID문자열·API version=DB+1. 상태 변경은 CSRF, 지점과 행위 인가를 함께 검증한다. Issue #27의 /me/profile 및 CurrentUser는 구현된 M1 닉네임 계약이다. 나머지 operation의 구현 상태는 각각의 표기를 따른다. SRS v1.1 확정 상품 정책: 거래 유무와 무관하게 물리 삭제 미제공; 판매 중지·재개 및 기존 상품·거래·revision 보존. 이전 Q8 조건부 삭제안은 적용하지 않는다. /lookups는 workspace 선택 데이터 계약이다. 변경 알림 SSE는 ADR-COM-001에 따라 제거했다. 상품/분류 선택 데이터는 관련 업무 API 구현 전까지 빈 배열이다. M4 고객·Mock 결제·발급 이용권·환불 operation은 Issue #55의 설계 계약(customer-sales-api.md, ADR-M4-002)이며 구현은 #56~#58에서 진행한다. 결제·환불 요청에는 금액 필드가 없고 Idempotency-Key가 필수다. M5 좌석·입퇴실·차감·정확 일치 조회·수동 조정 operation은 Issue #60의 설계 계약(seat-usage-api.md, ADR-M5-001)이며 구현은 #61~#64에서 진행한다. 입실·퇴실·이동·조정은 Idempotency-Key가 필수이고, 퇴실·조정 요청에 차감량 필드는 없다. M7 업무·채널·메시지·업무 카드·시설·문의·공지 operation은 Issue #74의 설계 계약(collaboration-api.md, ADR-M7-001)이며 구현은 #75~#80에서 진행한다. 메시지 전송은 clientMessageKey가 필수이고 업무에는 삭제 API가 없다. 업무 operation과 담당자 후보는 #75에서, 시설 operation은 #78에서, 고객 문의 operation은 #79에서, 공지 operation은 #80에서 구현됐다. 채널·메시지 operation은 #76에서, 업무 카드 공유 operation은 #77에서 구현됐다. 좌석 목록·상세·등록·수정·운영 중단/재개·배치도·현황 operation은 #61에서 구현됐다. 입실용 정확 일치 조회·입실·이용 기록 상세·퇴실 operation은 #62에서, 이용 중 좌석 이동 operation은 #63에서, 입퇴실 이력·이용권 수동 조정·고객 구매·사용 내역 operation은 #64에서 구현됐다. M6 룸·예약·사물함·배정·타 지점 요약 operation은 Issue #67의 설계 계약(space-operations-api.md, ADR-M6-001)이며 구현은 #68~#72에서 진행한다. 예약·배정·연장·취소는 Idempotency-Key가 필수이고 요청에 금액 필드가 없다. 룸 등록·조회·수정·운영 중단/재개와 예약 생성·목록·달력·상세 operation은 #69에서, 예약 취소와 이용 시작·완료 operation은 #70에서 구현됐다. 사물함 목록·등록·현황·상세·수정·운영 중단/재개·지점 요금 일괄 적용과 배정 목록·생성·상세·연장·반납 operation은 #71에서 구현됐다. 타 지점 고객 최소 요약과 고객의 룸·사물함 이력 operation은 #72에서 구현됐다. 본문·스레드별 독립 읽음은 Issue #155에서 계약·구현됐다(collaboration-api.md, ADR-M7-001 M7-D08·D09). POST /channels/{id}/read는 본문 위치 전용으로 바뀌어 답글 ID를 받지 않고, POST /channels/{id}/messages/{messageId}/read가 원문별 스레드 위치를 갱신한다. M8 근무표·출퇴근·근태 operation은 Issue #82의 설계 계약(workforce-api.md, ADR-M8-001)이며 구현은 근무표 #83, 근태 #84에서 진행한다. 근무 등록과 출근은 Idempotency-Key가 필수이고, 근태 명령은 /me/attendance 아래에서 경로·본문에 직원·근태 ID 없이 본인의 진행 중 근태만 바꾼다. 근무 충돌은 409 SHIFT_CONFLICT와 ShiftConflictError의 겹친 구간으로 알리고, 요청자가 볼 수 없는 지점의 근무는 \"다른 지점 근무\"로만 표시한다. 주간 근무표·근무 목록·등록·상세·수정·취소 operation은 #83에서 구현됐다. 현재 근태·출근·휴게 시작·휴게 종료·퇴근·근태 목록·근태 상세 operation은 #84에서 구현됐다. M9 정형 집계·최소 원장·홈 요약 operation은 Issue #86의 설계 계약(aggregation-api.md, ADR-M9-001)이며 구현은 매출·지점 비교·최소 원장 #87, 이용권 판매량·상품 순위·추세 #88, 홈 요약 #90에서 진행한다. 매출·지점 비교·최소 원장 operation은 #87에서 구현됐다. 이용권 판매량·상품 순위·추세 operation은 #88에서 구현됐다. 운영 홈 요약 operation은 #90에서 구현됐다(메시지 카드 제외, ADR-M10-002 M10-D11). 매출 집계는 요청한 모든 지점에 sales:read가 필요하고 하나라도 없으면 403이다. 기간이 없으면 이번 달 1일 0시~내일 0시 미만(Asia/Seoul), 366일 초과는 422 PERIOD_TOO_LONG이다. 지표 정의는 최상위 x-metric-definitions에 있고 M10이 같은 정의를 쓴다. 2026-11-05 사용자 결정: 366일 초과 422 PERIOD_TOO_LONG 확정, 홈 요약 근무 카드의 colleagues에 같은 지점 동료의 이름·근무 시각만 공개(근무표·근태 API의 M8-D02 범위는 그대로). 팀 채팅 operation(/channels/**)은 #167에서 설정 플래그 openstudy.team-chat.enabled(기본값 false)로 비활성화했다. 꺼져 있으면 서버에 경로가 없어 404이고, 계약에는 deprecated와 x-feature-flag·x-disabled-by-default로 표시한다. 자연어 분석(AI 채팅) operation 10개는 #92에서 nl-analysis-api.md로 계약했고 모두 구현돼 있다(implemented). 업무 기록·CSV 반출·진단 로그·품질 평가는 계약 밖이고, 옛 경로(/conversations 등)와 옛 형식 결과(legacyExecution)는 2026-11-08에 지웠으며, 질문은 SSE 없이 한 번의 요청·응답으로 끝난다(ADR-COM-001). M12 근태 정정·휴가·대체근무 operation은 Issue #106의 설계 계약(workforce-requests-api.md, ADR-M12-001)이며 구현은 근태 정정 #107, 휴가 부여·신청·잔여량 #108, 대체근무 #109에서 진행한다. 신청 생성은 Idempotency-Key가 필수이고 승인·반려·취소는 version과 상태로 처리한다. 본인 신청은 본인이 승인·반려·승인 취소할 수 없고(403 SELF_DECISION_FORBIDDEN), 휴가 승인 취소는 시작일 전까지다(2026-11-09 사용자 결정). 휴가 부여·보정·잔여량·신청·승인·반려·신청 취소·승인 취소 operation 13개는 #108에서 구현됐다(leave_requests 신청 지점 칼럼 V11). 대체근무 신청·조회·승인·반려·신청 취소·승인 취소 operation 7개는 #109에서 구현됐다. 근태 정정 신청·조회·승인·반려·신청 취소 operation 6개는 #107에서 구현됐다(반려 사유는 필수이며 audit_events에 저장, 2026-11-09 사용자 결정). Issue #111의 M13 지점 휴무일·상품 판매 기간/한도·중복 고객 병합·일별 마감·고급 필터·이용 지점 사용량·좌석 점유 추이는 operations-extension-api.md의 설계 계약(design-target)이다. 새 operation 12개는 #112~#116에서 구현한다. 이미 구현된 operation·schema에 더할 필드·필터·오류 코드는 x-planned-changes에 두고 구현 이슈가 본 정의로 옮긴다."
   },
   "servers": [
     {
@@ -2976,6 +2976,30 @@
               "$ref": "#/components/schemas/Id"
             }
           }
+        ],
+        "x-planned-changes": [
+          {
+            "issue": "#113",
+            "status": "design-target",
+            "parameters": [
+              {
+                "name": "availability",
+                "in": "query",
+                "required": false,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "판매 가능",
+                    "판매 중지",
+                    "판매 전",
+                    "판매 종료",
+                    "한도 소진"
+                  ]
+                },
+                "description": "지금의 판매 가능 여부로 거른다."
+              }
+            ]
+          }
         ]
       },
       "post": {
@@ -3802,6 +3826,29 @@
         ],
         "x-adr-decisions": [
           "M4-D05"
+        ],
+        "x-planned-changes": [
+          {
+            "issue": "#114",
+            "status": "design-target",
+            "parameters": [
+              {
+                "name": "status",
+                "in": "query",
+                "required": false,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "정상",
+                    "이용 제한",
+                    "비활성",
+                    "병합됨"
+                  ]
+                },
+                "description": "병합됨은 이 값으로만 나온다."
+              }
+            ]
+          }
         ]
       },
       "post": {
@@ -4315,6 +4362,43 @@
         "x-error-codes": [
           "FORBIDDEN",
           "VALIDATION_FAILED"
+        ],
+        "x-planned-changes": [
+          {
+            "issue": "#114",
+            "status": "design-target",
+            "note": "customerId가 대상 고객이면 흡수 고객의 행도 담는다(M13-D07)."
+          },
+          {
+            "issue": "#116",
+            "status": "design-target",
+            "parameters": [
+              {
+                "$ref": "#/components/parameters/PassCategoryCode"
+              },
+              {
+                "$ref": "#/components/parameters/PaymentMethods"
+              },
+              {
+                "$ref": "#/components/parameters/ProductKinds"
+              },
+              {
+                "$ref": "#/components/parameters/OperatorIds"
+              },
+              {
+                "$ref": "#/components/parameters/ProcessingBranchIds"
+              }
+            ],
+            "properties": {
+              "filter": {
+                "$ref": "#/components/schemas/PaymentFilter"
+              },
+              "summary": {
+                "$ref": "#/components/schemas/PaymentListSummary"
+              }
+            },
+            "note": "응답 PaymentPage에 filter·summary를 더한다(FR-PAY-13)."
+          }
         ]
       },
       "post": {
@@ -4424,6 +4508,22 @@
           "M4-D02",
           "M4-D03",
           "M4-D07"
+        ],
+        "x-planned-changes": [
+          {
+            "issue": "#113",
+            "status": "design-target",
+            "errorCodes": [
+              "PRODUCT_NOT_IN_SALE_PERIOD",
+              "PRODUCT_SALE_LIMIT_REACHED"
+            ],
+            "conflictSchema": "#/components/schemas/OperationsConflictError",
+            "note": "판정 순서: 판매 중지 → 판매 지점 → 판매 기간 → 남은 한도(M13-D06).",
+            "adr": [
+              "M13-D02",
+              "M13-D06"
+            ]
+          }
         ]
       }
     },
@@ -4617,6 +4717,13 @@
         "x-adr-decisions": [
           "M4-D04",
           "M4-D08"
+        ],
+        "x-planned-changes": [
+          {
+            "issue": "#115",
+            "status": "design-target",
+            "note": "원결제 승인 시각이 마감된 날이면 같은 트랜잭션에서 daily_closing_adjustments를 남긴다(M13-D04·D11). 요청·응답은 그대로다."
+          }
         ]
       }
     },
@@ -4757,6 +4864,13 @@
           "M4-D01",
           "M4-D02",
           "M4-D03"
+        ],
+        "x-planned-changes": [
+          {
+            "issue": "#114",
+            "status": "design-target",
+            "note": "customerId가 대상 고객이면 흡수 고객의 행도 담는다(M13-D07)."
+          }
         ]
       }
     },
@@ -5588,6 +5702,13 @@
           "M5-D05",
           "M5-D07",
           "M5-D08"
+        ],
+        "x-planned-changes": [
+          {
+            "issue": "#114",
+            "status": "design-target",
+            "note": "흡수 고객은 결과에서 빼고 대상 고객을 찾는다."
+          }
         ]
       }
     },
@@ -5735,6 +5856,13 @@
         ],
         "x-adr-decisions": [
           "M5-D06"
+        ],
+        "x-planned-changes": [
+          {
+            "issue": "#114",
+            "status": "design-target",
+            "note": "customerId가 대상 고객이면 흡수 고객의 행도 담는다(M13-D07)."
+          }
         ]
       },
       "post": {
@@ -6357,6 +6485,13 @@
         ],
         "x-adr-decisions": [
           "M5-D05"
+        ],
+        "x-planned-changes": [
+          {
+            "issue": "#114",
+            "status": "design-target",
+            "note": "흡수 고객의 기록을 함께 담는다(M13-D07)."
+          }
         ]
       }
     },
@@ -11506,6 +11641,13 @@
         "x-error-codes": [
           "FORBIDDEN",
           "VALIDATION_FAILED"
+        ],
+        "x-planned-changes": [
+          {
+            "issue": "#114",
+            "status": "design-target",
+            "note": "customerId가 대상 고객이면 흡수 고객의 행도 담는다(M13-D07)."
+          }
         ]
       },
       "post": {
@@ -11607,6 +11749,20 @@
           "VALIDATION_FAILED",
           "IDEMPOTENCY_CONFLICT",
           "REQUEST_IN_PROGRESS"
+        ],
+        "x-planned-changes": [
+          {
+            "issue": "#112",
+            "status": "design-target",
+            "errorCodes": [
+              "BRANCH_CLOSED_DAY"
+            ],
+            "conflictSchema": "#/components/schemas/OperationsConflictError",
+            "note": "시작 시각의 Asia/Seoul 날짜가 휴무일이면 409(M13-D01).",
+            "adr": [
+              "M13-D01"
+            ]
+          }
         ]
       }
     },
@@ -11899,6 +12055,13 @@
           "VALIDATION_FAILED",
           "IDEMPOTENCY_CONFLICT",
           "REQUEST_IN_PROGRESS"
+        ],
+        "x-planned-changes": [
+          {
+            "issue": "#115",
+            "status": "design-target",
+            "note": "원결제 승인 시각이 마감된 날이면 같은 트랜잭션에서 daily_closing_adjustments를 남긴다(M13-D04·D11). 요청·응답은 그대로다."
+          }
         ]
       }
     },
@@ -13397,6 +13560,13 @@
         "x-error-codes": [
           "NOT_FOUND",
           "FORBIDDEN"
+        ],
+        "x-planned-changes": [
+          {
+            "issue": "#114",
+            "status": "design-target",
+            "note": "흡수 고객의 기록을 함께 담는다(M13-D07)."
+          }
         ]
       }
     },
@@ -14855,6 +15025,29 @@
           "sales.net_amount",
           "sales.approved_payment_count",
           "sales.refund_count"
+        ],
+        "x-planned-changes": [
+          {
+            "issue": "#116",
+            "status": "design-target",
+            "parameters": [
+              {
+                "$ref": "#/components/parameters/PassCategoryCode"
+              },
+              {
+                "$ref": "#/components/parameters/PaymentMethods"
+              },
+              {
+                "$ref": "#/components/parameters/ProductKinds"
+              },
+              {
+                "$ref": "#/components/parameters/OperatorIds"
+              },
+              {
+                "$ref": "#/components/parameters/ProcessingBranchIds"
+              }
+            ]
+          }
         ]
       }
     },
@@ -14981,6 +15174,29 @@
           "sales.net_amount",
           "sales.approved_payment_count",
           "sales.refund_count"
+        ],
+        "x-planned-changes": [
+          {
+            "issue": "#116",
+            "status": "design-target",
+            "parameters": [
+              {
+                "$ref": "#/components/parameters/PassCategoryCode"
+              },
+              {
+                "$ref": "#/components/parameters/PaymentMethods"
+              },
+              {
+                "$ref": "#/components/parameters/ProductKinds"
+              },
+              {
+                "$ref": "#/components/parameters/OperatorIds"
+              },
+              {
+                "$ref": "#/components/parameters/ProcessingBranchIds"
+              }
+            ]
+          }
         ]
       }
     },
@@ -15108,6 +15324,29 @@
           "sales.net_amount",
           "sales.approved_payment_count",
           "sales.refund_count"
+        ],
+        "x-planned-changes": [
+          {
+            "issue": "#116",
+            "status": "design-target",
+            "parameters": [
+              {
+                "$ref": "#/components/parameters/PassCategoryCode"
+              },
+              {
+                "$ref": "#/components/parameters/PaymentMethods"
+              },
+              {
+                "$ref": "#/components/parameters/ProductKinds"
+              },
+              {
+                "$ref": "#/components/parameters/OperatorIds"
+              },
+              {
+                "$ref": "#/components/parameters/ProcessingBranchIds"
+              }
+            ]
+          }
         ]
       }
     },
@@ -15218,6 +15457,26 @@
           "pass.refunded_quantity",
           "pass.net_sold_quantity",
           "pass.issued_count"
+        ],
+        "x-planned-changes": [
+          {
+            "issue": "#116",
+            "status": "design-target",
+            "parameters": [
+              {
+                "$ref": "#/components/parameters/PaymentMethods"
+              },
+              {
+                "$ref": "#/components/parameters/ProductKinds"
+              },
+              {
+                "$ref": "#/components/parameters/OperatorIds"
+              },
+              {
+                "$ref": "#/components/parameters/ProcessingBranchIds"
+              }
+            ]
+          }
         ]
       }
     },
@@ -15334,6 +15593,26 @@
           "pass.refunded_quantity",
           "pass.net_sold_quantity",
           "pass.issued_count"
+        ],
+        "x-planned-changes": [
+          {
+            "issue": "#116",
+            "status": "design-target",
+            "parameters": [
+              {
+                "$ref": "#/components/parameters/PaymentMethods"
+              },
+              {
+                "$ref": "#/components/parameters/ProductKinds"
+              },
+              {
+                "$ref": "#/components/parameters/OperatorIds"
+              },
+              {
+                "$ref": "#/components/parameters/ProcessingBranchIds"
+              }
+            ]
+          }
         ]
       }
     },
@@ -15481,6 +15760,26 @@
           "pass.refunded_quantity",
           "pass.net_sold_quantity",
           "pass.issued_count"
+        ],
+        "x-planned-changes": [
+          {
+            "issue": "#116",
+            "status": "design-target",
+            "parameters": [
+              {
+                "$ref": "#/components/parameters/PaymentMethods"
+              },
+              {
+                "$ref": "#/components/parameters/ProductKinds"
+              },
+              {
+                "$ref": "#/components/parameters/OperatorIds"
+              },
+              {
+                "$ref": "#/components/parameters/ProcessingBranchIds"
+              }
+            ]
+          }
         ]
       }
     },
@@ -19695,6 +19994,1227 @@
           "M8-D06"
         ]
       }
+    },
+    "/branches/{id}/closures": {
+      "get": {
+        "operationId": "listBranchClosures",
+        "summary": "지점 휴무일 목록",
+        "tags": [
+          "branches"
+        ],
+        "description": "기간과 겹치는 휴무일(날짜 오름차순). 생략하면 오늘부터 90일. 최대 366일.",
+        "x-requirement-ids": [
+          "FR-BR-09"
+        ],
+        "x-permission": "OWNER 또는 지점의 유효 소속",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#112",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BranchClosureList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/ClosureFrom"
+          },
+          {
+            "$ref": "#/components/parameters/ClosureTo"
+          }
+        ],
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN",
+          "VALIDATION_FAILED",
+          "PERIOD_TOO_LONG"
+        ],
+        "x-adr-decisions": [
+          "M13-D05"
+        ]
+      },
+      "post": {
+        "operationId": "createBranchClosure",
+        "summary": "지점 휴무일 등록",
+        "tags": [
+          "branches"
+        ],
+        "description": "그날 시작하는 스터디룸 신규 예약만 막는다. 기존 예약은 취소하지 않고 affectedReservations로 경고한다(M13-D01).",
+        "x-requirement-ids": [
+          "FR-BR-09"
+        ],
+        "x-permission": "지점의 MANAGER 이상(M13-D05)",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#112",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "201": {
+            "description": "생성됨. 같은 Idempotency-Key·같은 입력은 처음 결과를 재생한다.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BranchClosureCreated"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "description": "상태·버전·중복 요청과 M13 규칙 충돌. code별 대상 정보는 OperationsConflictError 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "description": "다시 시도할 때까지 초. 409는 REQUEST_IN_PROGRESS인 경우에만 포함."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationsConflictError"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BranchClosureCreate"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN",
+          "VALIDATION_FAILED",
+          "CLOSURE_DATE_INVALID",
+          "BRANCH_CLOSURE_EXISTS",
+          "IDEMPOTENCY_CONFLICT",
+          "REQUEST_IN_PROGRESS"
+        ],
+        "x-adr-decisions": [
+          "M13-D01",
+          "M13-D05"
+        ]
+      }
+    },
+    "/branch-closures/{id}": {
+      "patch": {
+        "operationId": "updateBranchClosure",
+        "summary": "지점 휴무일 안내 수정",
+        "tags": [
+          "branches"
+        ],
+        "description": "안내 문구만 바꾼다. 날짜는 바꿀 수 없다.",
+        "x-requirement-ids": [
+          "FR-BR-09"
+        ],
+        "x-permission": "휴무일 지점의 MANAGER 이상(M13-D05)",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#112",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BranchClosure"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "description": "상태·버전·중복 요청과 M13 규칙 충돌. code별 대상 정보는 OperationsConflictError 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "description": "다시 시도할 때까지 초. 409는 REQUEST_IN_PROGRESS인 경우에만 포함."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationsConflictError"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BranchClosureUpdate"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN",
+          "VALIDATION_FAILED",
+          "VERSION_CONFLICT"
+        ],
+        "x-adr-decisions": [
+          "M13-D05"
+        ]
+      },
+      "delete": {
+        "operationId": "deleteBranchClosure",
+        "summary": "지점 휴무일 삭제",
+        "tags": [
+          "branches"
+        ],
+        "description": "date > 오늘(Asia/Seoul)인 휴무일만 삭제한다. 오늘 또는 지난 휴무일은 409 CLOSURE_ALREADY_STARTED.",
+        "x-requirement-ids": [
+          "FR-BR-09"
+        ],
+        "x-permission": "휴무일 지점의 MANAGER 이상(M13-D05)",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#112",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "204": {
+            "description": "정상 처리. 본문 없음.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "description": "상태·버전·중복 요청과 M13 규칙 충돌. code별 대상 정보는 OperationsConflictError 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "description": "다시 시도할 때까지 초. 409는 REQUEST_IN_PROGRESS인 경우에만 포함."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationsConflictError"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Version"
+            },
+            "description": "조회한 version."
+          }
+        ],
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN",
+          "VALIDATION_FAILED",
+          "VERSION_CONFLICT",
+          "CLOSURE_ALREADY_STARTED"
+        ],
+        "x-adr-decisions": [
+          "M13-D05"
+        ]
+      }
+    },
+    "/customer-duplicates": {
+      "get": {
+        "operationId": "listCustomerDuplicates",
+        "summary": "중복 의심 고객 묶음",
+        "tags": [
+          "customers"
+        ],
+        "description": "같은 숫자 연락처의 병합되지 않은 고객이 둘 이상인 묶음(M13-D13). 고객 수 내림차순, 같으면 연락처 오름차순.",
+        "x-requirement-ids": [
+          "FR-MEM-08"
+        ],
+        "x-permission": "OWNER(M13-D03)",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#114",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerDuplicatePage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          }
+        ],
+        "x-error-codes": [
+          "FORBIDDEN",
+          "VALIDATION_FAILED"
+        ],
+        "x-adr-decisions": [
+          "M13-D03",
+          "M13-D13"
+        ]
+      }
+    },
+    "/customers/{id}/merge": {
+      "post": {
+        "operationId": "mergeCustomer",
+        "summary": "고객 병합",
+        "tags": [
+          "customers"
+        ],
+        "description": "흡수 고객을 병합됨으로 바꾸고 대상 고객 참조를 남긴다. 결제·이용권·이용 기록의 고객 참조는 바꾸지 않는다(M13-D07). 되돌리지 않는다.",
+        "x-requirement-ids": [
+          "FR-MEM-08"
+        ],
+        "x-permission": "OWNER(M13-D03)",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#114",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Customer"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "description": "상태·버전·중복 요청과 M13 규칙 충돌. code별 대상 정보는 OperationsConflictError 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "description": "다시 시도할 때까지 초. 409는 REQUEST_IN_PROGRESS인 경우에만 포함."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationsConflictError"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerMerge"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN",
+          "VALIDATION_FAILED",
+          "CUSTOMER_MERGE_SELF",
+          "CUSTOMER_ALREADY_MERGED",
+          "VERSION_CONFLICT"
+        ],
+        "x-adr-decisions": [
+          "M13-D03",
+          "M13-D07"
+        ]
+      }
+    },
+    "/customers/{id}/merges": {
+      "get": {
+        "operationId": "listCustomerMerges",
+        "summary": "고객 병합 이력",
+        "tags": [
+          "customers"
+        ],
+        "description": "이 고객이 대상이거나 흡수된 병합 이력, 최신순.",
+        "x-requirement-ids": [
+          "FR-MEM-08"
+        ],
+        "x-permission": "고객을 볼 수 있는 사용자(M4-D05 조회 범위)",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#114",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerMergeList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Scope"
+          }
+        ],
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN"
+        ],
+        "x-adr-decisions": [
+          "M13-D03"
+        ]
+      }
+    },
+    "/daily-closings": {
+      "get": {
+        "operationId": "listDailyClosings",
+        "summary": "일별 마감 목록",
+        "tags": [
+          "sales"
+        ],
+        "description": "branchIds는 M9와 같은 규칙(생략하면 sales:read가 있는 모든 지점). from·to는 날짜(포함), 최대 366일.",
+        "x-requirement-ids": [
+          "FR-PAY-14"
+        ],
+        "x-permission": "요청한 모든 지점의 sales:read(M9-D07)",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#115",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyClosingPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AggregationBranchIds"
+          },
+          {
+            "$ref": "#/components/parameters/ClosureFrom"
+          },
+          {
+            "$ref": "#/components/parameters/ClosureTo"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          }
+        ],
+        "x-error-codes": [
+          "FORBIDDEN",
+          "VALIDATION_FAILED",
+          "PERIOD_TOO_LONG"
+        ],
+        "x-adr-decisions": [
+          "M13-D08"
+        ]
+      },
+      "post": {
+        "operationId": "createDailyClosing",
+        "summary": "일별 마감",
+        "tags": [
+          "sales"
+        ],
+        "description": "끝난 날(businessDate < 오늘, Asia/Seoul)만 마감한다(M13-D11). 처리일·원결제일 기준 수치를 모두 저장한다. 마감은 어떤 업무도 막지 않는다(M13-D04).",
+        "x-requirement-ids": [
+          "FR-PAY-14"
+        ],
+        "x-permission": "지점의 MANAGER 이상(M13-D04) + 지점의 sales:read",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#115",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "201": {
+            "description": "생성됨. 같은 Idempotency-Key·같은 입력은 처음 결과를 재생한다.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyClosing"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "description": "상태·버전·중복 요청과 M13 규칙 충돌. code별 대상 정보는 OperationsConflictError 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "description": "다시 시도할 때까지 초. 409는 REQUEST_IN_PROGRESS인 경우에만 포함."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationsConflictError"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DailyClosingCreate"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN",
+          "VALIDATION_FAILED",
+          "CLOSING_DATE_OPEN",
+          "CLOSING_EXISTS",
+          "IDEMPOTENCY_CONFLICT",
+          "REQUEST_IN_PROGRESS"
+        ],
+        "x-adr-decisions": [
+          "M13-D04",
+          "M13-D08",
+          "M13-D11"
+        ]
+      }
+    },
+    "/daily-closings/{id}": {
+      "get": {
+        "operationId": "getDailyClosing",
+        "summary": "일별 마감 상세",
+        "tags": [
+          "sales"
+        ],
+        "description": "마감 스냅샷, 현재 원결제일 기준 수치, 차이, 조정 이력. 조정 이력은 환불이 만든다.",
+        "x-requirement-ids": [
+          "FR-PAY-14"
+        ],
+        "x-permission": "지점의 sales:read",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#115",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyClosing"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          }
+        ],
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN"
+        ],
+        "x-adr-decisions": [
+          "M13-D04",
+          "M13-D08",
+          "M13-D11"
+        ]
+      }
+    },
+    "/sales/passes/usage": {
+      "get": {
+        "operationId": "getPassUsageByBranch",
+        "summary": "이용 지점별 이용권 사용량",
+        "tags": [
+          "sales"
+        ],
+        "description": "매출이 아닌 이용권 사용량(입실 수·시간권 차감 분·정액권 차감액)을 이용 지점별로, 판매 지점별 내역과 함께 준다(M13-D12). 권한 밖 판매 지점은 하나로 합친다.",
+        "x-requirement-ids": [
+          "FR-AGG-15"
+        ],
+        "x-permission": "요청한 모든 이용 지점의 sales:read(M9-D07)",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#116",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PassUsageByBranch"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AggregationBranchIds"
+          },
+          {
+            "$ref": "#/components/parameters/AggregationFrom"
+          },
+          {
+            "$ref": "#/components/parameters/AggregationTo"
+          },
+          {
+            "$ref": "#/components/parameters/ProductKinds"
+          },
+          {
+            "$ref": "#/components/parameters/PassProductId"
+          },
+          {
+            "$ref": "#/components/parameters/PassCategoryCode"
+          }
+        ],
+        "x-error-codes": [
+          "FORBIDDEN",
+          "VALIDATION_FAILED",
+          "PERIOD_TOO_LONG"
+        ],
+        "x-adr-decisions": [
+          "M13-D10",
+          "M13-D12"
+        ]
+      }
+    },
+    "/seats/occupancy-trend": {
+      "get": {
+        "operationId": "getSeatOccupancyTrend",
+        "summary": "좌석 점유 추이",
+        "tags": [
+          "seats"
+        ],
+        "description": "시간·일 구간별 점유한 좌석·분 ÷ (좌석 수 × 구간 분)(M13-D09). 기본 hour·오늘 하루. hour는 최대 31일, day는 최대 366일.",
+        "x-requirement-ids": [
+          "FR-SEAT-16"
+        ],
+        "x-permission": "OWNER 또는 지점의 유효 소속",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#116",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "정상 처리. 세부 의미는 operation 설명 참조.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatOccupancyTrend"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "branchId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            },
+            "description": "지점."
+          },
+          {
+            "$ref": "#/components/parameters/AggregationFrom"
+          },
+          {
+            "$ref": "#/components/parameters/AggregationTo"
+          },
+          {
+            "name": "granularity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "hour",
+                "day"
+              ],
+              "default": "hour"
+            },
+            "description": "구간 단위. 기본 hour."
+          }
+        ],
+        "x-error-codes": [
+          "NOT_FOUND",
+          "FORBIDDEN",
+          "VALIDATION_FAILED",
+          "PERIOD_TOO_LONG"
+        ],
+        "x-adr-decisions": [
+          "M13-D09"
+        ]
+      }
     }
   },
   "components": {
@@ -19867,6 +21387,101 @@
           "maxLength": 40
         },
         "description": "판매 당시 분류 코드(passes.snapshot_category_code) 필터. 정확 일치."
+      },
+      "PaymentMethods": {
+        "name": "methods",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "현금",
+              "카드",
+              "계좌이체",
+              "기타"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "description": "결제 수단 필터(반복). 승인은 결제 수단, 환불은 원결제 수단으로 거른다(M13-D10). 중복은 422.",
+        "style": "form",
+        "explode": true
+      },
+      "ProductKinds": {
+        "name": "productKinds",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "시간권",
+              "기간권",
+              "정액권"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "description": "상품 유형 필터(반복). 이용권 결제만 남고 이용권 외 용도는 빠진다. purpose가 이용권이 아니면 422(M13-D10).",
+        "style": "form",
+        "explode": true
+      },
+      "OperatorIds": {
+        "name": "operatorIds",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "description": "처리자 필터(반복). 승인은 결제 처리자(payments.created_by), 환불은 환불 처리자(refunds.processed_by)(M13-D10).",
+        "style": "form",
+        "explode": true
+      },
+      "ProcessingBranchIds": {
+        "name": "processingBranchIds",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "description": "환불 처리 지점 필터(반복). 환불 항목에만 적용하고 승인 항목은 그대로 둔다. 볼 수 없는 지점이면 403(M13-D10).",
+        "style": "form",
+        "explode": true
+      },
+      "ClosureFrom": {
+        "name": "from",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "format": "date"
+        },
+        "description": "시작 날짜(포함, Asia/Seoul). to와 함께 보내거나 함께 생략한다."
+      },
+      "ClosureTo": {
+        "name": "to",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "format": "date"
+        },
+        "description": "종료 날짜(포함, Asia/Seoul). 기간은 최대 366일이고 넘으면 422 PERIOD_TOO_LONG."
       }
     },
     "responses": {
@@ -21402,7 +23017,64 @@
           "canEdit"
         ],
         "additionalProperties": false,
-        "description": "branchIds는 현재 사용자가 볼 수 있는 적용 지점만. canEdit은 공유 원본 전체 관리 가능 여부이며 서버 검증을 대체하지 않는다."
+        "description": "branchIds는 현재 사용자가 볼 수 있는 적용 지점만. canEdit은 공유 원본 전체 관리 가능 여부이며 서버 검증을 대체하지 않는다.",
+        "x-planned-changes": [
+          {
+            "issue": "#113",
+            "status": "design-target",
+            "properties": {
+              "salesStartsAt": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true,
+                "description": "판매 시작(포함). null이면 제한 없음."
+              },
+              "salesEndsAt": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true,
+                "description": "판매 종료(제외). null이면 제한 없음."
+              },
+              "salesLimit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000,
+                "nullable": true,
+                "description": "모든 판매 지점 합계 한도(M13-D02). null이면 제한 없음."
+              },
+              "soldQuantity": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991,
+                "description": "승인 상태 결제 수. 환불된 결제는 빠진다."
+              },
+              "remainingQuantity": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991,
+                "nullable": true
+              },
+              "saleAvailability": {
+                "type": "string",
+                "enum": [
+                  "판매 가능",
+                  "판매 중지",
+                  "판매 전",
+                  "판매 종료",
+                  "한도 소진"
+                ]
+              }
+            },
+            "required": [
+              "salesStartsAt",
+              "salesEndsAt",
+              "salesLimit",
+              "soldQuantity",
+              "remainingQuantity",
+              "saleAvailability"
+            ]
+          }
+        ]
       },
       "ProductCreate": {
         "type": "object",
@@ -21462,7 +23134,34 @@
           "branchIds": [
             "1"
           ]
-        }
+        },
+        "x-planned-changes": [
+          {
+            "issue": "#113",
+            "status": "design-target",
+            "properties": {
+              "salesStartsAt": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true,
+                "description": "판매 시작(포함). null이면 제한 없음."
+              },
+              "salesEndsAt": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true,
+                "description": "판매 종료(제외). null이면 제한 없음."
+              },
+              "salesLimit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000,
+                "nullable": true,
+                "description": "모든 판매 지점 합계 한도(M13-D02). null이면 제한 없음."
+              }
+            }
+          }
+        ]
       },
       "ProductUpdate": {
         "type": "object",
@@ -21492,7 +23191,35 @@
         ],
         "additionalProperties": false,
         "minProperties": 2,
-        "description": "terms.kind 변경 금지. 제공되지 않은 필드는 유지. terms는 유형 전체 조건 교체."
+        "description": "terms.kind 변경 금지. 제공되지 않은 필드는 유지. terms는 유형 전체 조건 교체.",
+        "x-planned-changes": [
+          {
+            "issue": "#113",
+            "status": "design-target",
+            "properties": {
+              "salesStartsAt": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true,
+                "description": "판매 시작(포함). null이면 제한 없음."
+              },
+              "salesEndsAt": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true,
+                "description": "판매 종료(제외). null이면 제한 없음."
+              },
+              "salesLimit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000,
+                "nullable": true,
+                "description": "모든 판매 지점 합계 한도(M13-D02). null이면 제한 없음."
+              }
+            },
+            "note": "필드를 빼면 그대로, null이면 제한 해제. 변경은 version과 revision을 남긴다."
+          }
+        ]
       },
       "ProductStatus": {
         "type": "object",
@@ -21592,7 +23319,39 @@
           "categoryName",
           "branchIds"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "x-planned-changes": [
+          {
+            "issue": "#113",
+            "status": "design-target",
+            "properties": {
+              "salesStartsAt": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true,
+                "description": "판매 시작(포함). null이면 제한 없음."
+              },
+              "salesEndsAt": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true,
+                "description": "판매 종료(제외). null이면 제한 없음."
+              },
+              "salesLimit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000,
+                "nullable": true,
+                "description": "모든 판매 지점 합계 한도(M13-D02). null이면 제한 없음."
+              }
+            },
+            "required": [
+              "salesStartsAt",
+              "salesEndsAt",
+              "salesLimit"
+            ]
+          }
+        ]
       },
       "ProductRevision": {
         "type": "object",
@@ -22317,7 +24076,41 @@
           "canEdit"
         ],
         "additionalProperties": false,
-        "description": "registeredBranchId가 null인 고객은 V2 이전에 결제 없이 저장된 고객이다(OWNER만 조회). canEdit은 화면 표시용이며 서버 검증을 대체하지 않는다. 결제 정보는 포함하지 않는다."
+        "description": "registeredBranchId가 null인 고객은 V2 이전에 결제 없이 저장된 고객이다(OWNER만 조회). canEdit은 화면 표시용이며 서버 검증을 대체하지 않는다. 결제 정보는 포함하지 않는다.",
+        "x-planned-changes": [
+          {
+            "issue": "#114",
+            "status": "design-target",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "정상",
+                  "이용 제한",
+                  "비활성",
+                  "병합됨"
+                ]
+              },
+              "mergedInto": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CustomerSummary"
+                  }
+                ],
+                "nullable": true
+              },
+              "absorbedCustomerCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "mergedInto",
+              "absorbedCustomerCount"
+            ]
+          }
+        ]
       },
       "CustomerPage": {
         "type": "object",
@@ -22695,7 +24488,25 @@
           "items",
           "meta"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "x-planned-changes": [
+          {
+            "issue": "#116",
+            "status": "design-target",
+            "properties": {
+              "filter": {
+                "$ref": "#/components/schemas/PaymentFilter"
+              },
+              "summary": {
+                "$ref": "#/components/schemas/PaymentListSummary"
+              }
+            },
+            "required": [
+              "filter",
+              "summary"
+            ]
+          }
+        ]
       },
       "RefundCreate": {
         "type": "object",
@@ -26852,7 +28663,25 @@
           "items"
         ],
         "additionalProperties": false,
-        "description": "기간과 겹치는 예약 전체다. 페이지가 없고 결제 실패 예약은 담지 않는다."
+        "description": "기간과 겹치는 예약 전체다. 페이지가 없고 결제 실패 예약은 담지 않는다.",
+        "x-planned-changes": [
+          {
+            "issue": "#112",
+            "status": "design-target",
+            "properties": {
+              "closedDates": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "date"
+                }
+              }
+            },
+            "required": [
+              "closedDates"
+            ]
+          }
+        ]
       },
       "RoomReservationCreate": {
         "type": "object",
@@ -28243,9 +30072,10 @@
           "원",
           "건",
           "개",
-          "%"
+          "%",
+          "분"
         ],
-        "description": "원=원화 정수 금액, 건=결제·환불·업무 건수, 개=이용권 수량, %=백분율(소수 첫째 자리)."
+        "description": "원=원화 정수 금액, 건=결제·환불·업무 건수, 개=이용권 수량, %=백분율(소수 첫째 자리). 분=이용권 차감 분(M13)."
       },
       "DataStatus": {
         "type": "string",
@@ -28390,7 +30220,65 @@
           "granularity"
         ],
         "additionalProperties": false,
-        "description": "집계에 실제 적용한 조건. M10이 같은 조건 객체로 공통 집계 기반을 호출한다(M10-D05). from·to는 null이 아니다."
+        "description": "집계에 실제 적용한 조건. M10이 같은 조건 객체로 공통 집계 기반을 호출한다(M10-D05). from·to는 null이 아니다.",
+        "x-planned-changes": [
+          {
+            "issue": "#116",
+            "status": "design-target",
+            "properties": {
+              "methods": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "현금",
+                    "카드",
+                    "계좌이체",
+                    "기타"
+                  ]
+                }
+              },
+              "productKinds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "시간권",
+                    "기간권",
+                    "정액권"
+                  ]
+                }
+              },
+              "operatorIds": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Id"
+                }
+              },
+              "processingBranchIds": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Id"
+                }
+              },
+              "refundBasis": {
+                "type": "string",
+                "enum": [
+                  "processedDate",
+                  "paymentDate"
+                ],
+                "nullable": true,
+                "description": "이용 지점 사용량(getPassUsageByBranch)은 null."
+              }
+            },
+            "required": [
+              "methods",
+              "productKinds",
+              "operatorIds",
+              "processingBranchIds"
+            ]
+          }
+        ]
       },
       "AggregationPartial": {
         "type": "object",
@@ -28483,7 +30371,24 @@
           "metrics"
         ],
         "additionalProperties": false,
-        "description": "모든 매출·이용권 집계 응답의 공통 메타정보(FR-AGG-09). 카드·표·차트·원장이 같은 값을 쓴다. dataStatus=noData ⇔ sourceRowCount=0."
+        "description": "모든 매출·이용권 집계 응답의 공통 메타정보(FR-AGG-09). 카드·표·차트·원장이 같은 값을 쓴다. dataStatus=noData ⇔ sourceRowCount=0.",
+        "x-planned-changes": [
+          {
+            "issue": "#116",
+            "status": "design-target",
+            "properties": {
+              "conditionNotes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ConditionNote"
+                }
+              }
+            },
+            "required": [
+              "conditionNotes"
+            ]
+          }
+        ]
       },
       "RevenueAmounts": {
         "type": "object",
@@ -29855,7 +31760,24 @@
           "notices"
         ],
         "additionalProperties": false,
-        "description": "운영 홈 요약(FR-DASH-02·03·05·06). 각 카드는 원본 기능의 권한·범위를 넘지 않는다."
+        "description": "운영 홈 요약(FR-DASH-02·03·05·06). 각 카드는 원본 기능의 권한·범위를 넘지 않는다.",
+        "x-planned-changes": [
+          {
+            "issue": "#112",
+            "status": "design-target",
+            "properties": {
+              "closures": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/HomeClosureItem"
+                }
+              }
+            },
+            "required": [
+              "closures"
+            ]
+          }
+        ]
       },
       "HomeShiftColleague": {
         "type": "object",
@@ -31966,6 +33888,1314 @@
         ],
         "additionalProperties": false,
         "description": "M12 신청 명령의 409. ApiError 필드에 code별 대상 정보를 더한다: conflicts(LEAVE_SHIFT_CONFLICT·SHIFT_CONFLICT), attendanceConflicts(CORRECTION_OVERLAP), breakIds(CORRECTION_BREAK_OUTSIDE), requiredDays·availableDays(LEAVE_BALANCE_INSUFFICIENT), overlappingRequestIds(LEAVE_OVERLAP), pendingCorrectionId(CORRECTION_PENDING), pendingSwapId(SWAP_PENDING), shiftId·latestVersion·reloadUrl(SHIFT_VERSION_CONFLICT), shiftId·latestVersion·approvedVersion·reloadUrl(SWAP_RESTORE_CONFLICT). INVALID_STATE·VERSION_CONFLICT는 latestVersion·reloadUrl을 담는다."
+      },
+      "OperationsConflictError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "fieldErrors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "latestVersion": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "reloadUrl": {
+            "type": "string"
+          },
+          "closureId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Id"
+              }
+            ],
+            "nullable": true,
+            "description": "BRANCH_CLOSURE_EXISTS"
+          },
+          "closedDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "BRANCH_CLOSED_DAY"
+          },
+          "salesStartsAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "PRODUCT_NOT_IN_SALE_PERIOD"
+          },
+          "salesEndsAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "PRODUCT_NOT_IN_SALE_PERIOD"
+          },
+          "salesLimit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000,
+            "nullable": true,
+            "description": "PRODUCT_SALE_LIMIT_REACHED"
+          },
+          "soldQuantity": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "nullable": true,
+            "description": "PRODUCT_SALE_LIMIT_REACHED"
+          },
+          "mergedIntoCustomerId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Id"
+              }
+            ],
+            "nullable": true,
+            "description": "CUSTOMER_ALREADY_MERGED"
+          },
+          "closingId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Id"
+              }
+            ],
+            "nullable": true,
+            "description": "CLOSING_EXISTS"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "requestId"
+        ],
+        "additionalProperties": false,
+        "description": "M13 409 본문. ApiError 필드에 code별 대상 정보를 더한다. 해당 없는 필드는 담지 않는다."
+      },
+      "BranchClosure": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "nullable": true
+          },
+          "createdBy": {
+            "$ref": "#/components/schemas/ActorSummary"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "canEdit": {
+            "type": "boolean"
+          },
+          "canDelete": {
+            "type": "boolean",
+            "description": "편집 권한이 있고 date > 오늘(Asia/Seoul)이면 true."
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "branchId",
+          "date",
+          "note",
+          "createdBy",
+          "createdAt",
+          "updatedAt",
+          "canEdit",
+          "canDelete"
+        ],
+        "additionalProperties": false,
+        "description": "지점 휴무일(Asia/Seoul 하루 전체, M13-D05)."
+      },
+      "BranchClosureCreate": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "date"
+        ],
+        "additionalProperties": false,
+        "description": "오늘(Asia/Seoul) ~ 366일 뒤. 아니면 422 CLOSURE_DATE_INVALID."
+      },
+      "BranchClosureUpdate": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "nullable": true
+          }
+        },
+        "required": [
+          "version",
+          "note"
+        ],
+        "additionalProperties": false,
+        "description": "안내 문구만 바꾼다. 날짜는 바꿀 수 없다."
+      },
+      "AffectedReservation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "roomId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "roomName": {
+            "type": "string"
+          },
+          "startAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "예약",
+              "이용 중"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "roomId",
+          "roomName",
+          "startAt",
+          "endAt",
+          "status"
+        ],
+        "additionalProperties": false,
+        "description": "휴무일에 시작하는 기존 예약. 자동 취소하지 않는다(M13-D01). 고객 정보는 담지 않는다."
+      },
+      "BranchClosureCreated": {
+        "type": "object",
+        "properties": {
+          "closure": {
+            "$ref": "#/components/schemas/BranchClosure"
+          },
+          "affectedReservations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AffectedReservation"
+            },
+            "maxItems": 100
+          },
+          "affectedReservationCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "closure",
+          "affectedReservations",
+          "affectedReservationCount"
+        ],
+        "additionalProperties": false,
+        "description": "등록 결과와 경고. affectedReservations는 시작 시각 순 최대 100건."
+      },
+      "BranchClosureList": {
+        "type": "object",
+        "properties": {
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "from": {
+            "type": "string",
+            "format": "date"
+          },
+          "to": {
+            "type": "string",
+            "format": "date"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BranchClosure"
+            }
+          }
+        },
+        "required": [
+          "branchId",
+          "from",
+          "to",
+          "items"
+        ],
+        "additionalProperties": false,
+        "description": "date 오름차순. 페이지 없음(최대 367행)."
+      },
+      "HomeClosureItem": {
+        "type": "object",
+        "properties": {
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "branchName": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "today": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "branchId",
+          "branchName",
+          "date",
+          "note",
+          "today"
+        ],
+        "additionalProperties": false,
+        "description": "홈 휴무 안내(오늘부터 7일 뒤까지)."
+      },
+      "DuplicateCustomer": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "memberNo": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "정상",
+              "이용 제한",
+              "비활성"
+            ]
+          },
+          "registeredBranchId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Id"
+              }
+            ],
+            "nullable": true
+          },
+          "registeredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "paymentCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "lastActivityAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "memberNo",
+          "name",
+          "status",
+          "registeredBranchId",
+          "registeredAt",
+          "paymentCount",
+          "lastActivityAt"
+        ],
+        "additionalProperties": false
+      },
+      "CustomerDuplicateGroup": {
+        "type": "object",
+        "properties": {
+          "phone": {
+            "type": "string",
+            "pattern": "^[0-9]{9,11}$"
+          },
+          "customers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DuplicateCustomer"
+            },
+            "minItems": 2
+          }
+        },
+        "required": [
+          "phone",
+          "customers"
+        ],
+        "additionalProperties": false,
+        "description": "같은 숫자 연락처의 병합되지 않은 고객 묶음(M13-D13). 고객은 등록 시각 순."
+      },
+      "CustomerDuplicatePage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustomerDuplicateGroup"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "additionalProperties": false
+      },
+      "CustomerMerge": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "absorbedCustomerId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "absorbedVersion": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "version",
+          "absorbedCustomerId",
+          "absorbedVersion",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "경로의 고객이 남고 absorbedCustomerId가 흡수된다. 되돌리지 않는다(M13-D03)."
+      },
+      "CustomerMergeRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "target": {
+            "$ref": "#/components/schemas/CustomerSummary"
+          },
+          "absorbed": {
+            "$ref": "#/components/schemas/CustomerSummary"
+          },
+          "via": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CustomerSummary"
+              }
+            ],
+            "nullable": true,
+            "description": "연쇄 병합으로 옮겨진 경우 원래 대상이던 중간 고객."
+          },
+          "mergedBy": {
+            "$ref": "#/components/schemas/ActorSummary"
+          },
+          "mergedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "id",
+          "target",
+          "absorbed",
+          "via",
+          "mergedBy",
+          "mergedAt",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "CustomerMergeList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustomerMergeRecord"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "description": "최신순. 페이지 없음."
+      },
+      "ClosingAmounts": {
+        "type": "object",
+        "properties": {
+          "approvedAmountKrw": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "refundAmountKrw": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "netAmountKrw": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "approvedPaymentCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "refundCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "approvedAmountKrw",
+          "refundAmountKrw",
+          "netAmountKrw",
+          "approvedPaymentCount",
+          "refundCount"
+        ],
+        "additionalProperties": false,
+        "description": "M9 공통 집계와 같은 정의의 하루 수치."
+      },
+      "ClosingMethodAmounts": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "현금",
+              "카드",
+              "계좌이체",
+              "기타"
+            ]
+          },
+          "approvedAmountKrw": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "refundAmountKrw": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "netAmountKrw": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "approvedPaymentCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "refundCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "method",
+          "approvedAmountKrw",
+          "refundAmountKrw",
+          "netAmountKrw",
+          "approvedPaymentCount",
+          "refundCount"
+        ],
+        "additionalProperties": false,
+        "description": "결제 수단별 소계. 환불은 원결제 수단."
+      },
+      "ClosingPurposeAmounts": {
+        "type": "object",
+        "properties": {
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "이용권",
+              "스터디룸",
+              "사물함"
+            ]
+          },
+          "approvedAmountKrw": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "refundAmountKrw": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "netAmountKrw": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "approvedPaymentCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "refundCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "purpose",
+          "approvedAmountKrw",
+          "refundAmountKrw",
+          "netAmountKrw",
+          "approvedPaymentCount",
+          "refundCount"
+        ],
+        "additionalProperties": false
+      },
+      "ClosingBasisSnapshot": {
+        "type": "object",
+        "properties": {
+          "totals": {
+            "$ref": "#/components/schemas/ClosingAmounts"
+          },
+          "byPurpose": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClosingPurposeAmounts"
+            }
+          },
+          "byMethod": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClosingMethodAmounts"
+            }
+          }
+        },
+        "required": [
+          "totals",
+          "byPurpose",
+          "byMethod"
+        ],
+        "additionalProperties": false
+      },
+      "ClosingSnapshot": {
+        "type": "object",
+        "properties": {
+          "processedDate": {
+            "$ref": "#/components/schemas/ClosingBasisSnapshot"
+          },
+          "paymentDate": {
+            "$ref": "#/components/schemas/ClosingBasisSnapshot"
+          }
+        },
+        "required": [
+          "processedDate",
+          "paymentDate"
+        ],
+        "additionalProperties": false,
+        "description": "마감 때 저장한 두 환불 기준의 수치(M13-D08·D11). 처리일 기준은 마감 뒤 바뀌지 않는다."
+      },
+      "DailyClosingAdjustment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "refundId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "paymentId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "amountKrw": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": -1
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "nullable": true,
+            "description": "환불 사유. 원결제 지점 payments:read가 없으면 null."
+          },
+          "processedBy": {
+            "$ref": "#/components/schemas/ActorSummary"
+          },
+          "processedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "refundId",
+          "paymentId",
+          "amountKrw",
+          "reason",
+          "processedBy",
+          "processedAt"
+        ],
+        "additionalProperties": false,
+        "description": "마감된 날 승인된 결제의 이후 환불(M13-D04·D11). 환불 트랜잭션이 남긴다."
+      },
+      "DailyClosingCreate": {
+        "type": "object",
+        "properties": {
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "businessDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "branchId",
+          "businessDate"
+        ],
+        "additionalProperties": false,
+        "description": "businessDate < 오늘(Asia/Seoul). 아니면 422 CLOSING_DATE_OPEN."
+      },
+      "DailyClosing": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "businessDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "closedBy": {
+            "$ref": "#/components/schemas/ActorSummary"
+          },
+          "closedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/ClosingSnapshot"
+          },
+          "current": {
+            "type": "object",
+            "properties": {
+              "paymentDate": {
+                "$ref": "#/components/schemas/ClosingAmounts"
+              },
+              "asOf": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "paymentDate",
+              "asOf"
+            ],
+            "additionalProperties": false,
+            "description": "조회 시각에 다시 계산한 원결제일 기준 수치."
+          },
+          "difference": {
+            "$ref": "#/components/schemas/ClosingAmounts"
+          },
+          "adjustments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DailyClosingAdjustment"
+            }
+          },
+          "timeZone": {
+            "type": "string",
+            "enum": [
+              "Asia/Seoul"
+            ]
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "KRW"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "branchId",
+          "businessDate",
+          "note",
+          "closedBy",
+          "closedAt",
+          "snapshot",
+          "current",
+          "difference",
+          "adjustments",
+          "timeZone",
+          "currency"
+        ],
+        "additionalProperties": false,
+        "description": "difference = current.paymentDate − snapshot.paymentDate.totals, Σ(adjustments.amountKrw) = difference.netAmountKrw."
+      },
+      "DailyClosingSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "businessDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "closedBy": {
+            "$ref": "#/components/schemas/ActorSummary"
+          },
+          "closedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "processedDate": {
+            "$ref": "#/components/schemas/ClosingAmounts"
+          },
+          "adjustmentCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "id",
+          "branchId",
+          "businessDate",
+          "closedBy",
+          "closedAt",
+          "processedDate",
+          "adjustmentCount"
+        ],
+        "additionalProperties": false
+      },
+      "DailyClosingPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DailyClosingSummary"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "additionalProperties": false,
+        "description": "businessDate 내림차순, 같으면 branchId 오름차순."
+      },
+      "ConditionNote": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "PASS_ONLY",
+              "REFUND_PROCESSING_BRANCH",
+              "OPERATOR_BY_ENTRY",
+              "REFUND_BY_PAYMENT_METHOD",
+              "USAGE_NOT_REVENUE"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "additionalProperties": false,
+        "description": "통계 의미가 바뀌는 조건의 화면 안내(FR-AGG-15)."
+      },
+      "PaymentFilter": {
+        "type": "object",
+        "properties": {
+          "branchIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "승인",
+              "실패",
+              "환불"
+            ],
+            "nullable": true
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "customerId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Id"
+              }
+            ],
+            "nullable": true
+          },
+          "methods": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "현금",
+                "카드",
+                "계좌이체",
+                "기타"
+              ]
+            }
+          },
+          "productKinds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "시간권",
+                "기간권",
+                "정액권"
+              ]
+            }
+          },
+          "categoryCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "operatorIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          "processingBranchIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Id"
+            }
+          }
+        },
+        "required": [
+          "branchIds",
+          "status",
+          "from",
+          "to",
+          "customerId",
+          "methods",
+          "productKinds",
+          "categoryCode",
+          "operatorIds",
+          "processingBranchIds"
+        ],
+        "additionalProperties": false,
+        "description": "결제 목록에 적용한 조건 전체. 지정하지 않은 배열은 빈 배열(FR-PAY-13)."
+      },
+      "PaymentStatusTotal": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "amountKrw": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "count",
+          "amountKrw"
+        ],
+        "additionalProperties": false
+      },
+      "PaymentListSummary": {
+        "type": "object",
+        "properties": {
+          "approved": {
+            "$ref": "#/components/schemas/PaymentStatusTotal"
+          },
+          "failed": {
+            "$ref": "#/components/schemas/PaymentStatusTotal"
+          },
+          "refunded": {
+            "$ref": "#/components/schemas/PaymentStatusTotal"
+          }
+        },
+        "required": [
+          "approved",
+          "failed",
+          "refunded"
+        ],
+        "additionalProperties": false,
+        "description": "페이지가 아니라 조건 전체의 상태별 건수·금액 합."
+      },
+      "PassUsageAmounts": {
+        "type": "object",
+        "properties": {
+          "sessionCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "usedMinutes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "usedCreditKrw": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "sessionCount",
+          "usedMinutes",
+          "usedCreditKrw"
+        ],
+        "additionalProperties": false,
+        "description": "pass.usage_session_count, pass.usage_minutes, pass.usage_credit_krw."
+      },
+      "PassUsageSaleBranch": {
+        "type": "object",
+        "properties": {
+          "saleBranchId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Id"
+              }
+            ],
+            "nullable": true
+          },
+          "visible": {
+            "type": "boolean"
+          },
+          "label": {
+            "type": "string",
+            "description": "보이지 않는 판매 지점을 합친 항목은 \"다른 지점\"."
+          },
+          "sessionCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "usedMinutes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "usedCreditKrw": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "saleBranchId",
+          "visible",
+          "label",
+          "sessionCount",
+          "usedMinutes",
+          "usedCreditKrw"
+        ],
+        "additionalProperties": false
+      },
+      "PassUsageBranch": {
+        "type": "object",
+        "properties": {
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "sessionCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "usedMinutes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "usedCreditKrw": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "bySaleBranch": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PassUsageSaleBranch"
+            }
+          }
+        },
+        "required": [
+          "branchId",
+          "sessionCount",
+          "usedMinutes",
+          "usedCreditKrw",
+          "bySaleBranch"
+        ],
+        "additionalProperties": false
+      },
+      "PassUsageByBranch": {
+        "type": "object",
+        "properties": {
+          "aggregation": {
+            "$ref": "#/components/schemas/AggregationMeta"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/PassUsageAmounts"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PassUsageBranch"
+            }
+          }
+        },
+        "required": [
+          "aggregation",
+          "totals",
+          "items"
+        ],
+        "additionalProperties": false,
+        "description": "이용 지점별 이용권 사용량(M13-D12). 매출이 아니다."
+      },
+      "SeatOccupancyBucket": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "bucketStart": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "bucketEnd": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "partial": {
+            "type": "boolean"
+          },
+          "seatCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "occupiedSeatMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "capacitySeatMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "occupancy": {
+            "$ref": "#/components/schemas/Ratio"
+          }
+        },
+        "required": [
+          "label",
+          "bucketStart",
+          "bucketEnd",
+          "start",
+          "end",
+          "partial",
+          "seatCount",
+          "occupiedSeatMinutes",
+          "capacitySeatMinutes",
+          "occupancy"
+        ],
+        "additionalProperties": false
+      },
+      "SeatOccupancyTrend": {
+        "type": "object",
+        "properties": {
+          "branchId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "granularity": {
+            "type": "string",
+            "enum": [
+              "hour",
+              "day"
+            ]
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "timeZone": {
+            "type": "string",
+            "enum": [
+              "Asia/Seoul"
+            ]
+          },
+          "totals": {
+            "type": "object",
+            "properties": {
+              "occupiedSeatMinutes": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "capacitySeatMinutes": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "occupancy": {
+                "$ref": "#/components/schemas/Ratio"
+              }
+            },
+            "required": [
+              "occupiedSeatMinutes",
+              "capacitySeatMinutes",
+              "occupancy"
+            ],
+            "additionalProperties": false
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SeatOccupancyBucket"
+            }
+          }
+        },
+        "required": [
+          "branchId",
+          "granularity",
+          "from",
+          "to",
+          "asOf",
+          "timeZone",
+          "totals",
+          "items"
+        ],
+        "additionalProperties": false,
+        "description": "점유한 좌석·분 ÷ (좌석 수 × 구간 분)(M13-D09). 각 값은 seat_sessions로 다시 계산할 수 있다."
       }
     }
   },
@@ -32440,6 +35670,94 @@
       "adr": [
         "M9-D08",
         "M9-D09"
+      ]
+    },
+    {
+      "id": "pass.usage_session_count",
+      "name": "이용권 입실 수",
+      "unit": "건",
+      "definition": "기간에 입실한 좌석 이용 수. 모든 이용권 유형.",
+      "includes": "seat_sessions 행",
+      "excludes": "스터디룸·사물함 이용",
+      "branchAttribution": "seat_sessions.branch_id(이용 지점)",
+      "timeBasis": "seat_sessions.effective_checked_in_at",
+      "refundBasisApplies": false,
+      "dimensions": [
+        "branch",
+        "saleBranch",
+        "product",
+        "category",
+        "period"
+      ],
+      "source": [
+        "seat_sessions",
+        "passes"
+      ],
+      "operations": [
+        "getPassUsageByBranch"
+      ],
+      "adr": [
+        "M13-D12"
+      ]
+    },
+    {
+      "id": "pass.usage_minutes",
+      "name": "시간권 차감 분",
+      "unit": "분",
+      "definition": "좌석 이용에 연결된 시간권 원장의 −Σdelta_minutes. 매출이 아니다.",
+      "includes": "pass_balance_events의 USE와 좌석 이용 정정(correction_id)의 RESTORE·ADJUST",
+      "excludes": "좌석 이용·정정에 연결되지 않은 수동 보정, 기간권",
+      "branchAttribution": "연결된 seat_sessions.branch_id(이용 지점)",
+      "timeBasis": "pass_balance_events.created_at",
+      "refundBasisApplies": false,
+      "dimensions": [
+        "branch",
+        "saleBranch",
+        "product",
+        "category",
+        "period"
+      ],
+      "source": [
+        "pass_balance_events",
+        "seat_sessions",
+        "seat_session_corrections",
+        "passes"
+      ],
+      "operations": [
+        "getPassUsageByBranch"
+      ],
+      "adr": [
+        "M13-D12"
+      ]
+    },
+    {
+      "id": "pass.usage_credit_krw",
+      "name": "정액권 차감액",
+      "unit": "원",
+      "definition": "좌석 이용에 연결된 정액권 원장의 −Σdelta_krw. 매출이 아니다.",
+      "includes": "pass_balance_events의 USE와 좌석 이용 정정(correction_id)의 RESTORE·ADJUST",
+      "excludes": "좌석 이용·정정에 연결되지 않은 수동 보정, 기간권",
+      "branchAttribution": "연결된 seat_sessions.branch_id(이용 지점)",
+      "timeBasis": "pass_balance_events.created_at",
+      "refundBasisApplies": false,
+      "dimensions": [
+        "branch",
+        "saleBranch",
+        "product",
+        "category",
+        "period"
+      ],
+      "source": [
+        "pass_balance_events",
+        "seat_sessions",
+        "seat_session_corrections",
+        "passes"
+      ],
+      "operations": [
+        "getPassUsageByBranch"
+      ],
+      "adr": [
+        "M13-D12"
       ]
     }
   ]
