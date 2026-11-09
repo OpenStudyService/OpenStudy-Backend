@@ -154,6 +154,22 @@ Task Issue에는 다음 내용을 포함한다.
 - PR 생성이나 테스트 통과만으로 상위 기능 전체가 완료되었다고 판단하지 않는다.
 - PR 병합 권한과 절차는 기존 브랜치 운영 규칙을 따른다.
 
+## 테스트 실행 범위
+
+풀테스트는 오래 걸리므로(백엔드 4 fork 병렬 기준 약 17분, 수정 모듈만 실행하면 1~2분) 매 수정마다 실행하지 않는다. 단계별로 필요한 범위만 실행한다.
+
+| 시점 | 백엔드 | 프론트엔드 |
+|---|---|---|
+| 구현 중 반복 확인 | 수정한 모듈의 테스트만: `./gradlew test --tests "com.openstudy.modules.<모듈>.*"` | 관련 테스트만: `npx vitest related <수정 파일> --run` |
+| 커밋 전 | 수정 모듈 + 영향받는 공통 영역(인증·보안·공통 web/exception 등) 테스트 | `npm run typecheck`, `npm run lint`, 관련 테스트 |
+| PR 생성 전 | 전체 1회: `./gradlew test` | `npm test`, `npm run build` |
+
+* `@Tag("slow")` 테스트(Flyway로 스키마를 매번 다시 만드는 마이그레이션·OWNER 부트스트랩 테스트)는 `./gradlew fastTest`에서 제외된다. Flyway 마이그레이션, 스키마, OWNER 부트스트랩을 변경했을 때는 `./gradlew slowTest`를 함께 실행한다.
+* 공통 설정(SecurityConfiguration, 필터, 예외 처리, 공통 엔티티·마이그레이션)처럼 영향 범위를 특정하기 어려운 변경은 `./gradlew fastTest` 이상을 실행한다.
+* 백엔드 테스트는 기본적으로 여러 JVM(fork)에서 병렬 실행된다. 메모리가 부족하면 `-PtestForks=1`로 줄인다.
+* 일부 범위만 실행했다면 보고·PR·개발 기록에 실행한 범위를 명시하고, 풀테스트를 실행한 것처럼 기록하지 않는다.
+* PR 전 전체 테스트를 생략해야 하는 사정이 있다면 생략 사실과 이유를 PR에 명시한다.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
