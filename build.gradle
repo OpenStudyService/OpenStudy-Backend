@@ -66,8 +66,18 @@ dependencies {
     testAnnotationProcessor 'org.projectlombok:lombok'
 }
 
-tasks.named('test') {
+// Test tiers (see AGENTS.md "테스트 실행 범위"):
+//   gradlew test                     full suite, run once before a PR
+//   gradlew fastTest                 everything except @Tag("slow") (schema-rebuilding Flyway suites)
+//   gradlew slowTest                 only @Tag("slow"), run when migrations or bootstrap change
+//   gradlew test --tests "pkg.*"     the module being worked on, during development
+tasks.withType(Test).configureEach {
     useJUnitPlatform()
+    // Each fork is its own JVM with its own MySQL container (MySqlTestConfiguration keeps one per JVM), so forks
+    // never share data; within a fork, suites share the database exactly as they did with a single fork.
+    // Override with -PtestForks=1 on machines short of memory: each fork needs ~1 GiB heap plus one MySQL.
+    maxParallelForks = providers.gradleProperty('testForks').map { it as int }
+            .getOrElse(Math.max(1, Math.min(4, Runtime.runtime.availableProcessors().intdiv(3))))
     // Every Spring test context the suite caches (one per distinct test configuration) stays in this JVM. At ~80 suites
     // the 512 MiB Gradle default ran out of heap (2026-11-05, #87), so the worker gets more room.
     maxHeapSize = '1g'
@@ -81,4 +91,20 @@ tasks.named('test') {
     if (providers.gradleProperty('foundationExportDir').isPresent()) {
         systemProperty 'foundation.exportDir', file(providers.gradleProperty('foundationExportDir').get()).absolutePath
     }
+}
+
+tasks.register('fastTest', Test) {
+    group = 'verification'
+    description = 'Runs every test except those tagged "slow".'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform { excludeTags 'slow' }
+}
+
+tasks.register('slowTest', Test) {
+    group = 'verification'
+    description = 'Runs only the tests tagged "slow" (schema-rebuilding migration and bootstrap suites).'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform { includeTags 'slow' }
 }
