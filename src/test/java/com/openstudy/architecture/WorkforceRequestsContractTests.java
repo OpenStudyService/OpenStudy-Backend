@@ -129,20 +129,27 @@ class WorkforceRequestsContractTests {
         assertThat(published).containsExactlyInAnyOrderElementsOf(OPERATIONS.values());
     }
 
-    @Test void theContractIsSplitAcrossTheImplementationIssuesAndLeaveIsImplemented() throws Exception {
+    @Test void theContractIsSplitAcrossTheImplementationIssuesAndEveryPartIsImplemented() throws Exception {
         // M12 was published in 0.1.13-m12-workforce-requests; later contracts raise the version.
         assertThat(Integer.parseInt(spec.at("/info/version").asString().split("[.-]")[2])).isGreaterThanOrEqualTo(13);
         OPERATIONS.forEach((id, route) -> {
             String issue = route.contains("leave") ? "#108" : route.contains("correction") ? "#107" : "#109";
             assertThat(operation(id).get("x-implementation-issue").asString()).as(id).isEqualTo(issue);
-            // #108 implemented the leave operations and #109 the swaps; corrections (#107) are still design targets.
-            assertThat(operation(id).get("x-implementation-status").asString()).as(id)
-                    .isEqualTo("#107".equals(issue) ? "design-target" : "implemented");
+            // #108 implemented the leave operations, #109 the swaps and #107 the corrections.
+            assertThat(operation(id).get("x-implementation-status").asString()).as(id).isEqualTo("implemented");
         });
         assertThat(spec.at("/info/description").asString()).contains("operation 13개는 #108에서 구현됐다");
         assertThat(spec.at("/info/description").asString()).contains("operation 7개는 #109에서 구현됐다");
+        assertThat(spec.at("/info/description").asString()).contains("operation 6개는 #107에서 구현됐다");
         assertThat(contract()).contains("휴가 부여·잔여량·신청 operation 13개는 #108에서 구현됐다(`implemented`",
-                "대체근무 operation 7개는 #109에서 구현됐다(`implemented`)");
+                "대체근무 operation 7개는 #109에서 구현됐다(`implemented`)", "근태 정정 operation 6개는 #107에서 구현됐다(`implemented`)");
+        // Only a correction's rejection takes a reason, kept in audit_events (2026-11-09 user decision).
+        assertThat(body("rejectAttendanceCorrection")).isEqualTo("#/components/schemas/AttendanceCorrectionReject");
+        assertThat(texts(schema("AttendanceCorrectionReject").get("required"))).containsExactly("version", "reason");
+        assertThat(schema("AttendanceCorrection").at("/properties/decision/allOf/0/$ref").asString())
+                .isEqualTo("#/components/schemas/AttendanceCorrectionDecision");
+        assertThat(body("rejectLeaveRequest")).isEqualTo("#/components/schemas/VersionCommand");
+        assertThat(body("rejectShiftSwap")).isEqualTo("#/components/schemas/VersionCommand");
         assertThat(spec.at("/info/description").asString()).contains("Issue #106", "workforce-requests-api.md");
         assertThat(contract()).contains("`0.1.13-m12-workforce-requests`", "operation은 모두 설계 계약(`design-target`)");
         assertThat(Files.readString(DESIGN.resolve("README.md"))).contains("workforce-requests-api.md",

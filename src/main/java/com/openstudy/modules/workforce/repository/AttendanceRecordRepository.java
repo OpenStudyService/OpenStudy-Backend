@@ -1,10 +1,13 @@
 package com.openstudy.modules.workforce.repository;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -24,4 +27,24 @@ public interface AttendanceRecordRepository extends JpaRepository<AttendanceReco
      */
     @Query(value = "SELECT * FROM attendance_records WHERE active_employee_id=:employee FOR UPDATE", nativeQuery = true)
     Optional<AttendanceRecord> lockedCurrent(@Param("employee") long employeeId);
+
+    /** One attendance FOR UPDATE, after its employee's row: an approved correction changes it (#107). */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT a FROM AttendanceRecord a WHERE a.id = :id")
+    Optional<AttendanceRecord> locked(@Param("id") long id);
+
+    /** One attendance FOR SHARE, after its employee's row: a correction request reads it and changes nothing (#107). */
+    @Lock(LockModeType.PESSIMISTIC_READ)
+    @Query("SELECT a FROM AttendanceRecord a WHERE a.id = :id")
+    Optional<AttendanceRecord> shared(@Param("id") long id);
+
+    /**
+     * The employee's other attendance at every branch that may meet [start, end): closed ones that overlap it and every
+     * one still open, whose end is "now" for the caller to judge (M12-D08). A locking read under the employee row.
+     */
+    @Lock(LockModeType.PESSIMISTIC_READ)
+    @Query("SELECT a FROM AttendanceRecord a WHERE a.employeeId = :employee AND a.id <> :self AND a.clockInAt < :end "
+            + "AND (a.clockOutAt IS NULL OR a.clockOutAt > :start) ORDER BY a.clockInAt, a.id")
+    List<AttendanceRecord> meeting(@Param("employee") long employee, @Param("self") long self, @Param("start") Instant start,
+            @Param("end") Instant end);
 }

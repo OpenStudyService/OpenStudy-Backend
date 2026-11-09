@@ -61,6 +61,8 @@ abstract class ShiftIntegrationSupport {
 
     @AfterEach void clean() {
         for (long id : people) {
+            // Corrections first: they point at the attendance and at its breaks (#107).
+            jdbc.update("DELETE c FROM attendance_corrections c JOIN attendance_records a ON a.id=c.attendance_id WHERE a.employee_id=?", id);
             jdbc.update("DELETE b FROM attendance_breaks b JOIN attendance_records a ON a.id=b.attendance_id WHERE a.employee_id=?", id);
             jdbc.update("DELETE FROM attendance_records WHERE employee_id=?", id);
             jdbc.update("DELETE e FROM leave_balance_events e JOIN leave_grants g ON g.id=e.leave_grant_id WHERE g.employee_id=?", id);

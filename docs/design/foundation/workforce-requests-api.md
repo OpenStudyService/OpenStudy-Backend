@@ -4,7 +4,7 @@ Backend [#106](https://github.com/OpenStudyService/OpenStudy-Backend/issues/106)
 
 정책 근거는 [ADR-M12-001](../../db/ADR-M12-001.md)(M12-D01~D09)이다. 근무·근태의 권한·조회 범위·충돌 응답·시각 규칙은 [근무표·근태 API 계약](workforce-api.md)(M8)을 그대로 쓴다. 공통 요청·응답·오류·목록 규칙은 [API 계약](api.md)을 따른다.
 
-2026-11-09: 이 문서의 operation은 모두 설계 계약(`design-target`)이다. 2026-11-09: 휴가 부여·잔여량·신청 operation 13개는 #108에서 구현됐다(`implemented`, `leave_requests` 신청 지점 칼럼은 V11). 2026-11-09: 대체근무 operation 7개는 #109에서 구현됐다(`implemented`). 근태 정정(#107)은 아직 구현되지 않았다.
+2026-11-09: 이 문서의 operation은 모두 설계 계약(`design-target`)이다. 2026-11-09: 휴가 부여·잔여량·신청 operation 13개는 #108에서 구현됐다(`implemented`, `leave_requests` 신청 지점 칼럼은 V11). 2026-11-09: 대체근무 operation 7개는 #109에서 구현됐다(`implemented`). 2026-11-09: 근태 정정 operation 6개는 #107에서 구현됐다(`implemented`). 구현하면서 근태 정정 반려만 사유를 필수로 받고 `audit_events`에 남기도록 바꿨다(2026-11-09 사용자 결정, [반려와 신청 취소](#반려와-신청-취소)).
 
 ## 제공 범위
 
@@ -64,6 +64,7 @@ Backend [#106](https://github.com/OpenStudyService/OpenStudy-Backend/issues/106)
 - **검사 순서**: 상태 → version이다(M8 근태 명령과 같다). 이미 처리된 신청에 같은 명령을 다시 보내면 version 오류보다 구체적인 409 `INVALID_STATE`를 받는다. 이 응답에도 `latestVersion`과 `reloadUrl`을 담아 화면이 최신 상태를 다시 읽게 한다.
 - **신청 수정 API는 없다.** 내용을 바꾸려면 취소하고 다시 신청한다. 처리자가 본 내용과 신청 내용이 달라지지 않게 하기 위해서다.
 - **처리 사유**: 반려·승인 취소 사유를 저장할 칼럼이 V1에 없다(`decided_by`, `decided_at`만 있다). 그래서 이 명령들은 사유를 받지 않는다. 사유가 필요하면 현장 소통으로 전한다. 정의되지 않은 필드는 422 `VALIDATION_FAILED`다.
+  - 예외: 근태 정정 반려는 사유(`reason`)를 필수로 받아 `audit_events`에 남긴다(2026-11-09 사용자 결정, #107 인수 조건 "반려는 사유와 처리자를 남긴다"). 휴가·대체근무는 그대로 사유를 받지 않는다.
 - **화면 갱신**: 변경 이벤트는 보내지 않는다. 화면은 명령 응답과 다시 조회로 갱신한다([ADR-COM-001](../../db/ADR-COM-001.md)).
 - `canApprove` 같은 응답 필드는 화면 안내용이다. 서버는 쓰기마다 다시 검사한다.
 - 삭제 API는 없다. 신청은 취소·반려로 닫고 행은 남는다.
@@ -358,7 +359,9 @@ stateDiagram-v2
 
 ### 반려와 신청 취소
 
-- `POST /attendance-corrections/{id}/reject`: 본문 `version`. 승인 표의 1~5와 같은 검사 뒤 200, 상태 `반려`다. 근태는 바뀌지 않는다.
+- `POST /attendance-corrections/{id}/reject`: 본문 `version`, `reason`(필수, 1~500자). 승인 표의 1~5와 같은 검사 뒤 200, 상태 `반려`다. 근태는 바뀌지 않는다.
+  - 사유가 없거나 비어 있으면 422 `VALIDATION_FAILED`다(본문 검사라 404·403보다 먼저다).
+  - 처리자와 사유는 `audit_events`(`entity_type=attendance-corrections`, `action=REJECTED`, `actor_employee_id`, `branch_id`=근태 기록 지점, `reason`)에 남는다. 정정 행의 `decided_by`, `decided_at`도 채운다. 응답 `decision.reason`은 이 감사 행에서 읽는다(2026-11-09 사용자 결정. 마이그레이션 없이 V1 칼럼을 쓴다).
 - `POST /attendance-corrections/{id}/cancel`: 본문 `version`. 신청자 본인만, 상태 `신청`에서만 200이다. 아니면 403 `FORBIDDEN` 또는 409 `INVALID_STATE`다.
 - 승인된 정정은 취소하지 않는다(M12-D08). 다시 고치려면 새 정정을 신청한다. 이때 원본은 승인으로 바뀐 현재 값이다.
 
@@ -367,7 +370,7 @@ stateDiagram-v2
 `AttendanceCorrection`:
 - `id`, `version`, `status`, `kind`, `attendanceRecordId`, `branchId`, `employee`, `breakId`, `reason`, `createdAt`
 - `before`, `after`: 각각 `clockInAt`, `clockOutAt`, `breakStartedAt`, `breakEndedAt`. 종류에 맞지 않는 필드는 null
-- `decision`, `cancellation`(`kind`는 항상 `신청 취소`)
+- `decision`(`AttendanceCorrectionDecision`: `by`, `at`, `reason`. `reason`은 반려 사유이고 승인이면 null), `cancellation`(`kind`는 항상 `신청 취소`)
 - `canApprove`, `canReject`, `canCancel`
 
 목록 필터: `scope`(근태 기록 지점), `employeeId`, `mine`, `status`, `attendanceRecordId`, `from`, `to`(근태의 `workDate`). 정렬은 `createdAt` 내림차순, 같으면 `id` 내림차순이다.
@@ -500,7 +503,7 @@ M8 [트랜잭션 경계](workforce-api.md#트랜잭션-경계와-동시성)와 �
 
 - 관리자의 대리 신청·직접 근태 수정, 퇴근하지 못한 채 계정이 비활성이 된 근태의 정리. 신청이 본인만 가능하므로(M12-D05) 별도 정책이 필요하다.
 - 휴게 구간의 추가·삭제 정정(V1 구조상 기존 휴게 변경만 가능)
-- 반려·승인 취소 사유 저장(V1 칼럼 없음)
+- 휴가·대체근무의 반려·승인 취소 사유 저장(V1 칼럼 없음). 근태 정정 반려 사유는 #107에서 `audit_events`에 저장한다
 - 휴가 부여의 기간·일수 수정, 부여 삭제
 - 근무와 휴가가 겹치는 M8 충돌 응답의 `kind=휴가` 항목 공개 범위 조정. 휴가에 지점이 생기지만 M8 응답은 이 계약에서 바꾸지 않는다.
 - 신청·승인 알림(메일·푸시). 화면은 다시 조회로 확인한다.
@@ -518,6 +521,7 @@ ADR-M12-001은 바꾸지 않았다. 사용자 결정 표시가 없는 항목은 
 | 본인의 승인된 신청 취소 | 불가, 관리자의 승인 취소로만 | M12-D02·D09가 승인 취소를 관리자 명령으로 정했다 |
 | 신청 수정 | 없음, 취소 후 재신청 | 처리자가 본 내용과 실제 신청이 어긋나지 않게 한다 |
 | 처리 사유 | 받지 않음 | V1에 저장 칼럼이 없다 |
+| 근태 정정 반려 사유 | 필수, `audit_events`에 저장, 응답 `decision.reason` | **2026-11-09 사용자 결정**. #107 인수 조건 5가 사유를 요구한다. 칼럼 추가 대신 사유 칼럼이 있는 기존 감사 표를 쓴다 |
 | 휴가 신청 때 잔여량 검사 | 함(안내), 승인 때 재검사 | 바로 알려 주되 차감 시점은 승인(M12-D06) |
 | 휴가 겹침 | 같은 직원의 신청·승인 휴가와 날짜가 겹치면 409 | 같은 날 두 번 차감되는 것을 막는다 |
 | 사후 휴가 신청 | 허용 | 정책이 막지 않는다 |

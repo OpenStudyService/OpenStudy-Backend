@@ -12,12 +12,13 @@ import jakarta.persistence.Query;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import com.openstudy.modules.workforce.entity.AttendanceCorrection;
 import com.openstudy.modules.workforce.entity.LeaveGrant;
 import com.openstudy.modules.workforce.entity.LeaveRequest;
 import com.openstudy.modules.workforce.entity.ShiftSwap;
 
 /**
- * Leave grants, leave requests and shift swaps by their deciding branch (workforce-requests-api.md "조회 범위"): a branch the reader manages
+ * Leave grants, leave requests, shift swaps and attendance corrections by their deciding branch (workforce-requests-api.md "조회 범위"): a branch the reader manages
  * shows everyone's, and the reader's own are shown whatever their branch, because the balance is per employee
  * (M12-D02). A branch scope narrows both parts; an employee filter only narrows further. Only fixed fragments are
  * concatenated and every value is bound.
@@ -84,6 +85,38 @@ public class LeaveSearchRepository {
         binds.forEach(rows::setParameter);
         binds.forEach(count::setParameter);
         var found = offset > Integer.MAX_VALUE ? List.<ShiftSwap>of()
+                : rows.setFirstResult((int) offset).setMaxResults(limit).getResultList();
+        return new Page<>(found, ((Number) count.getSingleResult()).longValue());
+    }
+
+    /**
+     * Corrections by their attendance's branch (M8-D02): the readable branches of the scope, then a managed branch shows
+     * every correction, any other branch only the reader's own. [from, to) is on the attendance's current clock-in, the
+     * start of its Seoul workDate.
+     */
+    public Page<AttendanceCorrection> corrections(Set<Long> readable, Set<Long> managed, long reader, Long person,
+            AttendanceCorrection.Status status, Long attendance, Instant from, Instant to, long offset, int limit) {
+        if (readable.isEmpty()) return new Page<>(List.of(), 0);
+        var binds = new LinkedHashMap<String, Object>();
+        var where = new StringBuilder(" FROM AttendanceCorrection c, AttendanceRecord a WHERE a.id = c.attendanceRecordId"
+                + " AND a.branchId IN :readable AND (");
+        binds.put("readable", readable);
+        if (!managed.isEmpty()) {
+            where.append("a.branchId IN :managed OR ");
+            binds.put("managed", managed);
+        }
+        where.append("c.requestedBy = :reader)");
+        binds.put("reader", reader);
+        add(where, binds, "c.requestedBy = :person", "person", person);
+        add(where, binds, "c.status = :status", "status", status);
+        add(where, binds, "c.attendanceRecordId = :attendance", "attendance", attendance);
+        add(where, binds, "a.clockInAt >= :from", "from", from);
+        add(where, binds, "a.clockInAt < :to", "to", to);
+        var rows = entityManager.createQuery("SELECT c" + where + " ORDER BY c.createdAt DESC, c.id DESC", AttendanceCorrection.class);
+        Query count = entityManager.createQuery("SELECT COUNT(c)" + where);
+        binds.forEach(rows::setParameter);
+        binds.forEach(count::setParameter);
+        var found = offset > Integer.MAX_VALUE ? List.<AttendanceCorrection>of()
                 : rows.setFirstResult((int) offset).setMaxResults(limit).getResultList();
         return new Page<>(found, ((Number) count.getSingleResult()).longValue());
     }
