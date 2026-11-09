@@ -21,6 +21,7 @@ import lombok.NoArgsConstructor;
 /**
  * An actual clock-in, independent of the plan: its shift link is decided once at clock-in and never follows later shift
  * changes (M8-D08). Only the employee's own clock commands write it (#84), always holding its row FOR UPDATE.
+ * An approved correction (#107) is the one other writer, under the same row lock.
  * <p>The version also stands for the breaks, which have none of their own (workforce-api.md "상태 전이"): a break start or
  * end changes no column of this row, so the version is counted by hand rather than by {@code @Version}, which only moves
  * with a changed column. The generated active_employee_id, unique while WORKING (uk_attendance_records_1), is left
@@ -58,7 +59,7 @@ public class AttendanceRecord {
     private long branchId;
     @Column(name = "shift_id", updatable = false)
     private Long shiftId;
-    @Column(name = "clock_in_at", nullable = false, updatable = false)
+    @Column(name = "clock_in_at", nullable = false)
     @SemanticField(id = "attendance_record.clock_in_at", name = "출근 시각", role = "TIME", aliases = {"출근"}, allowedOps = {"EQ", "NE", "GT", "GTE", "LT", "LTE", "BETWEEN"})
     private Instant clockInAt;
     @Column(name = "clock_out_at")
@@ -80,6 +81,12 @@ public class AttendanceRecord {
 
     /** A break started or ended: the record's version is the one the client sends back for the next command. */
     public void touch() { version++; }
+
+    /** An approved clock correction of a closed attendance (M12-D01); the shift link stays the fact of the clock-in. */
+    public void correct(Instant clockIn, Instant clockOut) {
+        if (working()) throw new IllegalStateException("Only a closed attendance is corrected");
+        clockInAt = clockIn; clockOutAt = clockOut; version++;
+    }
 
     public void clockOut(Instant at) {
         if (!working()) throw new IllegalStateException("An attendance is closed only once");

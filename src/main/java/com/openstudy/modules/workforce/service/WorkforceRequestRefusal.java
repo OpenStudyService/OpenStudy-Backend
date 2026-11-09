@@ -3,6 +3,7 @@ package com.openstudy.modules.workforce.service;
 import java.math.BigDecimal;
 import java.util.List;
 
+import com.openstudy.modules.workforce.dto.response.AttendanceConflict;
 import com.openstudy.modules.workforce.dto.response.ShiftConflict;
 import com.openstudy.modules.workforce.dto.response.WorkforceRequestConflictError;
 
@@ -17,6 +18,9 @@ public class WorkforceRequestRefusal extends RuntimeException {
     private Long latestVersion;
     private String reloadUrl;
     private List<ShiftConflict> conflicts;
+    private List<AttendanceConflict> attendanceConflicts;
+    private List<String> breakIds;
+    private String pendingCorrectionId;
     private BigDecimal requiredDays;
     private BigDecimal availableDays;
     private List<String> overlappingRequestIds;
@@ -69,6 +73,26 @@ public class WorkforceRequestRefusal extends RuntimeException {
         return refusal;
     }
 
+    static WorkforceRequestRefusal pendingCorrection(long correction) {
+        var refusal = new WorkforceRequestRefusal(409, "CORRECTION_PENDING", "이 근태에는 처리되지 않은 정정 신청이 있습니다.");
+        refusal.pendingCorrectionId = Long.toString(correction);
+        return refusal;
+    }
+
+    /** M12-D08: the corrected stretch meets another attendance of the same employee. */
+    static WorkforceRequestRefusal attendanceOverlap(List<AttendanceConflict> conflicts) {
+        var refusal = new WorkforceRequestRefusal(409, "CORRECTION_OVERLAP", "정정한 근무 구간이 같은 직원의 다른 근태와 겹칩니다.");
+        refusal.attendanceConflicts = List.copyOf(conflicts);
+        return refusal;
+    }
+
+    /** M12-D08: after the correction a break lies outside the attendance or overlaps another break. */
+    static WorkforceRequestRefusal breakOutside(List<String> breakIds) {
+        var refusal = new WorkforceRequestRefusal(409, "CORRECTION_BREAK_OUTSIDE", "정정 뒤 휴게가 근무 구간 밖이거나 다른 휴게와 겹칩니다.");
+        refusal.breakIds = List.copyOf(breakIds);
+        return refusal;
+    }
+
     static WorkforceRequestRefusal pendingSwap(long swap) {
         var refusal = new WorkforceRequestRefusal(409, "SWAP_PENDING", "이 근무에는 처리되지 않은 대체근무 신청이 있습니다.");
         refusal.pendingSwapId = Long.toString(swap);
@@ -99,6 +123,9 @@ public class WorkforceRequestRefusal extends RuntimeException {
     public Long latestVersion() { return latestVersion; }
     public String reloadUrl() { return reloadUrl; }
     public List<ShiftConflict> conflicts() { return conflicts; }
+    public List<AttendanceConflict> attendanceConflicts() { return attendanceConflicts; }
+    public List<String> breakIds() { return breakIds; }
+    public String pendingCorrectionId() { return pendingCorrectionId; }
     public BigDecimal requiredDays() { return requiredDays; }
     public BigDecimal availableDays() { return availableDays; }
     public List<String> overlappingRequestIds() { return overlappingRequestIds; }
@@ -109,7 +136,7 @@ public class WorkforceRequestRefusal extends RuntimeException {
     /** The contract's WorkforceRequestConflictError of this refusal. */
     public WorkforceRequestConflictError error(String requestId) {
         return new WorkforceRequestConflictError(code, getMessage(), requestId, null,
-                latestVersion, reloadUrl, conflicts, requiredDays, availableDays, overlappingRequestIds, pendingSwapId, shiftId,
-                approvedVersion);
+                latestVersion, reloadUrl, conflicts, attendanceConflicts, breakIds, requiredDays, availableDays, overlappingRequestIds,
+                pendingCorrectionId, pendingSwapId, shiftId, approvedVersion);
     }
 }

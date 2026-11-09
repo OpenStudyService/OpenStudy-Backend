@@ -44,7 +44,7 @@ public class AttendanceBreak {
     @SemanticField(id = "attendance_break.attendance_id", name = "출퇴근 기록 ID", role = "FK", allowedOps = {"EQ", "NE", "IN"})
     @SemanticRelation(id = "attendance_break.attendance_record", targetEntity = "attendance_record", targetField = "id", direction = "OUTGOING", joinUse = "APPROVED", meaning = "소속 출퇴근 기록")
     private long attendanceId;
-    @Column(name = "started_at", nullable = false, updatable = false)
+    @Column(name = "started_at", nullable = false)
     @SemanticField(id = "attendance_break.break_start_at", name = "휴게 시작 시각", role = "TIME", allowedOps = {"EQ", "NE", "GT", "GTE", "LT", "LTE", "BETWEEN"})
     private Instant startedAt;
     @Column(name = "ended_at")
@@ -53,6 +53,12 @@ public class AttendanceBreak {
 
     public AttendanceBreak(long attendanceId, Instant startedAt) {
         this.attendanceId = attendanceId; this.startedAt = startedAt;
+    }
+
+    /** An approved break correction (M12-D01), by a holder of the attendance row lock. */
+    public void correct(Instant start, Instant end) {
+        if (endedAt == null) throw new IllegalStateException("Only a closed break is corrected");
+        startedAt = start; endedAt = end;
     }
 
     public void end(Instant at) {
