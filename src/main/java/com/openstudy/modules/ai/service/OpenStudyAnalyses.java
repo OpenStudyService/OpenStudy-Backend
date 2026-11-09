@@ -1644,34 +1644,51 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 .getResultList();
 
         List<Long> attendanceIds = recordTuples.stream().map(t -> ((Number) t[0]).longValue()).toList();
-        Map<Long, Long> breakMinutesByAttendanceId = new LinkedHashMap<>();
-        Map<Long, Instant[]> approvedClockCorrections = new LinkedHashMap<>();
+        // Approval rewrites the attendance and its breaks (#107), so the stored rows are the corrected ones and the
+        // originals come back from the earliest approved correction's before_* values. A legacy approved clock correction
+        // without before_* (the DomainLens seed, written before #107) never touched the row: its after_* still overlays it.
+        Map<Long, List<Instant[]>> currentBreaksByAttendanceId = new LinkedHashMap<>();
+        Map<Long, List<Instant[]>> originalBreaksByAttendanceId = new LinkedHashMap<>();
+        Map<Long, Instant[]> originalClocks = new LinkedHashMap<>();
+        Map<Long, Instant[]> legacyClockOverlays = new LinkedHashMap<>();
 
         if (!attendanceIds.isEmpty()) {
+            List<Object[]> corrTuples = entityManager.createQuery(
+                            "SELECT ac.attendanceRecordId, CAST(ac.correctionKind AS string), ac.breakId, "
+                                    + "ac.beforeClockInAt, ac.beforeClockOutAt, ac.requestedClockInAt, ac.requestedClockOutAt, "
+                                    + "ac.beforeBreakStartAt, ac.beforeBreakEndAt "
+                                    + "FROM AttendanceCorrection ac WHERE ac.attendanceRecordId IN :attendanceIds "
+                                    + "AND CAST(ac.status AS string) = 'APPROVED' ORDER BY ac.decidedAt ASC, ac.id ASC",
+                            Object[].class)
+                    .setParameter("attendanceIds", attendanceIds)
+                    .getResultList();
+            Map<Long, Instant[]> originalBreaks = new LinkedHashMap<>();
+            for (Object[] tuple : corrTuples) {
+                long attId = ((Number) tuple[0]).longValue();
+                if ("CLOCK".equals(tuple[1])) {
+                    if (tuple[3] != null) {
+                        originalClocks.putIfAbsent(attId, new Instant[]{(Instant) tuple[3], (Instant) tuple[4]});
+                    } else {
+                        legacyClockOverlays.put(attId, new Instant[]{(Instant) tuple[5], (Instant) tuple[6]});
+                    }
+                } else if (tuple[2] != null && tuple[7] != null) {
+                    originalBreaks.putIfAbsent(((Number) tuple[2]).longValue(), new Instant[]{(Instant) tuple[7], (Instant) tuple[8]});
+                }
+            }
+
             List<Object[]> breakTuples = entityManager.createQuery(
-                            "SELECT ab.attendanceId, ab.startedAt, ab.endedAt FROM AttendanceBreak ab "
+                            "SELECT ab.id, ab.attendanceId, ab.startedAt, ab.endedAt FROM AttendanceBreak ab "
                                     + "WHERE ab.attendanceId IN :attendanceIds AND ab.endedAt IS NOT NULL",
                             Object[].class)
                     .setParameter("attendanceIds", attendanceIds)
                     .getResultList();
             for (Object[] tuple : breakTuples) {
-                long attId = ((Number) tuple[0]).longValue();
-                Instant startedAt = (Instant) tuple[1];
-                Instant endedAt = (Instant) tuple[2];
-                long mins = Duration.between(startedAt, endedAt).toMinutes();
-                breakMinutesByAttendanceId.merge(attId, mins, Long::sum);
-            }
-
-            List<Object[]> corrTuples = entityManager.createQuery(
-                            "SELECT ac.attendanceRecordId, ac.requestedClockInAt, ac.requestedClockOutAt "
-                                    + "FROM AttendanceCorrection ac WHERE ac.attendanceRecordId IN :attendanceIds "
-                                    + "AND CAST(ac.status AS string) = 'APPROVED' AND CAST(ac.correctionKind AS string) = 'CLOCK'",
-                            Object[].class)
-                    .setParameter("attendanceIds", attendanceIds)
-                    .getResultList();
-            for (Object[] tuple : corrTuples) {
-                long attId = ((Number) tuple[0]).longValue();
-                approvedClockCorrections.put(attId, new Instant[]{(Instant) tuple[1], (Instant) tuple[2]});
+                long attId = ((Number) tuple[1]).longValue();
+                Instant[] current = {(Instant) tuple[2], (Instant) tuple[3]};
+                Instant[] original = originalBreaks.getOrDefault(((Number) tuple[0]).longValue(), current);
+                currentBreaksByAttendanceId.computeIfAbsent(attId, k -> new ArrayList<>()).add(current);
+                originalBreaksByAttendanceId.computeIfAbsent(attId, k -> new ArrayList<>()).add(new Instant[]{
+                        original[0] != null ? original[0] : current[0], original[1] != null ? original[1] : current[1]});
             }
         }
 
@@ -1685,13 +1702,17 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             Instant clockOut = (Instant) tuple[4];
             if (clockOut == null) continue;
 
-            long breakMins = breakMinutesByAttendanceId.getOrDefault(attId, 0L);
-            long rawMins = Duration.between(clockIn, clockOut).toMinutes() - breakMins;
+            Instant[] original = originalClocks.get(attId);
+            Instant rawIn = (original != null && original[0] != null) ? original[0] : clockIn;
+            Instant rawOut = (original != null && original[1] != null) ? original[1] : clockOut;
+            long rawMins = Duration.between(rawIn, rawOut).toMinutes()
+                    - breakMinutes(originalBreaksByAttendanceId.getOrDefault(attId, List.of()));
 
-            Instant[] corrected = approvedClockCorrections.get(attId);
-            Instant effIn = (corrected != null && corrected[0] != null) ? corrected[0] : clockIn;
-            Instant effOut = (corrected != null && corrected[1] != null) ? corrected[1] : clockOut;
-            long corrMins = Duration.between(effIn, effOut).toMinutes() - breakMins;
+            Instant[] overlay = legacyClockOverlays.get(attId);
+            Instant effIn = (overlay != null && overlay[0] != null) ? overlay[0] : clockIn;
+            Instant effOut = (overlay != null && overlay[1] != null) ? overlay[1] : clockOut;
+            long corrMins = Duration.between(effIn, effOut).toMinutes()
+                    - breakMinutes(currentBreaksByAttendanceId.getOrDefault(attId, List.of()));
 
             long[] acc = empAcc.computeIfAbsent(empId, k -> new long[]{branchId, 0L, 0L, 0L});
             acc[1] += 1;
@@ -1790,6 +1811,14 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 envelope,
                 summary
         );
+    }
+
+    private static long breakMinutes(List<Instant[]> breaks) {
+        long minutes = 0L;
+        for (Instant[] interval : breaks) {
+            minutes += Duration.between(interval[0], interval[1]).toMinutes();
+        }
+        return minutes;
     }
 
     private ResultEnvelope buildEnvelope(

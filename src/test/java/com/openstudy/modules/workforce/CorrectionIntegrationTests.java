@@ -11,7 +11,12 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import tools.jackson.databind.JsonNode;
+
+import com.openstudy.modules.ai.service.OpenStudyAnalyses;
+import com.openstudy.modules.ai.service.OpenStudyAnalyses.EmployeeAttendanceComparisonRow;
+import com.openstudy.modules.ai.service.OpenStudyClock;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -28,6 +33,9 @@ class CorrectionIntegrationTests extends ShiftIntegrationSupport {
     static final LocalDate DAY = LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(10);
 
     static String at(int plusDays, String time) { return DAY.plusDays(plusDays) + " " + time; }
+
+    @Autowired OpenStudyAnalyses analyses;
+    @Autowired OpenStudyClock analysisClock;
 
     static Map<String, Object> clock(String in, String out) {
         var body = new LinkedHashMap<String, Object>();
@@ -296,5 +304,52 @@ class CorrectionIntegrationTests extends ShiftIntegrationSupport {
             revoke(staff, first);
             refused(get(member, "/api/attendance-corrections/" + correction), 404, "NOT_FOUND");
         }
+    }
+
+    /**
+     * #197: approval rewrites the attendance, so the weekly work analysis (POC-010) reads the corrected minutes from the
+     * attendance and restores the original from the earliest approved correction's before values, clock and break alike.
+     * A legacy approved clock correction without before values (the DomainLens seed) never touched the row and still
+     * overlays it.
+     */
+    @Test void theWeeklyWorkAnalysisComparesTheOriginalAttendanceWithTheApprovedOne() throws Exception {
+        LocalDate monday = analysisClock.lastWeek().startInclusive().atZone(ZoneId.of("Asia/Seoul")).toLocalDate();
+        try (var lead = login(manager); var member = login(staff)) {
+            // Corrected three times through #107: clock 09:00 -> 08:30 -> 08:00, lunch 12:00-13:00 -> 12:30-13:00.
+            long record = attendance(staff, first, null, monday.plusDays(1) + " 09:00", monday.plusDays(1) + " 18:00");
+            pause(record, monday.plusDays(1) + " 12:00", monday.plusDays(1) + " 13:00");
+            long lunch = breakOf(record);
+            long early = asked(member, record, clock(monday.plusDays(1) + " 08:30", monday.plusDays(1) + " 18:00")).get("id").asLong();
+            ok(approve(lead, early, 1));
+            long shorter = asked(member, record, breakFix(lunch, monday.plusDays(1) + " 12:30", monday.plusDays(1) + " 13:00")).get("id").asLong();
+            ok(approve(lead, shorter, 1));
+            long earlier = asked(member, record, clock(monday.plusDays(1) + " 08:00", monday.plusDays(1) + " 18:00")).get("id").asLong();
+            ok(approve(lead, earlier, 1));
+        }
+        // A legacy approved clock correction (no before values): the attendance row still holds 09:00.
+        long legacy = attendance(colleague, first, null, monday.plusDays(2) + " 09:00", monday.plusDays(2) + " 18:00");
+        pause(legacy, monday.plusDays(2) + " 12:00", monday.plusDays(2) + " 13:00");
+        jdbc.update("INSERT INTO attendance_corrections(attendance_id,requested_by,correction_kind,after_clock_in_at,after_clock_out_at,"
+                + "reason,status,decided_by,decided_at) VALUES(?,?,'CLOCK',?,?,'옛 정정','APPROVED',?,?)",
+                legacy, colleague, sql(monday.plusDays(2) + " 08:55"), sql(monday.plusDays(2) + " 18:00"), manager,
+                sql(monday.plusDays(3) + " 10:00"));
+        // No correction at all.
+        attendance(worker, first, null, monday.plusDays(3) + " 09:00", monday.plusDays(3) + " 17:00");
+
+        @SuppressWarnings("unchecked")
+        var rows = (java.util.List<EmployeeAttendanceComparisonRow>) analyses.executePoc010WeeklyAttendance(java.util.List.of(first))
+                .summary().get("employee_rows");
+        var byEmployee = new LinkedHashMap<Long, EmployeeAttendanceComparisonRow>();
+        rows.forEach(row -> byEmployee.put(row.employeeId(), row));
+        assertThat(byEmployee).containsOnlyKeys(staff, colleague, worker);
+
+        // Original 09:00-18:00 less a 60-minute lunch; corrected 08:00-18:00 less a 30-minute lunch.
+        assertThat(byEmployee.get(staff).rawWorkMinutes()).isEqualTo(480);
+        assertThat(byEmployee.get(staff).illustrativeCorrectedMinutes()).isEqualTo(570);
+        assertThat(byEmployee.get(staff).correctionDeltaMinutes()).isEqualTo(90);
+        assertThat(byEmployee.get(colleague).rawWorkMinutes()).isEqualTo(480);
+        assertThat(byEmployee.get(colleague).illustrativeCorrectedMinutes()).isEqualTo(485);
+        assertThat(byEmployee.get(worker).rawWorkMinutes()).isEqualTo(480);
+        assertThat(byEmployee.get(worker).correctionDeltaMinutes()).isZero();
     }
 }
