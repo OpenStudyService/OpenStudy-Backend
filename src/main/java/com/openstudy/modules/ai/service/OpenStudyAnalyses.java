@@ -1645,18 +1645,15 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
 
         List<Long> attendanceIds = recordTuples.stream().map(t -> ((Number) t[0]).longValue()).toList();
         // Approval rewrites the attendance and its breaks (#107), so the stored rows are the corrected ones and the
-        // originals come back from the earliest approved correction's before_* values. A legacy approved clock correction
-        // without before_* (the DomainLens seed, written before #107) never touched the row: its after_* still overlays it.
+        // originals come back from the earliest approved correction's before_* values.
         Map<Long, List<Instant[]>> currentBreaksByAttendanceId = new LinkedHashMap<>();
         Map<Long, List<Instant[]>> originalBreaksByAttendanceId = new LinkedHashMap<>();
         Map<Long, Instant[]> originalClocks = new LinkedHashMap<>();
-        Map<Long, Instant[]> legacyClockOverlays = new LinkedHashMap<>();
 
         if (!attendanceIds.isEmpty()) {
             List<Object[]> corrTuples = entityManager.createQuery(
                             "SELECT ac.attendanceRecordId, CAST(ac.correctionKind AS string), ac.breakId, "
-                                    + "ac.beforeClockInAt, ac.beforeClockOutAt, ac.requestedClockInAt, ac.requestedClockOutAt, "
-                                    + "ac.beforeBreakStartAt, ac.beforeBreakEndAt "
+                                    + "ac.beforeClockInAt, ac.beforeClockOutAt, ac.beforeBreakStartAt, ac.beforeBreakEndAt "
                                     + "FROM AttendanceCorrection ac WHERE ac.attendanceRecordId IN :attendanceIds "
                                     + "AND CAST(ac.status AS string) = 'APPROVED' ORDER BY ac.decidedAt ASC, ac.id ASC",
                             Object[].class)
@@ -1666,13 +1663,9 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             for (Object[] tuple : corrTuples) {
                 long attId = ((Number) tuple[0]).longValue();
                 if ("CLOCK".equals(tuple[1])) {
-                    if (tuple[3] != null) {
-                        originalClocks.putIfAbsent(attId, new Instant[]{(Instant) tuple[3], (Instant) tuple[4]});
-                    } else {
-                        legacyClockOverlays.put(attId, new Instant[]{(Instant) tuple[5], (Instant) tuple[6]});
-                    }
-                } else if (tuple[2] != null && tuple[7] != null) {
-                    originalBreaks.putIfAbsent(((Number) tuple[2]).longValue(), new Instant[]{(Instant) tuple[7], (Instant) tuple[8]});
+                    originalClocks.putIfAbsent(attId, new Instant[]{(Instant) tuple[3], (Instant) tuple[4]});
+                } else if (tuple[2] != null) {
+                    originalBreaks.putIfAbsent(((Number) tuple[2]).longValue(), new Instant[]{(Instant) tuple[5], (Instant) tuple[6]});
                 }
             }
 
@@ -1708,10 +1701,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             long rawMins = Duration.between(rawIn, rawOut).toMinutes()
                     - breakMinutes(originalBreaksByAttendanceId.getOrDefault(attId, List.of()));
 
-            Instant[] overlay = legacyClockOverlays.get(attId);
-            Instant effIn = (overlay != null && overlay[0] != null) ? overlay[0] : clockIn;
-            Instant effOut = (overlay != null && overlay[1] != null) ? overlay[1] : clockOut;
-            long corrMins = Duration.between(effIn, effOut).toMinutes()
+            long corrMins = Duration.between(clockIn, clockOut).toMinutes()
                     - breakMinutes(currentBreaksByAttendanceId.getOrDefault(attId, List.of()));
 
             long[] acc = empAcc.computeIfAbsent(empId, k -> new long[]{branchId, 0L, 0L, 0L});
@@ -1786,18 +1776,18 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         var notice = new OutcomeNotice(
                 "POLICY_PENDING_ATTENDANCE_CORRECTION_AGGREGATION",
                 OutcomeNotice.Kind.CLARIFICATION,
-                "승인된 출퇴근 정정 요청(5분 차이)의 집계 반영 정책 확정 전 비교 수치입니다.",
-                "approved clock correction effect on effective attendance 정책 확정 필요"
+                "근무시간 반올림과 근태 조회 범위 정책 확정 전 비교 수치입니다. 원본은 정정 전, 보정 후는 승인된 정정을 반영한 근태입니다.",
+                "working-hours aggregation rounding, attendance read scope 정책 확정 필요"
         );
         var envelope = buildEnvelope("POC-010", datasets, view, notice);
 
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("status", "PROVISIONAL_NOT_GOLDEN");
         summary.put("employee_rows", employeeRows);
-        summary.put("raw_minutes_formula", "sum(clock_out_at-clock_in_at - actual break interval)");
+        summary.put("raw_minutes_formula", "sum(clock_out_at-clock_in_at - actual break interval), "
+                + "originals from the earliest approved correction's before_* values");
         summary.put("illustrative_correction_delta_minutes", totalDelta);
         summary.put("needs_decision", List.of(
-                "approved clock correction effect on effective attendance",
                 "working-hours aggregation rounding",
                 "attendance read scope"
         ));

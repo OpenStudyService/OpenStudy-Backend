@@ -270,9 +270,9 @@ class CorrectionIntegrationTests extends ShiftIntegrationSupport {
 
     @Test void repeatedOrSimultaneousApprovalsChangeTheAttendanceOnce() throws Exception {
         try (var lead = login(manager); var boss = login(owner); var member = login(staff)) {
-            long record = attendance(staff, first, null, at(10, "09:00"), at(10, "18:00"));
+            long record = attendance(staff, first, null, at(8, "09:00"), at(8, "18:00"));
             long version = recordVersion(record);
-            long correction = asked(member, record, clock(at(10, "08:00"), at(10, "18:00"))).get("id").asLong();
+            long correction = asked(member, record, clock(at(8, "08:00"), at(8, "18:00"))).get("id").asLong();
             var calls = new ArrayList<Callable<HttpResponse<String>>>();
             for (int index = 0; index < 4; index++) {
                 var session = index % 2 == 0 ? lead : boss;
@@ -309,8 +309,6 @@ class CorrectionIntegrationTests extends ShiftIntegrationSupport {
     /**
      * #197: approval rewrites the attendance, so the weekly work analysis (POC-010) reads the corrected minutes from the
      * attendance and restores the original from the earliest approved correction's before values, clock and break alike.
-     * A legacy approved clock correction without before values (the DomainLens seed) never touched the row and still
-     * overlays it.
      */
     @Test void theWeeklyWorkAnalysisComparesTheOriginalAttendanceWithTheApprovedOne() throws Exception {
         LocalDate monday = analysisClock.lastWeek().startInclusive().atZone(ZoneId.of("Asia/Seoul")).toLocalDate();
@@ -326,13 +324,6 @@ class CorrectionIntegrationTests extends ShiftIntegrationSupport {
             long earlier = asked(member, record, clock(monday.plusDays(1) + " 08:00", monday.plusDays(1) + " 18:00")).get("id").asLong();
             ok(approve(lead, earlier, 1));
         }
-        // A legacy approved clock correction (no before values): the attendance row still holds 09:00.
-        long legacy = attendance(colleague, first, null, monday.plusDays(2) + " 09:00", monday.plusDays(2) + " 18:00");
-        pause(legacy, monday.plusDays(2) + " 12:00", monday.plusDays(2) + " 13:00");
-        jdbc.update("INSERT INTO attendance_corrections(attendance_id,requested_by,correction_kind,after_clock_in_at,after_clock_out_at,"
-                + "reason,status,decided_by,decided_at) VALUES(?,?,'CLOCK',?,?,'옛 정정','APPROVED',?,?)",
-                legacy, colleague, sql(monday.plusDays(2) + " 08:55"), sql(monday.plusDays(2) + " 18:00"), manager,
-                sql(monday.plusDays(3) + " 10:00"));
         // No correction at all.
         attendance(worker, first, null, monday.plusDays(3) + " 09:00", monday.plusDays(3) + " 17:00");
 
@@ -341,14 +332,12 @@ class CorrectionIntegrationTests extends ShiftIntegrationSupport {
                 .summary().get("employee_rows");
         var byEmployee = new LinkedHashMap<Long, EmployeeAttendanceComparisonRow>();
         rows.forEach(row -> byEmployee.put(row.employeeId(), row));
-        assertThat(byEmployee).containsOnlyKeys(staff, colleague, worker);
+        assertThat(byEmployee).containsOnlyKeys(staff, worker);
 
         // Original 09:00-18:00 less a 60-minute lunch; corrected 08:00-18:00 less a 30-minute lunch.
         assertThat(byEmployee.get(staff).rawWorkMinutes()).isEqualTo(480);
         assertThat(byEmployee.get(staff).illustrativeCorrectedMinutes()).isEqualTo(570);
         assertThat(byEmployee.get(staff).correctionDeltaMinutes()).isEqualTo(90);
-        assertThat(byEmployee.get(colleague).rawWorkMinutes()).isEqualTo(480);
-        assertThat(byEmployee.get(colleague).illustrativeCorrectedMinutes()).isEqualTo(485);
         assertThat(byEmployee.get(worker).rawWorkMinutes()).isEqualTo(480);
         assertThat(byEmployee.get(worker).correctionDeltaMinutes()).isZero();
     }
