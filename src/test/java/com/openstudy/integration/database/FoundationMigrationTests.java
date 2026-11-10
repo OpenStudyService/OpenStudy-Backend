@@ -58,11 +58,11 @@ class FoundationMigrationTests {
     }
     long count(String sql) { return jdbc.queryForObject(sql, Long.class); }
     @Test void createsTheConsolidatedBaselineWithIncrementalMigrationsAndPreservesDataOnRestart() {
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(15);
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(16);
         assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank", String.class))
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16");
         assertThat(count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name <> 'flyway_schema_history'"))
-                .isEqualTo(77); // V7 adds the seven ai_* tables of the AI workspace (DomainLens), V12 branch_closures, V14 customer_merges, V15 daily_closings and daily_closing_adjustments
+                .isEqualTo(78); // V7 adds the seven ai_* tables of the AI workspace (DomainLens), V12 branch_closures, V14 customer_merges, V15 daily_closings and daily_closing_adjustments, V16 password_reset_tokens
         assertThat(count("SELECT COUNT(*) FROM employees")).isZero();
         assertThat(count("SELECT COUNT(*) FROM administration_guard WHERE id=1")).isEqualTo(1);
         jdbc.update("INSERT INTO branches(code,name,address) VALUES('RESTART','Restart test','Test')");
@@ -274,7 +274,7 @@ class FoundationMigrationTests {
         jdbc.update("INSERT INTO conversation_members(conversation_id,employee_id,last_read_message_id,last_read_at) VALUES(30,10,NULL,NULL),(30,11,41,'2026-11-01 00:00:00'),(30,12,42,'2026-11-01 00:00:00'),(31,10,NULL,NULL)");
         jdbc.update("INSERT INTO messages(id,conversation_id,sender_employee_id,parent_message_id,body,client_message_key) VALUES(40,30,10,NULL,'original','k1'),(41,30,10,40,'reply','k2'),(42,30,10,NULL,'later','k3'),(43,31,10,NULL,'other','k4'),(44,30,10,40,'reply 2','k5')");
 
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(10); // V6 through V15
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(11); // V6 through V16
         assertThat(flyway(null).validateWithResult().validationSuccessful).isTrue();
 
         // A position on a reply (41) carries over as it is, and no position stays none.
@@ -361,7 +361,7 @@ class FoundationMigrationTests {
     /** #115 (M13-D08): one closing per branch and day; one adjustment per refund, a positive amount on an existing closing. */
     @Test void v15AddsOneClosingPerBranchAndDayAndOneAdjustmentPerRefund() {
         flyway("14").migrate();
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(flyway("15").migrate().migrationsExecuted).isEqualTo(1);
         jdbc.update("INSERT INTO employees(id,email,password_hash,name,nickname,global_role,status) VALUES(10,'a@example.com','hash','A','A','OWNER','ACTIVE')");
         jdbc.update("INSERT INTO branches(id,code,name,address,status) VALUES(20,'B1','B','서울','ACTIVE')");
         String closing = "INSERT INTO daily_closings(branch_id,business_date,snapshot_json,closed_by,closed_at) VALUES(20,'2026-11-01','{}',10,NOW(6))";
@@ -369,6 +369,30 @@ class FoundationMigrationTests {
         assertThatThrownBy(() -> jdbc.update(closing)).hasStackTraceContaining("uk_daily_closings_1");
         assertThatThrownBy(() -> jdbc.update("INSERT INTO daily_closing_adjustments(closing_id,refund_id,payment_id,amount_krw,processed_by,processed_at) "
                 + "VALUES(999,1,1,1000,10,NOW(6))")).hasStackTraceContaining("fk_daily_closing_adjustments");
+    }
+
+    /**
+     * #119 (M14-D05): a reset link has a token hash and an expiry exactly while it can be used (SENDING, SENT), a hash names
+     * one link, and the links go with their employee.
+     */
+    @Test void v16KeepsAResetTokenHashOnlyWhileTheLinkCanBeUsed() {
+        flyway("15").migrate();
+        assertThat(flyway("16").migrate().migrationsExecuted).isEqualTo(1);
+        jdbc.update("INSERT INTO employees(id,email,password_hash,name,nickname,global_role,status) VALUES(10,'a@example.com','hash','A','A','OWNER','ACTIVE'),(11,'b@example.com','hash','B','B','EMPLOYEE','ACTIVE')");
+        String pending = "INSERT INTO password_reset_tokens(employee_id,requested_by,status,next_attempt_at) VALUES(11,10,'PENDING',NOW(6))";
+        jdbc.update(pending);
+        String sent = "INSERT INTO password_reset_tokens(employee_id,requested_by,status,token_hash,expires_at,next_attempt_at) "
+                + "VALUES(11,10,'SENT',UNHEX(SHA2('t',256)),NOW(6),NOW(6))";
+        jdbc.update(sent);
+        assertThatThrownBy(() -> jdbc.update(sent)).hasStackTraceContaining("uk_password_reset_tokens_1");
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO password_reset_tokens(employee_id,status,expires_at,next_attempt_at) "
+                + "VALUES(11,'SENDING',NOW(6),NOW(6))")).hasStackTraceContaining("ck_password_reset_tokens_1");
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO password_reset_tokens(employee_id,status,token_hash,next_attempt_at) "
+                + "VALUES(11,'SENT',UNHEX(SHA2('u',256)),NOW(6))")).hasStackTraceContaining("ck_password_reset_tokens_2");
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO password_reset_tokens(employee_id,status,token_hash,next_attempt_at) "
+                + "VALUES(11,'PENDING',UNHEX(SHA2('v',256)),NOW(6))")).hasStackTraceContaining("ck_password_reset_tokens_1");
+        jdbc.update("DELETE FROM employees WHERE id=11");
+        assertThat(count("SELECT COUNT(*) FROM password_reset_tokens")).isZero();
     }
 
     /** No branch is guessed for a request that predates V11: the migration fails and leaves the table as it was. */
