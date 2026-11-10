@@ -62,6 +62,9 @@ public class Customer {
     private CustomerStatus status;
     @Column(name = "status_reason", length = 500)
     private String statusReason;
+    /** The customer this one was merged into (V14, M13-D03); null unless MERGED. */
+    @Column(name = "merged_into_customer_id")
+    private Long mergedIntoCustomerId;
     @Column(length = 1000)
     @SemanticField(id = "customer.memo", name = "회원 메모", exposed = false)
     private String memo;
@@ -85,5 +88,10 @@ public class Customer {
 
     public void changeStatus(CustomerStatus status, String reason) {
         this.status = status; this.statusReason = reason;
+    }
+
+    /** Absorbed into another customer, or moved to a new target when that customer is absorbed in turn (M13-D03). */
+    public void mergeInto(long target) {
+        this.status = CustomerStatus.MERGED; this.mergedIntoCustomerId = target;
     }
 }

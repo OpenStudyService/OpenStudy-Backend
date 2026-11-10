@@ -119,9 +119,9 @@ class OperationsExtensionContractTests {
             assertThat(operation.get("x-permission").asString()).as(id).isNotBlank();
             assertThat(operation.get("x-error-codes").size()).as(id).isPositive();
             assertThat(operation.get("x-adr-decisions").toString()).as(id).contains("M13-D");
-            // #112 implemented the branch closures; the other issues are still design targets.
+            // #112 and #114 are implemented; the other issues are still design targets.
             assertThat(operation.get("x-implementation-status").asString()).as(id)
-                    .isEqualTo(ISSUES.get(id).equals("#112") ? "implemented" : "design-target");
+                    .isEqualTo(List.of("#112", "#114").contains(ISSUES.get(id)) ? "implemented" : "design-target");
             assertThat(operation.get("x-implementation-issue").asString()).as(id).isEqualTo(ISSUES.get(id));
             String[] methodAndPath = route.split(" ");
             assertThat(contract).as(route).contains("`" + methodAndPath[0].toUpperCase() + " " + methodAndPath[1]);
@@ -165,7 +165,15 @@ class OperationsExtensionContractTests {
         assertThat(schema("ProductSnapshot").at("/properties/schemaVersion/maximum").asInt()).isEqualTo(2);
         assertThat(existing("get", "/products").get("parameters").toString()).contains("\"availability\"");
         assertThat(spec.toString()).doesNotContain("\"issue\":\"#113\"");
-        assertThat(texts(planned(schema("Customer"), "#114").at("/properties/status/enum"))).contains("병합됨");
+        // #114 moved its planned changes into the customer definitions.
+        assertThat(texts(schema("Customer").at("/properties/status/enum"))).contains("병합됨");
+        assertThat(texts(schema("Customer").get("required"))).contains("mergedInto", "absorbedCustomerCount");
+        assertThat(texts(schema("CustomerListItem").at("/properties/status/enum"))).contains("병합됨");
+        for (String path : List.of("/payments", "/room-reservations", "/seat-sessions", "/locker-assignments")) {
+            assertThat(existing("post", path).at("/responses/409/content/application~1json/schema/$ref").asString()).as(path)
+                    .isEqualTo("#/components/schemas/OperationsConflictError");
+        }
+        assertThat(spec.toString()).doesNotContain("\"issue\":\"#114\"");
         for (String path : List.of("/payments/{id}/refund", "/room-reservations/{id}/cancel")) {
             assertThat(planned(existing("post", path), "#115").get("note").asString()).as(path).contains("daily_closing_adjustments");
         }

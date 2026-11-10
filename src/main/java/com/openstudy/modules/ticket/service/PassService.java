@@ -118,7 +118,9 @@ public class PassService {
      */
     @Transactional
     public void lockOwned(long id, long customerId) {
-        repository.locked(id).filter(pass -> pass.getCustomerId() == customerId)
+        // The pass of a customer merged into this one is this customer's to use (2026-11-10 user decision, #114).
+        repository.locked(id).filter(pass -> pass.getCustomerId() == customerId
+                        || repository.mergedInto(pass.getCustomerId()).filter(target -> target == customerId).isPresent())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
     }
 
@@ -189,9 +191,12 @@ public class PassService {
     @Transactional(readOnly = true)
     public Map<Long, List<UsablePass>> usableBy(Collection<Long> customerIds, Instant now) {
         Map<Long, List<UsablePass>> result = new LinkedHashMap<>();
-        for (var pass : repository.findByCustomerIdInAndStatusOrderByIdAsc(Set.copyOf(customerIds), PassStatus.ACTIVE)) {
+        // An absorbed customer's passes are listed under the target that may use them (#114).
+        for (var row : repository.usableByCustomerFamilies(Set.copyOf(customerIds), PassStatus.ACTIVE)) {
+            var pass = (Pass) row[0];
+            long holder = ((Number) row[1]).longValue();
             if (expired(pass, now) || pass.balanceUsedUp()) continue;
-            result.computeIfAbsent(pass.getCustomerId(), customer -> new ArrayList<>()).add(new UsablePass(Long.toString(pass.getId()),
+            result.computeIfAbsent(holder, customer -> new ArrayList<>()).add(new UsablePass(Long.toString(pass.getId()),
                     ProductViews.apiKind(pass.getKind()), pass.getSnapshotProductName(), pass.getRemainingMinutes(),
                     pass.getRemainingCreditKrw(), pass.getExpiresAt(), Long.toString(pass.getPurchaseBranchId())));
         }
@@ -205,7 +210,7 @@ public class PassService {
      */
     @Transactional(readOnly = true)
     public List<CrossBranchPass> heldBy(long customerId, Instant now) {
-        return repository.findByCustomerIdAndStatusInOrderByIdDesc(customerId, HELD).stream().map(pass ->
+        return repository.heldByCustomerFamily(customerId, HELD).stream().map(pass ->
                 new CrossBranchPass(ProductViews.apiKind(pass.getKind()), pass.getSnapshotProductName(), status(pass, now), pass.getExpiresAt())).toList();
     }
 
@@ -263,7 +268,7 @@ public class PassService {
     @Transactional(readOnly = true)
     public List<PassLedger> ledgers(long customerId, Set<Long> purchaseBranches, Instant now) {
         if (purchaseBranches.isEmpty()) return List.of();
-        var owned = repository.findByCustomerIdAndPurchaseBranchIdInOrderByIdAsc(customerId, purchaseBranches);
+        var owned = repository.ofCustomerFamily(customerId, purchaseBranches);
         if (owned.isEmpty()) return List.of();
         Map<Long, List<PassBalanceEvent>> rows = ledger.findByPassIdInOrderByIdAsc(owned.stream().map(Pass::getId).toList())
                 .stream().collect(Collectors.groupingBy(PassBalanceEvent::getPassId));

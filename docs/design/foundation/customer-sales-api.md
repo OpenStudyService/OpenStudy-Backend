@@ -136,7 +136,8 @@ OWNER는 모든 권한 조건을 만족한다. 고객·결제·이용권의 삭�
 | --- | --- | --- |
 | 404 | `NOT_FOUND` | 범위 밖·없는 고객, 보이지 않는 상품·결제·이용권 |
 | 409 | `BRANCH_NOT_ACTIVE` | 운영 중지 지점의 고객 등록·결제 |
-| 409 | `CUSTOMER_NOT_ACTIVE` | 정상이 아닌 고객에게 결제 |
+| 409 | `CUSTOMER_NOT_ACTIVE` | 정상이 아닌 고객에게 결제. 병합된 고객이면 `mergedIntoCustomerId`를 담는다(M13 #114) |
+| 409 | `CUSTOMER_ALREADY_MERGED` | 병합된 고객의 수정·상태 변경(M13 #114, [M13 계약](operations-extension-api.md)) |
 | 409 | `PRODUCT_NOT_ON_SALE`, `PRODUCT_NOT_AVAILABLE_AT_BRANCH` | 판매 불가 상품(상품 API와 같은 코드) |
 | 409 | `PAYMENT_NOT_REFUNDABLE` | 실패 결제 환불 |
 | 409 | `ALREADY_REFUNDED` | 이미 환불된 결제 |

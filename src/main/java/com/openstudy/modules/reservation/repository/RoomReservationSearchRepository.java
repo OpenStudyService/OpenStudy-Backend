@@ -57,7 +57,8 @@ public class RoomReservationSearchRepository {
         binds.put("branches", filter.branches());
         add(where, binds, "r.status = :status", "status", filter.status());
         add(where, binds, "r.roomId = :roomId", "roomId", filter.roomId());
-        add(where, binds, "r.customerId = :customerId", "customerId", filter.customerId());
+        // A customer filter includes the customers merged into it (M13-D07, #114).
+        add(where, binds, "r.customerId IN (SELECT m.id FROM Customer m WHERE m.id = :customerId OR m.mergedIntoCustomerId = :customerId)", "customerId", filter.customerId());
         add(where, binds, "r.endAt > :from", "from", filter.range().from());
         add(where, binds, "r.startAt < :to", "to", filter.range().to());
         return where.toString();

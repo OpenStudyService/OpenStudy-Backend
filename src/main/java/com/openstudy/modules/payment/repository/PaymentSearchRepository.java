@@ -38,7 +38,11 @@ public class PaymentSearchRepository {
         if (filter.status() != null) { where.append(" AND x.status = ?"); binds.add(filter.status().name()); }
         if (filter.from() != null) { where.append(" AND x.created_at >= ?"); binds.add(filter.from()); }
         if (filter.to() != null) { where.append(" AND x.created_at < ?"); binds.add(filter.to()); }
-        if (filter.customerId() != null) { where.append(" AND x.customer_id = ?"); binds.add(filter.customerId()); }
+        // A customer filter includes the customers merged into it (M13-D07, #114).
+        if (filter.customerId() != null) {
+            where.append(" AND x.customer_id IN (SELECT m.id FROM customers m WHERE m.id = ? OR m.merged_into_customer_id = ?)");
+            binds.add(filter.customerId()); binds.add(filter.customerId());
+        }
         String order = descending ? " DESC" : " ASC";
         String by = (sort == Sort.AMOUNT ? "x.amount_krw" : "x.created_at") + order;
         Query rows = entityManager.createNativeQuery("SELECT x.* FROM payments x WHERE " + where

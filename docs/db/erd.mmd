@@ -272,6 +272,15 @@ erDiagram
     datetime_6 created_at
     bigint_unsigned version
   }
+  customer_merges {
+    bigint_unsigned id PK
+    bigint_unsigned target_customer_id FK
+    bigint_unsigned absorbed_customer_id FK
+    bigint_unsigned via_customer_id FK
+    bigint_unsigned merged_by FK
+    datetime_6 merged_at
+    varchar_500 reason
+  }
   customer_service_interactions {
     bigint_unsigned id PK
     bigint_unsigned customer_id FK
@@ -297,8 +306,9 @@ erDiagram
     varchar_30 phone
     varchar_254 email
     bigint_unsigned registered_branch_id FK
-    enum__NORMAL___RESTRICTED___INACTIVE status
+    enum__NORMAL___RESTRICTED___INACTIVE___MERGED status
     varchar_500 status_reason
+    bigint_unsigned merged_into_customer_id FK
     varchar_1000 memo
     datetime_6 registered_at
     datetime_6 updated_at
@@ -920,6 +930,11 @@ erDiagram
   employees |o--o{ conversations : "fk_conversations_2: dm_employee_low_id"
   employees |o--o{ conversations : "fk_conversations_3: dm_employee_high_id"
   employees |o--o{ conversations : "fk_conversations_4: created_by"
+  customers ||--o{ customer_merges : "fk_customer_merges_absorbed: absorbed_customer_id"
+  employees ||--o{ customer_merges : "fk_customer_merges_by: merged_by"
+  customers ||--o{ customer_merges : "fk_customer_merges_target: target_customer_id"
+  customers |o--o{ customer_merges : "fk_customer_merges_via: via_customer_id"
+  customers |o--o{ customers : "fk_customers_merged_into: merged_into_customer_id"
   customers ||--o{ customer_service_interactions : "fk_customer_service_interactions_1: customer_id"
   branch_memberships ||--o{ customer_service_interactions : "fk_customer_service_interactions_2: branch_id,employee_id"
   customers ||--o{ customer_status_events : "fk_customer_status_events_1: customer_id"

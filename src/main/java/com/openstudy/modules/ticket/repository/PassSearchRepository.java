@@ -41,7 +41,11 @@ public class PassSearchRepository {
         var where = new StringBuilder("x.purchase_branch_id IN (")
                 .append(String.join(",", Collections.nCopies(filter.branches().size(), "?"))).append(")");
         var binds = new ArrayList<Object>(filter.branches().stream().sorted().toList());
-        if (filter.customerId() != null) { where.append(" AND x.customer_id = ?"); binds.add(filter.customerId()); }
+        // A customer filter includes the customers merged into it (M13-D07, #114).
+        if (filter.customerId() != null) {
+            where.append(" AND x.customer_id IN (SELECT m.id FROM customers m WHERE m.id = ? OR m.merged_into_customer_id = ?)");
+            binds.add(filter.customerId()); binds.add(filter.customerId());
+        }
         if (filter.kind() != null) { where.append(" AND x.kind = ?"); binds.add(filter.kind().name()); }
         if (filter.status() != null) {
             where.append(" AND ").append(EFFECTIVE).append(" = ?");

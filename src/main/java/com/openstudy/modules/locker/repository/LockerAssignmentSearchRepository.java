@@ -54,7 +54,8 @@ public class LockerAssignmentSearchRepository {
         var where = new StringBuilder(" FROM LockerAssignment a WHERE a.lockerId IN (SELECT l.id FROM Locker l WHERE l.branchId IN :branches)");
         binds.put("branches", filter.branches());
         add(where, binds, "a.lockerId = :lockerId", "lockerId", filter.lockerId());
-        add(where, binds, "a.customerId = :customerId", "customerId", filter.customerId());
+        // A customer filter includes the customers merged into it (M13-D07, #114).
+        add(where, binds, "a.customerId IN (SELECT m.id FROM Customer m WHERE m.id = :customerId OR m.mergedIntoCustomerId = :customerId)", "customerId", filter.customerId());
         add(where, binds, "a.status = :status", "status", filter.status());
         return where.toString();
     }

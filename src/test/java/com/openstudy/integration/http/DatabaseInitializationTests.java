@@ -53,11 +53,11 @@ class DatabaseInitializationTests {
 
     @Test
     void migratesAllTablesAndDoesNotReapplyV1OrRemoveData() {
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("13");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("14");
         assertThat(flyway.validateWithResult().validationSuccessful).isTrue();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables "
                 + "WHERE table_schema = DATABASE() AND table_name <> 'flyway_schema_history'", Integer.class))
-                .isEqualTo(74); // V12 branch_closures
+                .isEqualTo(75); // V12 branch_closures, V14 customer_merges
 
         String code = "M-" + UUID.randomUUID().toString().substring(0, 16);
         jdbc.update("INSERT INTO branches (code,name,address) VALUES (?, 'Migration test', 'Test address')", code);

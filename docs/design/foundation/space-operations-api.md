@@ -62,7 +62,7 @@ Backend [#67](https://github.com/OpenStudyService/OpenStudy-Backend/issues/67)�
 - **요청 키**: 등록·예약·배정·연장·취소는 `Idempotency-Key`가 필수다. 같은 키·같은 입력은 저장된 결과, 같은 키·다른 입력은 409 `IDEMPOTENCY_CONFLICT`다. 결제가 중복 생성되지 않는다.
 - **금액**: 요청에 금액·시간 수·과금 구간 필드가 없다. 서버가 잠근 원장의 현재 요금으로 계산한다. 정의되지 않은 필드는 422다.
 - **결제 정보 노출**: 금액과 결제 참조(`billing`, `charges`)는 해당 지점의 `payments:read` 또는 `payments:write`가 있어야 값이 있고 없으면 null이다. 좌석·이용권 응답이 결제 금액을 담지 않는 것과 같은 기준이다. `payments:write`를 포함하는 이유는 결제를 처리한 직원이 승인·실패 결과를 응답에서 확인해야 하기 때문이다. 룸의 시간당 요금과 사물함의 4주 요금은 공개된 판매 가격이므로 원장 조회에 포함한다.
-- **고객**: 예약·배정 대상 고객은 M4 판매와 같이 요청자의 고객 조회 범위 안이어야 하고(아니면 404), 정상 상태여야 한다(아니면 409 `CUSTOMER_NOT_ACTIVE`). 응답의 고객은 `CustomerSummary`만 담는다. 정확 일치 조회로 찾은 다른 지점 고객의 예약·배정은 범위 밖이다.
+- **고객**: 예약·배정 대상 고객은 M4 판매와 같이 요청자의 고객 조회 범위 안이어야 하고(아니면 404), 정상 상태여야 한다(아니면 409 `CUSTOMER_NOT_ACTIVE`. 병합된 고객이면 `mergedIntoCustomerId`를 담는다, M13 #114). 응답의 고객은 `CustomerSummary`만 담는다. 정확 일치 조회로 찾은 다른 지점 고객의 예약·배정은 범위 밖이다.
 - **운영 중지 지점(FR-BR-08)**: 신규 예약·배정·연장·이용 시작은 409 `BRANCH_NOT_ACTIVE`다. 취소 환불·이용 완료·반납과 조회는 허용한다. 룸·사물함 원장 수정은 운영 설정이므로 허용한다.
 - 수정은 `version`을 받고 충돌하면 409 `VERSION_CONFLICT`, `reloadUrl`은 해당 상세 주소다. `version` 외 항목이 없는 `PATCH`는 422다.
 - 변경 알림(`GET /workspace/events`)의 `resource`에 `rooms`, `room-reservations`, `lockers`, `locker-assignments`를 추가한다. 금액·고객 정보는 담지 않는다. (2026-11-07 SSE 제거로 더 이상 적용되지 않음, Backend #170)
