@@ -10,6 +10,8 @@ Frontend는 같은 [OpenAPI](openapi.json)(`0.1.15-m14-account`)로 연동한다
 
 2026-11-10: 이 문서의 operation은 모두 설계 계약(`design-target`)이다. 이미 구현된 schema에 생길 변경은 그 schema의 `x-planned-changes`에 적었다. 구현 PR이 이 내용을 본 정의로 옮기고 항목을 지운다.
 
+2026-11-10: 감사 로그 검색·상세(`GET /audit-events`, `GET /audit-events/{id}`)는 #122에서 구현됐다(`implemented`). 새 테이블은 없고 V1 `audit_events`를 읽는다.
+
 - 정책 근거: [ADR-M14-001](../../db/ADR-M14-001.md)(M14-D01~D06, D09~D14)
   - M14-D07·D08(1:1 대화·채팅 스트림)은 [ADR-M10-002](../../db/ADR-M10-002.md)로 범위에서 빠져 이 계약에 없다.
   - M14-D11~D14는 이 계약을 쓰면서 사용자에게 받은 결정이다(2026-11-10).
