@@ -314,6 +314,24 @@ erDiagram
     datetime_6 updated_at
     bigint_unsigned version
   }
+  daily_closing_adjustments {
+    bigint_unsigned id PK
+    bigint_unsigned closing_id FK
+    bigint_unsigned refund_id UK
+    bigint_unsigned payment_id FK
+    bigint_unsigned amount_krw
+    bigint_unsigned processed_by FK
+    datetime_6 processed_at
+  }
+  daily_closings {
+    bigint_unsigned id PK
+    bigint_unsigned branch_id FK
+    date business_date
+    varchar_500 note
+    json snapshot_json
+    bigint_unsigned closed_by FK
+    datetime_6 closed_at
+  }
   employee_invitations {
     bigint_unsigned id PK
     bigint_unsigned branch_id FK
@@ -940,6 +958,12 @@ erDiagram
   customers ||--o{ customer_status_events : "fk_customer_status_events_1: customer_id"
   employees ||--o{ customer_status_events : "fk_customer_status_events_2: actor_employee_id"
   branches |o--o{ customers : "fk_customers_registered_branch: registered_branch_id"
+  daily_closings ||--o{ daily_closing_adjustments : "fk_daily_closing_adjustments_1: closing_id"
+  refunds ||--o{ daily_closing_adjustments : "fk_daily_closing_adjustments_2: refund_id"
+  payments ||--o{ daily_closing_adjustments : "fk_daily_closing_adjustments_3: payment_id"
+  employees ||--o{ daily_closing_adjustments : "fk_daily_closing_adjustments_4: processed_by"
+  branches ||--o{ daily_closings : "fk_daily_closings_1: branch_id"
+  employees ||--o{ daily_closings : "fk_daily_closings_2: closed_by"
   branches ||--o{ employee_invitations : "fk_employee_invitations_1: branch_id"
   permission_presets |o--o{ employee_invitations : "fk_employee_invitations_2: preset_id"
   employees ||--o{ employee_invitations : "fk_employee_invitations_3: created_by"

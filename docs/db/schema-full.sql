@@ -409,6 +409,21 @@ CREATE TABLE `customers` (
   CONSTRAINT `ck_customers_merged` CHECK (((`status` = _utf8mb4'MERGED') = (`merged_into_customer_id` is not null)))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='전사 공통 고객 원장; 직원 로그인과 무관';
 
+CREATE TABLE `daily_closings` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `branch_id` bigint unsigned NOT NULL,
+  `business_date` date NOT NULL,
+  `note` varchar(500) DEFAULT NULL,
+  `snapshot_json` json NOT NULL,
+  `closed_by` bigint unsigned NOT NULL,
+  `closed_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_daily_closings_1` (`branch_id`,`business_date`),
+  KEY `fk_daily_closings_2` (`closed_by`),
+  CONSTRAINT `fk_daily_closings_1` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_daily_closings_2` FOREIGN KEY (`closed_by`) REFERENCES `employees` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='지점·날짜별 일별 마감 스냅샷, 업무를 막지 않음';
+
 CREATE TABLE `employee_invitations` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `branch_id` bigint unsigned NOT NULL,
@@ -968,6 +983,26 @@ CREATE TABLE `customer_status_events` (
   CONSTRAINT `fk_customer_status_events_1` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE RESTRICT,
   CONSTRAINT `fk_customer_status_events_2` FOREIGN KEY (`actor_employee_id`) REFERENCES `employees` (`id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='고객 상태/제한 변경 이력';
+
+CREATE TABLE `daily_closing_adjustments` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `closing_id` bigint unsigned NOT NULL,
+  `refund_id` bigint unsigned NOT NULL,
+  `payment_id` bigint unsigned NOT NULL,
+  `amount_krw` bigint unsigned NOT NULL,
+  `processed_by` bigint unsigned NOT NULL,
+  `processed_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_daily_closing_adjustments_1` (`refund_id`),
+  KEY `ix_daily_closing_adjustments_1` (`closing_id`,`processed_at`),
+  KEY `fk_daily_closing_adjustments_3` (`payment_id`),
+  KEY `fk_daily_closing_adjustments_4` (`processed_by`),
+  CONSTRAINT `fk_daily_closing_adjustments_1` FOREIGN KEY (`closing_id`) REFERENCES `daily_closings` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_daily_closing_adjustments_2` FOREIGN KEY (`refund_id`) REFERENCES `refunds` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_daily_closing_adjustments_3` FOREIGN KEY (`payment_id`) REFERENCES `payments` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `fk_daily_closing_adjustments_4` FOREIGN KEY (`processed_by`) REFERENCES `employees` (`id`) ON DELETE RESTRICT,
+  CONSTRAINT `ck_daily_closing_adjustments_1` CHECK ((`amount_krw` > 0))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='마감된 날 결제의 이후 환불, 금액은 양수로 저장하고 응답에서 차감으로 표시';
 
 CREATE TABLE `leave_allocations` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
@@ -1557,8 +1592,8 @@ INSERT INTO `permission_definitions` (`id`,`code`,`description`,`is_admin_only`)
 INSERT INTO `permission_definitions` (`id`,`code`,`description`,`is_admin_only`) VALUES (8,'people:manage','직원 및 권한 관리',1);
 INSERT INTO `permission_definitions` (`id`,`code`,`description`,`is_admin_only`) VALUES (9,'ai:read','AI 분석 조회',0);
 INSERT INTO `permission_definitions` (`id`,`code`,`description`,`is_admin_only`) VALUES (16,'customers:cross-branch-read','타 지점 고객 최소 요약 조회',0);
-INSERT INTO `permission_presets` (`id`,`name`,`role`,`is_system`,`created_by`,`created_at`,`updated_at`,`version`,`updated_by`) VALUES (1,'일반 직원 기본','STAFF',1,NULL,'2026-11-10T03:18:32.494834','2026-11-10T03:18:32.494834',0,NULL);
-INSERT INTO `permission_presets` (`id`,`name`,`role`,`is_system`,`created_by`,`created_at`,`updated_at`,`version`,`updated_by`) VALUES (2,'지점 관리자 기본','MANAGER',1,NULL,'2026-11-10T03:18:32.496177','2026-11-10T03:18:32.496177',0,NULL);
+INSERT INTO `permission_presets` (`id`,`name`,`role`,`is_system`,`created_by`,`created_at`,`updated_at`,`version`,`updated_by`) VALUES (1,'일반 직원 기본','STAFF',1,NULL,'2026-11-10T09:37:02.453811','2026-11-10T09:37:02.453811',0,NULL);
+INSERT INTO `permission_presets` (`id`,`name`,`role`,`is_system`,`created_by`,`created_at`,`updated_at`,`version`,`updated_by`) VALUES (2,'지점 관리자 기본','MANAGER',1,NULL,'2026-11-10T09:37:02.455158','2026-11-10T09:37:02.455158',0,NULL);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,1);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,2);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,3);
@@ -1568,18 +1603,19 @@ INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,6
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,7);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,8);
 INSERT INTO `permission_preset_grants` (`preset_id`,`permission_id`) VALUES (2,9);
-INSERT INTO `administration_guard` (`id`,`updated_at`) VALUES (1,'2026-11-10T03:18:32.506358');
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (1,'1','init schema','SQL','V1__init_schema.sql',-747993029,'foundation_test','2026-11-10 12:18:32.0',9589,1);
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (2,'2','customer branch and memo','SQL','V2__customer_branch_and_memo.sql',191084984,'foundation_test','2026-11-10 12:18:32.0',231,1);
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (3,'3','channel description and version','SQL','V3__channel_description_and_version.sql',-552623542,'foundation_test','2026-11-10 12:18:32.0',186,1);
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (4,'4','room hourly and cross branch permission','SQL','V4__room_hourly_and_cross_branch_permission.sql',-1250266497,'foundation_test','2026-11-10 12:18:34.0',1480,1);
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (5,'5','customer interaction source','SQL','V5__customer_interaction_source.sql',-483919048,'foundation_test','2026-11-10 12:18:34.0',161,1);
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (6,'6','thread read positions','SQL','V6__thread_read_positions.sql',892098293,'foundation_test','2026-11-10 12:18:34.0',223,1);
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (7,'7','domainlens ai workspace','SQL','V7__domainlens_ai_workspace.sql',-1633488785,'foundation_test','2026-11-10 12:18:35.0',605,1);
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (8,'8','ai execution spec without results','SQL','V8__ai_execution_spec_without_results.sql',474349228,'foundation_test','2026-11-10 12:18:35.0',426,1);
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (9,'9','ai execution client request key','SQL','V9__ai_execution_client_request_key.sql',583814782,'foundation_test','2026-11-10 12:18:36.0',174,1);
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (10,'10','sales aggregation indexes','SQL','V10__sales_aggregation_indexes.sql',17476164,'foundation_test','2026-11-10 12:18:36.0',44,1);
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (11,'11','leave request branch','SQL','V11__leave_request_branch.sql',-1436476266,'foundation_test','2026-11-10 12:18:36.0',217,1);
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (12,'12','branch closures','SQL','V12__branch_closures.sql',-563007583,'foundation_test','2026-11-10 12:18:36.0',87,1);
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (13,'13','product sale period limit','SQL','V13__product_sale_period_limit.sql',1934467428,'foundation_test','2026-11-10 12:18:36.0',223,1);
-INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (14,'14','customer merge','SQL','V14__customer_merge.sql',695589822,'foundation_test','2026-11-10 12:18:37.0',387,1);
+INSERT INTO `administration_guard` (`id`,`updated_at`) VALUES (1,'2026-11-10T09:37:02.465114');
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (1,'1','init schema','SQL','V1__init_schema.sql',-747993029,'foundation_test','2026-11-10 18:37:02.0',13374,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (2,'2','customer branch and memo','SQL','V2__customer_branch_and_memo.sql',191084984,'foundation_test','2026-11-10 18:37:02.0',449,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (3,'3','channel description and version','SQL','V3__channel_description_and_version.sql',-552623542,'foundation_test','2026-11-10 18:37:03.0',339,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (4,'4','room hourly and cross branch permission','SQL','V4__room_hourly_and_cross_branch_permission.sql',-1250266497,'foundation_test','2026-11-10 18:37:06.0',2647,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (5,'5','customer interaction source','SQL','V5__customer_interaction_source.sql',-483919048,'foundation_test','2026-11-10 18:37:06.0',251,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (6,'6','thread read positions','SQL','V6__thread_read_positions.sql',892098293,'foundation_test','2026-11-10 18:37:06.0',356,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (7,'7','domainlens ai workspace','SQL','V7__domainlens_ai_workspace.sql',-1633488785,'foundation_test','2026-11-10 18:37:07.0',967,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (8,'8','ai execution spec without results','SQL','V8__ai_execution_spec_without_results.sql',474349228,'foundation_test','2026-11-10 18:37:08.0',767,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (9,'9','ai execution client request key','SQL','V9__ai_execution_client_request_key.sql',583814782,'foundation_test','2026-11-10 18:37:08.0',338,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (10,'10','sales aggregation indexes','SQL','V10__sales_aggregation_indexes.sql',17476164,'foundation_test','2026-11-10 18:37:08.0',101,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (11,'11','leave request branch','SQL','V11__leave_request_branch.sql',-1436476266,'foundation_test','2026-11-10 18:37:09.0',386,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (12,'12','branch closures','SQL','V12__branch_closures.sql',-563007583,'foundation_test','2026-11-10 18:37:09.0',163,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (13,'13','product sale period limit','SQL','V13__product_sale_period_limit.sql',1934467428,'foundation_test','2026-11-10 18:37:10.0',407,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (14,'14','customer merge','SQL','V14__customer_merge.sql',695589822,'foundation_test','2026-11-10 18:37:10.0',619,1);
+INSERT INTO `flyway_schema_history` (`installed_rank`,`version`,`description`,`type`,`script`,`checksum`,`installed_by`,`installed_on`,`execution_time`,`success`) VALUES (15,'15','daily closings','SQL','V15__daily_closings.sql',737048422,'foundation_test','2026-11-10 18:37:11.0',343,1);

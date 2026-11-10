@@ -38,6 +38,8 @@ public enum BranchAction {
     WRITE_PAYMENT_HISTORY("payments:write", false, false),
     NEW_PAYMENT("payments:write", false, true),
     READ_SALES("sales:read", false, false),
+    /** M13 daily closing: MANAGER of the branch (M13-D04) plus sales:read, because the closing shows the amounts. */
+    CLOSE_SALES("sales:read", true, false),
     READ_AI("ai:read", false, false),
     NEW_OPERATION("operations:write", false, true);
 
