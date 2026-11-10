@@ -22,6 +22,8 @@
 
 2026-11-09 추가: Issue #106의 M12 근태 정정·휴가 부여·신청·잔여량·대체근무 API는 [근태 정정·휴가·대체근무 API 계약](workforce-requests-api.md)과 OpenAPI `0.1.13-m12-workforce-requests`의 설계 계약(`design-target`)을 따른다. 정책은 [ADR-M12-001](../../db/ADR-M12-001.md)이며 구현은 근태 정정 #107, 휴가 #108, 대체근무 #109에서 진행한다. 본인 신청의 본인 처리 금지와 휴가 승인 취소 시점(시작일 전)은 2026-11-09 사용자 결정이다. `leave_requests` 신청 지점 칼럼 추가(M12-D02)는 #108에서 한다.
 
+2026-11-10 추가: Issue #111의 M13 지점 휴무일·상품 판매 기간/한도·중복 고객 병합·일별 마감·고급 필터·이용 지점 사용량·좌석 점유 추이 API는 [운영·거래 확장 API 계약](operations-extension-api.md)과 OpenAPI `0.1.14-m13-operations-extension`의 설계 계약(`design-target`)을 따른다. 정책은 [ADR-M13-001](../../db/ADR-M13-001.md)이며 구현은 휴무일 #112, 판매 기간·한도 #113, 고객 병합 #114, 일별 마감 #115, 고급 필터·사용량·점유 추이 #116에서 진행한다. 이미 구현된 operation·schema에 더할 필드·필터·오류 코드는 OpenAPI의 `x-planned-changes`에 두고 구현 이슈가 본 정의로 옮긴다. 마감 시점, 이용 지점 사용량 지표, 중복 의심 기준은 2026-11-10 사용자 결정(M13-D11~D13)이다.
+
 2026-10-27 추가: Issue #15의 초대 미리보기·신규/기존 계정 수락·최종 승인은 [초대 수락·승인 구현 계약](invitation-acceptance-api.md)을 따른다. 기존 요청·응답 모델과 계약 버전은 유지하고 해당 operation의 구현 상태만 OpenAPI에 표시한다.
 
 2026-10-27 추가: Issue #14의 초대 발송 worker·SMTP·lease·재시도는 [메일 발송·장애 복구 계약](invitation-delivery.md)을 따른다. 기본 비활성이며 실제 운영 SMTP 수신 및 공개 수락·승인(#15)의 검증 범위를 구분한다.
