@@ -117,6 +117,9 @@ public class SecurityConfiguration {
                         // Link holders: the service verifies the token (and, for existing accounts, the session).
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/invitations/preview",
                                 "/api/invitations/accept").permitAll()
+                        // Reset-link holders (#119): the service verifies the token; no session is needed or issued.
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/password-resets/preview",
+                                "/api/password-resets/complete").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(errors -> errors
                         .authenticationEntryPoint((request, response, exception) ->

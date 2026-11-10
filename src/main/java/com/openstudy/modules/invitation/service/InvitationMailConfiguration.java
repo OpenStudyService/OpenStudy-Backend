@@ -77,7 +77,7 @@ public class InvitationMailConfiguration {
     }
 
     /** Fail startup on unbounded SMTP calls or protocol debug output that could reveal a token. */
-    static void validateTransport(JavaMailSender sender, Duration lease) {
+    public static void validateTransport(JavaMailSender sender, Duration lease) {
         if (!(sender instanceof JavaMailSenderImpl smtp) || smtp.getHost() == null || smtp.getHost().isBlank()) {
             throw new IllegalArgumentException("A configured SMTP transport is required for invitation delivery");
         }

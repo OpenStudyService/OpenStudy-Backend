@@ -53,7 +53,8 @@ public class AccountSessionFilter extends OncePerRequestFilter {
                     && !path.equals("/api/me") && !path.equals("/api/auth/csrf")
                     && !path.equals("/api/auth/login") && !path.equals("/api/auth/logout")
                     && !path.equals("/api/invitations/approval-status")
-                    && !path.equals("/api/invitations/preview")) {
+                    && !path.equals("/api/invitations/preview")
+                    && !path.startsWith("/api/password-resets/")) {
                 SecurityConfiguration.error(request, response, json, 403, "FORBIDDEN", "관리자 승인이 필요합니다.");
                 return;
             }

@@ -12,6 +12,8 @@ Frontend는 같은 [OpenAPI](openapi.json)(`0.1.15-m14-account`)로 연동한다
 
 2026-11-10: 감사 로그 검색·상세(`GET /audit-events`, `GET /audit-events/{id}`)는 #122에서 구현됐다(`implemented`). 새 테이블은 없고 V1 `audit_events`를 읽는다.
 
+2026-11-10: 비밀번호 변경·관리자 초기화·재설정 링크 확인·새 비밀번호 설정·로그인 잠금 해제 operation 5개는 #119에서 구현됐다(`implemented`, V16 `password_reset_tokens`).
+
 - 정책 근거: [ADR-M14-001](../../db/ADR-M14-001.md)(M14-D01~D06, D09~D14)
   - M14-D07·D08(1:1 대화·채팅 스트림)은 [ADR-M10-002](../../db/ADR-M10-002.md)로 범위에서 빠져 이 계약에 없다.
   - M14-D11~D14는 이 계약을 쓰면서 사용자에게 받은 결정이다(2026-11-10).
@@ -145,7 +147,12 @@ Frontend는 같은 [OpenAPI](openapi.json)(`0.1.15-m14-account`)로 연동한다
 - 링크는 설정한 HTTPS 재설정 URL에 fragment(`#token=`)로 붙인다. 화면은 fragment에서 토큰을 읽어 본문으로 보낸다. 서버 로그와 프록시 로그에 토큰이 남지 않게 하기 위해서다.
 - 다시 요청하면 이전 링크는 무효가 된다. 받은 메일 중 가장 최근 링크만 쓸 수 있다.
 - 발송이 끝내 실패하면 직원은 링크도 기존 비밀번호도 쓸 수 없다. 관리자가 초기화를 다시 요청한다.
-- 설정: 메일 설정은 초대 메일 설정을 함께 쓴다. 재설정 URL(`openstudy.password-reset.url`)만 따로 둔다. 이름과 기본값은 #119에서 확정해 이 문서에 반영한다.
+- 설정(#119에서 확정)
+  - SMTP, 발신 주소, 발송 간격·lease·재시도·시도 한도는 초대 메일 설정(`openstudy.invitation-mail.*`)을 함께 쓴다. 발송도 `openstudy.invitation-mail.enabled=true`일 때만 켜진다.
+  - 재설정 URL `openstudy.password-reset.url`은 기본값이 없다. 신뢰할 HTTPS 주소(개발 loopback만 HTTP)이고 경로가 `/password-reset`으로 끝나야 하며, query·fragment·사용자 정보를 넣을 수 없다.
+  - 메일이 켜져 있는데 이 URL이 없거나 틀리면 기동이 실패한다. 초기화는 기존 비밀번호를 바로 무효로 하므로, 보낼 수 없는 요청이 직원을 잠그지 않게 하기 위해서다.
+  - 메일이 꺼져 있으면(개발·테스트 기본값) 초기화 요청은 받지만 발송 작업이 대기 상태로 남는다.
+  - 발송 결과는 감사 `PASSWORD_RESET_MAIL_SENT`·`PASSWORD_RESET_MAIL_FAILED`(대상 직원)로 남는다.
 
 ## 재설정 링크 사용(FR-AUTH-14, M14-D01·D05)
 
