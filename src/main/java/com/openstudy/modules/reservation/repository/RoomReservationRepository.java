@@ -34,4 +34,9 @@ public interface RoomReservationRepository extends JpaRepository<RoomReservation
 
     /** The list's fixed order: latest start first. */
     List<RoomReservation> findByCustomerIdAndBranchIdInOrderByStartAtDescIdDesc(long customerId, Collection<Long> branches);
+
+    /** The customer's reservations and those of the customers merged into it (M13-D07), newest first. */
+    @Query("SELECT r FROM RoomReservation r WHERE r.customerId IN (SELECT m.id FROM Customer m WHERE m.id = :customerId OR m.mergedIntoCustomerId = :customerId) AND r.branchId IN :branches "
+            + "ORDER BY r.startAt DESC, r.id DESC")
+    List<RoomReservation> ofCustomerFamily(@Param("customerId") long customerId, @Param("branches") Collection<Long> branches);
 }

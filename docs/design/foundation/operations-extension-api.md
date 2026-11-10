@@ -2,7 +2,7 @@
 
 Backend [#111](https://github.com/OpenStudyService/OpenStudy-Backend/issues/111)의 M13 계약이다. 구현은 지점 휴무일(#112), 상품 판매 기간·한도(#113), 중복 고객 확인·병합(#114), 일별 마감·조정 이력(#115), 고급 필터·이용 지점 사용량·좌석 점유 추이(#116)에서 이 문서를 기준으로 진행한다. Frontend는 같은 [OpenAPI](openapi.json)(`0.1.14-m13-operations-extension`)로 연동한다.
 
-2026-11-10: 이 문서의 operation은 모두 설계 계약(`design-target`)이다. 기존 operation에 더한 필드·필터도 같은 이슈에서 구현한다. 2026-11-10: 지점 휴무일 operation 4개와 룸 예약 차단·달력 `closedDates`·홈 `closures`는 #112에서 구현됐다(`implemented`, V12 `branch_closures`). 2026-11-10: 상품 판매 기간·한도(상품 필드·목록 필터·결제 판매 판정)는 #113에서 구현됐다(`implemented`, V13 `products` 칼럼).
+2026-11-10: 이 문서의 operation은 모두 설계 계약(`design-target`)이다. 기존 operation에 더한 필드·필터도 같은 이슈에서 구현한다. 2026-11-10: 지점 휴무일 operation 4개와 룸 예약 차단·달력 `closedDates`·홈 `closures`는 #112에서 구현됐다(`implemented`, V12 `branch_closures`). 2026-11-10: 상품 판매 기간·한도(상품 필드·목록 필터·결제 판매 판정)는 #113에서 구현됐다(`implemented`, V13 `products` 칼럼). 2026-11-10: 중복 고객 확인·병합 operation 3개와 병합된 고객의 조회·판매·입실 처리는 #114에서 구현됐다(`implemented`, V14 `customers`·`customer_merges`).
 
 정책 근거는 [ADR-M13-001](../../db/ADR-M13-001.md)(M13-D01~D13)이다. M13-D11~D13은 이 계약을 쓰면서 사용자에게 받은 결정(2026-11-10)이다. 공통 요청·응답·오류·목록 규칙은 [API 계약](api.md)을, 원거래의 의미는 [상품 API](product-api.md)·[고객·결제 계약](customer-sales-api.md)·[공간 운영 계약](space-operations-api.md)·[좌석 이용 계약](seat-usage-api.md)을, 집계의 기간·환불 기준·메타정보·값 표현은 [정형 집계 계약](aggregation-api.md)(M9)을 따른다.
 
@@ -205,8 +205,8 @@ Backend [#111](https://github.com/OpenStudyService/OpenStudy-Backend/issues/111)
 
 | 순서 | 조건 | 결과 |
 | --- | --- | --- |
-| 1 | OWNER가 아님 | 403 |
-| 2 | 형식 오류 | 422 `VALIDATION_FAILED` |
+| 1 | 형식 오류 | 422 `VALIDATION_FAILED` |
+| 2 | OWNER가 아님 | 403 |
 | 3 | `absorbedCustomerId` = `{id}` | 422 `CUSTOMER_MERGE_SELF` |
 | 4 | 둘 중 하나가 없음 | 404 |
 | 5 | 둘 중 하나가 `병합됨` | 409 `CUSTOMER_ALREADY_MERGED`(`mergedIntoCustomerId`) |
@@ -220,7 +220,9 @@ Backend [#111](https://github.com/OpenStudyService/OpenStudy-Backend/issues/111)
   - 대상 고객의 version도 올린다(흡수된 기록이 바뀌었으므로 화면이 다시 읽게 한다).
   - 감사(`customers`, `MERGED`)를 대상 고객에 남긴다.
 - **기존 참조는 바꾸지 않는다(M13-D07)**: 결제·이용권·좌석 이용·예약·사물함 배정·문의의 `customer_id`는 흡수 고객 그대로다.
-- 흡수 고객의 진행 중 좌석 이용·예약도 그대로다. 퇴실·취소는 기존처럼 그 기록의 ID로 처리한다. 흡수 고객에게 새 결제·입실·예약은 할 수 없다(상태가 정상이 아니라 409 `CUSTOMER_NOT_ACTIVE`).
+- 흡수 고객의 진행 중 좌석 이용·예약도 그대로다. 퇴실·취소는 기존처럼 그 기록의 ID로 처리한다. 흡수 고객에게 새 결제·입실·예약·사물함 배정은 할 수 없다. 409 `CUSTOMER_NOT_ACTIVE`이고 `mergedIntoCustomerId`로 대상 고객을 알려 준다(2026-11-10 #114 구현에서 대상 정보 추가).
+- **흡수 고객의 이용권(2026-11-10 사용자 결정)**: 대상 고객이 흡수 고객의 남은 이용권으로 입실할 수 있다. 이용권·결제의 고객 참조는 그대로이고, 좌석 이용 기록에는 입실한 대상 고객이 남는다. 입실 조회의 사용 가능 이용권에도 대상 고객의 후보로 함께 나온다. 그대로 두면 흡수 고객이 입실할 수 없어 남은 이용권을 아무도 쓸 수 없기 때문이다.
+- 병합된 고객은 기록이다. 수정·상태 변경은 409 `CUSTOMER_ALREADY_MERGED`(`mergedIntoCustomerId`)이고, 상태 변경으로 `병합됨`을 지정할 수 없다(422).
 - 되돌리는 API는 없다(M13-D03).
 - 잠금 순서: 공통 가드 → 두 고객 행 `FOR UPDATE`(ID 오름차순) → 흡수 고객에게 흡수된 고객 행(ID 오름차순) → 변경 → `customer_merges` → 감사.
 
@@ -233,7 +235,8 @@ Backend [#111](https://github.com/OpenStudyService/OpenStudy-Backend/issues/111)
 | 고객 목록 | 기본 결과에서 `병합됨`을 뺀다. `status=병합됨`으로 따로 본다 |
 | `customerId`=대상으로 거르는 목록·이력 | 대상과 흡수 고객의 기록을 함께 담는다. 각 행의 `customer`는 원래 고객 그대로다 |
 | 대상 고객의 조회 범위(M4-D05) | 대상 또는 흡수 고객의 등록 지점·결제 지점이 scope에 있으면 보인다 |
-| 입실 조회(`POST /customer-lookups/check-in`) | 흡수 고객은 결과에서 빼고 대상 고객을 찾는다 |
+| 입실 조회(`POST /customer-lookups/check-in`) | 흡수 고객은 결과에서 빼고 대상 고객을 찾는다. 흡수 고객의 사용 가능 이용권은 대상 고객의 후보에 함께 나온다 |
+| 사물함 배정 목록(`customerId`), 타 지점 요약의 보유 이용권 | 다른 `customerId` 목록처럼 흡수 고객의 기록을 함께 담는다(2026-11-10 #114 구현에서 같은 규칙을 적용) |
 
 - 병합 전에는 두 고객 모두 OWNER가 볼 수 있어야 한다(M13-D07). OWNER는 모든 고객을 보므로 별도 검사는 없다.
 
@@ -433,6 +436,7 @@ ADR-M13-001에 사용자 결정 세 가지(M13-D11~D13)를 더했다. 사용자 
 | 연락처가 다른 고객 병합 | 허용 | 중복 묶음은 후보 안내다 |
 | 연쇄 병합 | 이전에 흡수된 고객도 새 대상으로 옮김 | 병합 대상을 한 단계로 유지해 조회를 단순하게 한다 |
 | 흡수 고객의 진행 중 이용 | 그대로 두고 기존 ID로 처리 | 기존 참조를 바꾸지 않는다(M13-D07) |
+| 흡수 고객의 남은 이용권 | 대상 고객이 사용 | **2026-11-10 사용자 결정**(#114). 그대로 두면 아무도 쓸 수 없다 |
 | 병합 이력 열람 | 고객을 볼 수 있는 사용자 | 응대 중 병합 사실을 확인해야 한다 |
 | 마감 생성 권한 | MANAGER 이상 + `sales:read` | 응답에 매출 금액이 있다 |
 | 조정 이력 사유 | `payments:read`가 있을 때만 | 자유 입력 사유의 노출을 결제 열람 권한에 맞춘다 |

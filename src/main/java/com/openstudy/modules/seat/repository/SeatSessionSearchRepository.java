@@ -36,7 +36,8 @@ public class SeatSessionSearchRepository {
         add(where, binds, "s.checkedInAt >= :from", "from", filter.range().from());
         add(where, binds, "s.checkedInAt < :to", "to", filter.range().to());
         add(where, binds, "s.seatId = :seatId", "seatId", filter.seatId());
-        add(where, binds, "s.customerId = :customerId", "customerId", filter.customerId());
+        // A customer filter includes the customers merged into it (M13-D07, #114).
+        add(where, binds, "s.customerId IN (SELECT m.id FROM Customer m WHERE m.id = :customerId OR m.mergedIntoCustomerId = :customerId)", "customerId", filter.customerId());
         String order = descending ? " DESC" : " ASC";
         var rows = entityManager.createQuery("SELECT s" + where + " ORDER BY s.checkedInAt" + order + ", s.id" + order, SeatSession.class);
         Query count = entityManager.createQuery("SELECT COUNT(s)" + where);

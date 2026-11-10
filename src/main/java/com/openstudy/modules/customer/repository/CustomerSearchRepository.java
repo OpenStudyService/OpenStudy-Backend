@@ -40,6 +40,8 @@ public class CustomerSearchRepository {
         var binds = new ArrayList<Object>();
         if (!visibility(filter, where, binds)) return new Page(List.of(), 0);
         if (filter.status() != null) { where.append(" AND c.status = ?"); binds.add(filter.status().name()); }
+        // A merged customer is listed only when asked for (M13-D07); the target stands for it.
+        else where.append(" AND c.status <> 'MERGED'");
         if (!filter.q().isEmpty()) {
             where.append(" AND (c.name LIKE ? ESCAPE '!' OR c.member_no = ?");
             binds.add("%" + like(filter.q()) + "%");
@@ -76,9 +78,11 @@ public class CustomerSearchRepository {
             String marks = String.join(",", java.util.Collections.nCopies(filter.branches().size(), "?"));
             any.add("c.registered_branch_id IN (" + marks + ")");
             any.add("EXISTS (SELECT 1 FROM payments p WHERE p.customer_id = c.id AND p.branch_id IN (" + marks + "))");
+            // A target is also visible where one of its absorbed customers registered or paid (M13-D07).
+            any.add("EXISTS (SELECT 1 FROM customers a WHERE a.merged_into_customer_id = c.id AND (a.registered_branch_id IN (" + marks
+                    + ") OR EXISTS (SELECT 1 FROM payments q WHERE q.customer_id = a.id AND q.branch_id IN (" + marks + "))))");
             var sorted = filter.branches().stream().sorted().toList();
-            binds.addAll(sorted);
-            binds.addAll(sorted);
+            for (int copy = 0; copy < 4; copy++) binds.addAll(sorted);
         }
         if (filter.unassigned()) any.add("c.registered_branch_id IS NULL");
         if (any.isEmpty()) return false;

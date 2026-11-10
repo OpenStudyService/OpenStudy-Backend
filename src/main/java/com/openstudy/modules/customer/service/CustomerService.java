@@ -26,6 +26,7 @@ import tools.jackson.databind.ObjectMapper;
 import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
+import com.openstudy.common.exception.OperationsConflict;
 import com.openstudy.common.idempotency.IdempotencyStore;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.ListQuery;
@@ -136,6 +137,7 @@ public class CustomerService {
         visibleCustomer(policy.current(actor), id, scope);
         return commands.inAnyBranch(actor, BranchAction.WRITE_MEMBERS, () -> repository.lock(id), () -> related(id), state -> {
             var customer = lockedCustomer(id);
+            requireNotMerged(customer);
             ApiVersion.requireCurrent(version, customer.getVersion(), reload(id));
             String newName = name == null ? customer.getName() : name;
             String newPhone = phone == null ? customer.getPhone() : phone;
@@ -160,10 +162,13 @@ public class CustomerService {
         var input = new StrictInput(body).only("version", "status", "reason");
         long version = input.version("version");
         CustomerStatus next = CustomerInputs.status(input.text("status", 30), "status");
+        // 병합됨 is set only by a merge (M13-D03), never by a status change.
+        if (next == CustomerStatus.MERGED) throw ApiException.validation("status", "병합은 고객 병합으로만 할 수 있습니다.");
         String reason = input.text("reason", 500);
         visibleCustomer(policy.current(actor), id, scope);
         return commands.inAnyBranch(actor, BranchAction.WRITE_MEMBERS, () -> repository.lock(id), () -> related(id), state -> {
             var customer = lockedCustomer(id);
+            requireNotMerged(customer);
             ApiVersion.requireCurrent(version, customer.getVersion(), reload(id));
             CustomerStatus previous = customer.getStatus();
             if (previous == next) return detail(customer, state);
@@ -212,6 +217,10 @@ public class CustomerService {
     public CustomerSummary requirePurchasable(AuthorizationState state, long id) {
         repository.lockShared(id);
         var customer = visibleCustomer(state, id, "all");
+        // A merged customer points the screen to its target (M13-D07).
+        if (customer.getStatus() == CustomerStatus.MERGED)
+            throw OperationsConflict.of("CUSTOMER_NOT_ACTIVE", "병합된 고객입니다. 병합 대상 고객으로 판매해 주세요.", "mergedIntoCustomerId",
+                    customer.getMergedIntoCustomerId().toString());
         if (customer.getStatus() != CustomerStatus.NORMAL)
             throw ApiException.conflict("CUSTOMER_NOT_ACTIVE", "정상 상태가 아닌 고객에게는 판매할 수 없습니다.");
         return summary(customer);
@@ -227,7 +236,11 @@ public class CustomerService {
     /** Check-in, step two, after the pass is confirmed to be this customer's (the contract's check order). */
     @Transactional(readOnly = true)
     public void requireCheckInAllowed(long id) {
-        if (lockedCustomer(id).getStatus() != CustomerStatus.NORMAL)
+        var customer = lockedCustomer(id);
+        if (customer.getStatus() == CustomerStatus.MERGED)
+            throw OperationsConflict.of("CUSTOMER_NOT_ACTIVE", "병합된 고객입니다. 병합 대상 고객으로 입실해 주세요.", "mergedIntoCustomerId",
+                    customer.getMergedIntoCustomerId().toString());
+        if (customer.getStatus() != CustomerStatus.NORMAL)
             throw ApiException.conflict("CUSTOMER_NOT_ACTIVE", "정상 상태가 아닌 고객은 입실할 수 없습니다.");
     }
 
@@ -241,13 +254,15 @@ public class CustomerService {
     @Transactional(readOnly = true)
     public List<ExactCustomerMatch> matchMemberNo(String memberNo) {
         return repository.findByMemberNo(memberNo).filter(customer -> memberNo.equals(customer.getMemberNo()))
-                .map(CustomerService::match).stream().toList();
+                .map(this::current).map(CustomerService::match).stream().toList();
     }
 
     @Transactional(readOnly = true)
     public List<ExactCustomerMatch> matchPhone(String digits) {
+        // A merged customer is found as its target (M13-D07), once.
+        var seen = new java.util.HashSet<Long>();
         return repository.findTop10ByPhoneOrderByMemberNoAsc(digits).stream().filter(customer -> digits.equals(customer.getPhone()))
-                .map(CustomerService::match).toList();
+                .map(this::current).filter(customer -> seen.add(customer.getId())).map(CustomerService::match).toList();
     }
 
     /** The access trail of an exact-match result (M5-D07); needs a membership row of (branch, employee). */
@@ -260,6 +275,18 @@ public class CustomerService {
     @Transactional
     public void recordCrossBranchSummary(long customerId, long branch, long employee, String reason, Instant at) {
         interactions.save(new CustomerServiceInteraction(customerId, branch, employee, reason, CustomerInteractionSource.CROSS_BRANCH_SUMMARY, at));
+    }
+
+    /** The customer itself, or the target a merged customer was merged into (M13-D07). */
+    private Customer current(Customer customer) {
+        return customer.getStatus() == CustomerStatus.MERGED ? lockedCustomer(customer.getMergedIntoCustomerId()) : customer;
+    }
+
+    /** A merged customer is only a record now: it is not edited (M13-D03). */
+    private static void requireNotMerged(Customer customer) {
+        if (customer.getStatus() == CustomerStatus.MERGED)
+            throw OperationsConflict.of("CUSTOMER_ALREADY_MERGED", "병합된 고객은 바꿀 수 없습니다.", "mergedIntoCustomerId",
+                    customer.getMergedIntoCustomerId().toString());
     }
 
     private static ExactCustomerMatch match(Customer customer) {
@@ -316,7 +343,9 @@ public class CustomerService {
         return new CustomerDetail(Long.toString(customer.getId()), ApiVersion.fromDatabase(customer.getVersion()),
                 customer.getMemberNo(), customer.getName(), customer.getPhone(), customer.getEmail(), customer.getMemo(),
                 CustomerInputs.label(customer.getStatus()), customer.getStatusReason(), branchId(customer),
-                customer.getRegisteredAt(), customer.getUpdatedAt(), editable);
+                customer.getRegisteredAt(), customer.getUpdatedAt(), editable,
+                customer.getMergedIntoCustomerId() == null ? null : summary(lockedCustomer(customer.getMergedIntoCustomerId())),
+                repository.countByMergedIntoCustomerId(customer.getId()));
     }
 
     private static CustomerListItem item(Customer customer) {

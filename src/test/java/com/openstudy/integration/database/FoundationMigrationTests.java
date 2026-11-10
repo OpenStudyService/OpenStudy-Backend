@@ -58,11 +58,11 @@ class FoundationMigrationTests {
     }
     long count(String sql) { return jdbc.queryForObject(sql, Long.class); }
     @Test void createsTheConsolidatedBaselineWithIncrementalMigrationsAndPreservesDataOnRestart() {
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(13);
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(14);
         assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank", String.class))
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14");
         assertThat(count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name <> 'flyway_schema_history'"))
-                .isEqualTo(74); // V7 adds the seven ai_* tables of the AI workspace (DomainLens), V12 branch_closures
+                .isEqualTo(75); // V7 adds the seven ai_* tables of the AI workspace (DomainLens), V12 branch_closures, V14 customer_merges
         assertThat(count("SELECT COUNT(*) FROM employees")).isZero();
         assertThat(count("SELECT COUNT(*) FROM administration_guard WHERE id=1")).isEqualTo(1);
         jdbc.update("INSERT INTO branches(code,name,address) VALUES('RESTART','Restart test','Test')");
@@ -274,7 +274,7 @@ class FoundationMigrationTests {
         jdbc.update("INSERT INTO conversation_members(conversation_id,employee_id,last_read_message_id,last_read_at) VALUES(30,10,NULL,NULL),(30,11,41,'2026-11-01 00:00:00'),(30,12,42,'2026-11-01 00:00:00'),(31,10,NULL,NULL)");
         jdbc.update("INSERT INTO messages(id,conversation_id,sender_employee_id,parent_message_id,body,client_message_key) VALUES(40,30,10,NULL,'original','k1'),(41,30,10,40,'reply','k2'),(42,30,10,NULL,'later','k3'),(43,31,10,NULL,'other','k4'),(44,30,10,40,'reply 2','k5')");
 
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(8); // V6 through V13
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(9); // V6 through V14
         assertThat(flyway(null).validateWithResult().validationSuccessful).isTrue();
 
         // A position on a reply (41) carries over as it is, and no position stays none.
@@ -332,7 +332,7 @@ class FoundationMigrationTests {
         flyway("12").migrate();
         jdbc.update("INSERT INTO product_categories(id,code,name,kind,status) VALUES(30,'C1','분류','TIME','ACTIVE')");
         jdbc.update("INSERT INTO products(id,code,name,kind,price_krw,included_minutes,category_id) VALUES(40,'P1','상품','TIME',1000,60,30)");
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(flyway("13").migrate().migrationsExecuted).isEqualTo(1);
         // An existing product keeps no restriction.
         assertThat(jdbc.queryForMap("SELECT sales_starts_at, sales_ends_at, sales_limit FROM products WHERE id=40").values()).containsOnlyNulls();
         jdbc.update("UPDATE products SET sales_starts_at='2026-12-01 00:00:00', sales_ends_at='2026-12-31 00:00:00', sales_limit=10 WHERE id=40");
@@ -340,6 +340,22 @@ class FoundationMigrationTests {
                 .hasStackTraceContaining("ck_products_sales_period");
         assertThatThrownBy(() -> jdbc.update("UPDATE products SET sales_limit=0 WHERE id=40")).hasStackTraceContaining("ck_products_sales_limit");
         assertThatThrownBy(() -> jdbc.update("UPDATE products SET sales_limit=1000001 WHERE id=40")).hasStackTraceContaining("ck_products_sales_limit");
+    }
+
+    /** #114 (M13-D03): a merged customer points at its target and only a merged one does; merges are kept as rows. */
+    @Test void v14AddsTheMergedStatusAndTheMergeHistory() {
+        flyway("13").migrate();
+        jdbc.update("INSERT INTO employees(id,email,password_hash,name,nickname,global_role,status) VALUES(10,'a@example.com','hash','A','A','OWNER','ACTIVE')");
+        jdbc.update("INSERT INTO customers(id,member_no,name,phone) VALUES(50,'M-1','고객','01012345678'),(51,'M-2','고객','01012345678')");
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT status FROM customers WHERE id=50", String.class)).isEqualTo("NORMAL");
+        jdbc.update("UPDATE customers SET status='MERGED', merged_into_customer_id=50 WHERE id=51");
+        jdbc.update("INSERT INTO customer_merges(target_customer_id,absorbed_customer_id,merged_by,merged_at,reason) VALUES(50,51,10,NOW(6),'중복')");
+        // MERGED and the target go together.
+        assertThatThrownBy(() -> jdbc.update("UPDATE customers SET status='MERGED' WHERE id=50")).hasStackTraceContaining("ck_customers_merged");
+        assertThatThrownBy(() -> jdbc.update("UPDATE customers SET merged_into_customer_id=51 WHERE id=50")).hasStackTraceContaining("ck_customers_merged");
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO customer_merges(target_customer_id,absorbed_customer_id,merged_by,merged_at,reason) "
+                + "VALUES(50,50,10,NOW(6),'자기')")).hasStackTraceContaining("ck_customer_merges_1");
     }
 
     /** No branch is guessed for a request that predates V11: the migration fails and leaves the table as it was. */

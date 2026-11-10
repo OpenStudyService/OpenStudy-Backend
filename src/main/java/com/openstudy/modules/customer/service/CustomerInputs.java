@@ -12,6 +12,7 @@ final class CustomerInputs {
     static final String NORMAL = "정상";
     static final String RESTRICTED = "이용 제한";
     static final String INACTIVE = "비활성";
+    static final String MERGED = "병합됨";
     private static final Pattern PHONE = Pattern.compile("[0-9]{9,11}");
     private static final Pattern SEPARATORS = Pattern.compile("[\\s-]");
     private static final Pattern EMAIL = Pattern.compile("[^@\\s]+@[^@\\s]+\\.[^@\\s]+");
@@ -56,6 +57,7 @@ final class CustomerInputs {
             case NORMAL -> CustomerStatus.NORMAL;
             case RESTRICTED -> CustomerStatus.RESTRICTED;
             case INACTIVE -> CustomerStatus.INACTIVE;
+            case MERGED -> CustomerStatus.MERGED;
             default -> throw ApiException.validation(field, "올바른 고객 상태를 선택해 주세요.");
         };
     }
@@ -65,6 +67,7 @@ final class CustomerInputs {
             case NORMAL -> NORMAL;
             case RESTRICTED -> RESTRICTED;
             case INACTIVE -> INACTIVE;
+            case MERGED -> MERGED;
         };
     }
 }

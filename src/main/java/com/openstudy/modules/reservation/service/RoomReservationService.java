@@ -299,7 +299,7 @@ public class RoomReservationService {
     @Transactional(readOnly = true)
     public List<RoomReservationView> ofCustomer(AuthorizationState state, long customerId, Set<Long> branches) {
         if (branches.isEmpty()) return List.of();
-        return views(reservations.findByCustomerIdAndBranchIdInOrderByStartAtDescIdDesc(customerId, branches), state, clock.instant());
+        return views(reservations.ofCustomerFamily(customerId, branches), state, clock.instant());
     }
 
     /** The customer's latest actual uses at any branch, reduced to place and time for the cross-branch summary (M6-D06). */

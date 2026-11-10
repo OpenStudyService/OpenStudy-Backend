@@ -321,7 +321,7 @@ Backend [#60](https://github.com/OpenStudyService/OpenStudy-Backend/issues/60)�
 | 409 | `SEAT_OCCUPIED` | 사용 중 좌석에 입실·이동, 사용 중 좌석 운영 중단 |
 | 409 | `SEAT_BLOCKED` | 운영 중단 좌석에 입실·이동 |
 | 409 | `CUSTOMER_ALREADY_CHECKED_IN` | 이미 입실 중인 고객의 입실 |
-| 409 | `CUSTOMER_NOT_ACTIVE` | 정상이 아닌 고객의 입실(M4와 같은 코드) |
+| 409 | `CUSTOMER_NOT_ACTIVE` | 정상이 아닌 고객의 입실(M4와 같은 코드). 병합된 고객이면 `mergedIntoCustomerId`를 담고, 대상 고객은 흡수 고객의 이용권으로 입실할 수 있다(M13 #114) |
 | 409 | `PASS_REFUNDED`, `PASS_EXPIRED`, `PASS_EXHAUSTED` | 사용할 수 없는 이용권의 입실, 환불 이용권 조정 |
 | 409 | `SESSION_ALREADY_CLOSED` | 종료된 이용의 퇴실(다른 키)·이동 |
 | 409 | `BRANCH_NOT_ACTIVE` | 운영 중지 지점의 입실·이동 |
