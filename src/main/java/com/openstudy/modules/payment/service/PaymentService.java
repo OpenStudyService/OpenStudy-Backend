@@ -38,6 +38,7 @@ import com.openstudy.modules.customer.service.CustomerService;
 import com.openstudy.modules.employee.service.EmployeeAccountService;
 import com.openstudy.modules.payment.dto.response.ActorSummary;
 import com.openstudy.modules.payment.dto.response.PaymentDetail;
+import com.openstudy.modules.payment.dto.response.PaymentPage;
 import com.openstudy.modules.payment.dto.response.PaymentTrail;
 import com.openstudy.modules.payment.dto.response.RefundView;
 import com.openstudy.modules.payment.entity.Payment;
@@ -262,8 +263,8 @@ public class PaymentService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<PaymentDetail> list(long actor, String scope, ListQuery query, String status, String from, String to,
-            String customerId) {
+    public PaymentPage list(long actor, String scope, ListQuery query, String status, String from, String to,
+            String customerId, Advanced advanced) {
         PaymentStatus filter = status == null ? null : switch (status) {
             case APPROVED -> PaymentStatus.APPROVED;
             case FAILED -> PaymentStatus.FAILED;
@@ -276,11 +277,32 @@ public class PaymentService {
         Long customer = customerId == null ? null : new StrictInput(Map.of("customerId", customerId)).id("customerId");
         var state = policy.current(actor);
         Set<Long> selected = policy.scope(state, scope, BranchAction.READ_PAYMENTS);
+        // M13-D10: a refund's processing branch must be one the requester sees (403 otherwise).
+        if (!advanced.processingBranchIds().isEmpty()) policy.require(state, Set.copyOf(advanced.processingBranchIds()), BranchAction.READ);
         var sort = "amountKrw".equals(query.sort()) ? PaymentSearchRepository.Sort.AMOUNT : PaymentSearchRepository.Sort.CREATED_AT;
-        var page = search.find(new PaymentSearchRepository.Filter(selected, filter, start, end, customer), sort,
+        var page = search.find(new PaymentSearchRepository.Filter(selected, filter, start, end, customer, advanced.methods(),
+                advanced.productKinds(), advanced.categoryCode(), advanced.operatorIds(), advanced.processingBranchIds()), sort,
                 query.direction() == ListQuery.Direction.DESC, query.offset(), query.pageSize());
-        return new PageResponse<>(views(page.rows(), state, clock.instant()),
-                new PageResponse.Meta(query.page(), query.pageSize(), page.total()));
+        var byStatus = new java.util.EnumMap<PaymentStatus, PaymentPage.StatusTotal>(PaymentStatus.class);
+        page.totals().forEach(total -> byStatus.put(total.status(), new PaymentPage.StatusTotal(total.count(), total.amountKrw())));
+        var none = new PaymentPage.StatusTotal(0, 0);
+        var applied = new PaymentPage.Filter(selected.stream().sorted().map(String::valueOf).toList(), status, start, end,
+                customer == null ? null : customer.toString(), advanced.methods().stream().map(METHOD_LABELS::get).toList(),
+                advanced.productKinds().stream().map(KIND_LABELS::get).toList(), advanced.categoryCode(),
+                advanced.operatorIds().stream().map(String::valueOf).toList(), advanced.processingBranchIds().stream().map(String::valueOf).toList());
+        return new PaymentPage(views(page.rows(), state, clock.instant()), new PageResponse.Meta(query.page(), query.pageSize(), page.total()),
+                applied, new PaymentPage.Summary(byStatus.getOrDefault(PaymentStatus.APPROVED, none),
+                byStatus.getOrDefault(PaymentStatus.FAILED, none), byStatus.getOrDefault(PaymentStatus.REFUNDED, none)));
+    }
+
+    /** Stored value → contract label of the advanced filters (M13-D10). */
+    public static final Map<String, String> METHOD_LABELS = Map.of("CASH", "현금", "CARD", "카드", "TRANSFER", "계좌이체", "OTHER", "기타");
+    public static final Map<String, String> KIND_LABELS = Map.of("TIME", "시간권", "PERIOD", "기간권", "STORED_VALUE", "정액권");
+
+    /** The advanced filters of the payment list (#116): stored methods and kinds, the category, operators, processing branches. */
+    public record Advanced(List<String> methods, List<String> productKinds, String categoryCode, List<Long> operatorIds,
+            List<Long> processingBranchIds) {
+        public static final Advanced NONE = new Advanced(List.of(), List.of(), null, List.of(), List.of());
     }
 
     /** 404 hides payments of branches without payments:read, so IDs are not an existence oracle. */

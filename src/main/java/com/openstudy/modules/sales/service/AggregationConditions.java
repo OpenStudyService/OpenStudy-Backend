@@ -79,17 +79,26 @@ public class AggregationConditions {
             authorization.require(state, new LinkedHashSet<>(requested), BranchAction.READ_SALES);
             applied = requested.stream().sorted().toList();
         }
+        var advanced = condition.advanced();
+        // M13-D10: a refund's processing branch must be one the requester sees (403 otherwise, like branchIds).
+        if (!advanced.processingBranchIds().isEmpty())
+            authorization.require(state, new LinkedHashSet<>(advanced.processingBranchIds()), BranchAction.READ);
+        // A product kind or category on a revenue operation counts passes only, and the response says so (#116).
+        boolean passOnly = target == Target.REVENUE && (advanced.passOnly() || condition.categoryCode() != null);
         // Pass metrics always count passes only: the applied condition says so (aggregation-api.md "공통 응답 메타정보").
-        var purpose = target == Target.PASSES ? SalesPurpose.PASS : condition.purpose();
+        var purpose = target == Target.PASSES || passOnly ? SalesPurpose.PASS : condition.purpose();
         return new AggregationScope(state, applied, requested == null ? applied : requested, requested == null, from, to,
                 defaultPeriod, condition.refundBasis() == null ? RefundBasis.PROCESSED_DATE : condition.refundBasis(),
-                purpose, condition.productId(), condition.categoryCode(), condition.granularity(), asOf);
+                purpose, condition.productId(), condition.categoryCode(), condition.granularity(), asOf, advanced, passOnly);
     }
 
     private static void filters(AggregationCondition condition, Target target, boolean trend) {
         if (target == Target.REVENUE) {
             if (condition.productId() != null) throw ApiException.validation("productId", "매출 집계에는 상품 조건을 쓸 수 없습니다.");
-            if (condition.categoryCode() != null) throw ApiException.validation("categoryCode", "매출 집계에는 분류 조건을 쓸 수 없습니다.");
+            // M13-D10 (#116): a category or product kind narrows revenue to passes, so another purpose contradicts it.
+            boolean passOnly = condition.categoryCode() != null || condition.advanced().passOnly();
+            if (passOnly && condition.purpose() != null && condition.purpose() != SalesPurpose.PASS)
+                throw ApiException.validation("purpose", "상품 유형·분류 조건은 이용권 매출에만 쓸 수 있습니다.");
         } else if (condition.purpose() != null) {
             throw ApiException.validation("purpose", "이용권 집계에는 용도 조건을 쓸 수 없습니다.");
         }

@@ -201,7 +201,7 @@ class SalesTrendIntegrationTests extends SalesIntegrationSupport {
     @Test void eachMeasureTakesOnlyItsOwnFilters() throws Exception {
         try (var s = login(reader)) {
             String one = branchIds(first) + "&" + november();
-            for (String query : List.of("productId=1", "categoryCode=TIME", "measure=revenue&productId=1",
+            for (String query : List.of("productId=1", "categoryCode=TIME&purpose=" + enc("스터디룸"), "measure=revenue&productId=1",
                     "measure=passes&purpose=" + enc("이용권"), "measure=sales", "measure=", "granularity=hour",
                     "granularity=WEEK", "granularity=")) {
                 var refused = get(s, "/api/sales/trend?" + one + "&" + query);

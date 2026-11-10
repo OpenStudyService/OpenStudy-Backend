@@ -86,20 +86,10 @@ class OperationsExtensionContractTests {
         return values;
     }
 
-    /** The planned change of an implemented operation or schema for one implementation issue. */
-    JsonNode planned(JsonNode target, String issue) {
-        for (var change : target.get("x-planned-changes")) {
-            if (change.get("issue").asString().equals(issue)) {
-                assertThat(change.get("status").asString()).isEqualTo("design-target");
-                return change;
-            }
-        }
-        throw new AssertionError("no planned change for " + issue);
-    }
-
-    List<String> plannedParameters(String path, String issue) {
+    /** Parameter references (or names) of an operation. */
+    List<String> parameters(String path) {
         var refs = new ArrayList<String>();
-        for (var parameter : planned(existing("get", path), issue).get("parameters")) {
+        for (var parameter : existing("get", path).get("parameters")) {
             refs.add(parameter.has("$ref") ? parameter.get("$ref").asString() : parameter.get("name").asString());
         }
         return refs;
@@ -119,9 +109,8 @@ class OperationsExtensionContractTests {
             assertThat(operation.get("x-permission").asString()).as(id).isNotBlank();
             assertThat(operation.get("x-error-codes").size()).as(id).isPositive();
             assertThat(operation.get("x-adr-decisions").toString()).as(id).contains("M13-D");
-            // #112 and #114 are implemented; the other issues are still design targets.
-            assertThat(operation.get("x-implementation-status").asString()).as(id)
-                    .isEqualTo(List.of("#112", "#114", "#115").contains(ISSUES.get(id)) ? "implemented" : "design-target");
+            // #112~#116 implemented every M13 operation.
+            assertThat(operation.get("x-implementation-status").asString()).as(id).isEqualTo("implemented");
             assertThat(operation.get("x-implementation-issue").asString()).as(id).isEqualTo(ISSUES.get(id));
             String[] methodAndPath = route.split(" ");
             assertThat(contract).as(route).contains("`" + methodAndPath[0].toUpperCase() + " " + methodAndPath[1]);
@@ -180,7 +169,8 @@ class OperationsExtensionContractTests {
         }
         assertThat(spec.toString()).doesNotContain("\"issue\":\"#115\"");
         // No implemented schema gained a field before its implementation.
-        assertThat(names(schema("AggregationCondition").get("properties"))).doesNotContain("methods");
+        // Every planned change moved into its definition (#116 was the last).
+        assertThat(spec.toString()).doesNotContain("\"x-planned-changes\":");
     }
 
     /** Acceptance 2: the three reasons a product cannot be sold are different codes, checked in the ADR order. */
@@ -202,19 +192,19 @@ class OperationsExtensionContractTests {
 
     /** Acceptance 3: lists and aggregations take the same filter structure and report the filter they applied. */
     @Test void listsAndAggregationsShareTheAdvancedFilterAndReportIt() throws Exception {
-        assertThat(plannedParameters("/payments", "#116")).containsAll(FILTERS)
+        assertThat(parameters("/payments")).containsAll(FILTERS)
                 .contains("#/components/parameters/PassCategoryCode");
         for (String path : List.of("/sales/revenue", "/sales/revenue/branches", "/sales/ledger", "/sales/trend",
                 "/sales/passes/volume", "/sales/passes/products")) {
-            assertThat(plannedParameters(path, "#116")).as(path).containsAll(FILTERS);
+            assertThat(parameters(path)).as(path).containsAll(FILTERS);
         }
         // The same names in the applied condition of a list and of an aggregation.
-        var condition = names(planned(schema("AggregationCondition"), "#116").get("properties"));
+        var condition = names(schema("AggregationCondition").get("properties"));
         assertThat(condition).contains("methods", "productKinds", "operatorIds", "processingBranchIds");
-        assertThat(names(schema("PaymentFilter").get("properties"))).containsAll(condition.subList(0, 4))
+        assertThat(names(schema("PaymentFilter").get("properties"))).containsAll(List.of("methods", "productKinds", "operatorIds", "processingBranchIds"))
                 .contains("categoryCode");
-        assertThat(names(planned(schema("AggregationMeta"), "#116").get("properties"))).containsExactly("conditionNotes");
-        assertThat(names(planned(schema("PaymentPage"), "#116").get("properties"))).containsExactly("filter", "summary");
+        assertThat(texts(schema("AggregationMeta").get("required"))).contains("conditionNotes");
+        assertThat(texts(schema("PaymentPage").get("required"))).contains("filter", "summary");
         assertThat(texts(schema("ConditionNote").at("/properties/code/enum"))).contains("PASS_ONLY",
                 "REFUND_PROCESSING_BRANCH", "OPERATOR_BY_ENTRY", "REFUND_BY_PAYMENT_METHOD", "USAGE_NOT_REVENUE");
         assertThat(contract()).contains("목록(`GET /payments`)과 집계(`/sales/*`)가 **같은 이름·같은 의미**의 query를 쓴다");

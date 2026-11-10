@@ -3,7 +3,7 @@
   "info": {
     "title": "OpenStudy 1차 기반 기능 API 설계",
     "version": "0.1.14-m13-operations-extension",
-    "description": "검토 완료 8중분류/61요구사항의 구현 전 목표 계약. Q1~Q12의 2026-10-23 당시 사용자 답변을 기록하되 Q8은 SRS v1.1 정책으로 대체됨. decisions.md 참고. 기존 서버 전체 구현 명세가 아니다. ID문자열·API version=DB+1. 상태 변경은 CSRF, 지점과 행위 인가를 함께 검증한다. Issue #27의 /me/profile 및 CurrentUser는 구현된 M1 닉네임 계약이다. 나머지 operation의 구현 상태는 각각의 표기를 따른다. SRS v1.1 확정 상품 정책: 거래 유무와 무관하게 물리 삭제 미제공; 판매 중지·재개 및 기존 상품·거래·revision 보존. 이전 Q8 조건부 삭제안은 적용하지 않는다. /lookups는 workspace 선택 데이터 계약이다. 변경 알림 SSE는 ADR-COM-001에 따라 제거했다. 상품/분류 선택 데이터는 관련 업무 API 구현 전까지 빈 배열이다. M4 고객·Mock 결제·발급 이용권·환불 operation은 Issue #55의 설계 계약(customer-sales-api.md, ADR-M4-002)이며 구현은 #56~#58에서 진행한다. 결제·환불 요청에는 금액 필드가 없고 Idempotency-Key가 필수다. M5 좌석·입퇴실·차감·정확 일치 조회·수동 조정 operation은 Issue #60의 설계 계약(seat-usage-api.md, ADR-M5-001)이며 구현은 #61~#64에서 진행한다. 입실·퇴실·이동·조정은 Idempotency-Key가 필수이고, 퇴실·조정 요청에 차감량 필드는 없다. M7 업무·채널·메시지·업무 카드·시설·문의·공지 operation은 Issue #74의 설계 계약(collaboration-api.md, ADR-M7-001)이며 구현은 #75~#80에서 진행한다. 메시지 전송은 clientMessageKey가 필수이고 업무에는 삭제 API가 없다. 업무 operation과 담당자 후보는 #75에서, 시설 operation은 #78에서, 고객 문의 operation은 #79에서, 공지 operation은 #80에서 구현됐다. 채널·메시지 operation은 #76에서, 업무 카드 공유 operation은 #77에서 구현됐다. 좌석 목록·상세·등록·수정·운영 중단/재개·배치도·현황 operation은 #61에서 구현됐다. 입실용 정확 일치 조회·입실·이용 기록 상세·퇴실 operation은 #62에서, 이용 중 좌석 이동 operation은 #63에서, 입퇴실 이력·이용권 수동 조정·고객 구매·사용 내역 operation은 #64에서 구현됐다. M6 룸·예약·사물함·배정·타 지점 요약 operation은 Issue #67의 설계 계약(space-operations-api.md, ADR-M6-001)이며 구현은 #68~#72에서 진행한다. 예약·배정·연장·취소는 Idempotency-Key가 필수이고 요청에 금액 필드가 없다. 룸 등록·조회·수정·운영 중단/재개와 예약 생성·목록·달력·상세 operation은 #69에서, 예약 취소와 이용 시작·완료 operation은 #70에서 구현됐다. 사물함 목록·등록·현황·상세·수정·운영 중단/재개·지점 요금 일괄 적용과 배정 목록·생성·상세·연장·반납 operation은 #71에서 구현됐다. 타 지점 고객 최소 요약과 고객의 룸·사물함 이력 operation은 #72에서 구현됐다. 본문·스레드별 독립 읽음은 Issue #155에서 계약·구현됐다(collaboration-api.md, ADR-M7-001 M7-D08·D09). POST /channels/{id}/read는 본문 위치 전용으로 바뀌어 답글 ID를 받지 않고, POST /channels/{id}/messages/{messageId}/read가 원문별 스레드 위치를 갱신한다. M8 근무표·출퇴근·근태 operation은 Issue #82의 설계 계약(workforce-api.md, ADR-M8-001)이며 구현은 근무표 #83, 근태 #84에서 진행한다. 근무 등록과 출근은 Idempotency-Key가 필수이고, 근태 명령은 /me/attendance 아래에서 경로·본문에 직원·근태 ID 없이 본인의 진행 중 근태만 바꾼다. 근무 충돌은 409 SHIFT_CONFLICT와 ShiftConflictError의 겹친 구간으로 알리고, 요청자가 볼 수 없는 지점의 근무는 \"다른 지점 근무\"로만 표시한다. 주간 근무표·근무 목록·등록·상세·수정·취소 operation은 #83에서 구현됐다. 현재 근태·출근·휴게 시작·휴게 종료·퇴근·근태 목록·근태 상세 operation은 #84에서 구현됐다. M9 정형 집계·최소 원장·홈 요약 operation은 Issue #86의 설계 계약(aggregation-api.md, ADR-M9-001)이며 구현은 매출·지점 비교·최소 원장 #87, 이용권 판매량·상품 순위·추세 #88, 홈 요약 #90에서 진행한다. 매출·지점 비교·최소 원장 operation은 #87에서 구현됐다. 이용권 판매량·상품 순위·추세 operation은 #88에서 구현됐다. 운영 홈 요약 operation은 #90에서 구현됐다(메시지 카드 제외, ADR-M10-002 M10-D11). 매출 집계는 요청한 모든 지점에 sales:read가 필요하고 하나라도 없으면 403이다. 기간이 없으면 이번 달 1일 0시~내일 0시 미만(Asia/Seoul), 366일 초과는 422 PERIOD_TOO_LONG이다. 지표 정의는 최상위 x-metric-definitions에 있고 M10이 같은 정의를 쓴다. 2026-11-05 사용자 결정: 366일 초과 422 PERIOD_TOO_LONG 확정, 홈 요약 근무 카드의 colleagues에 같은 지점 동료의 이름·근무 시각만 공개(근무표·근태 API의 M8-D02 범위는 그대로). 팀 채팅 operation(/channels/**)은 #167에서 설정 플래그 openstudy.team-chat.enabled(기본값 false)로 비활성화했다. 꺼져 있으면 서버에 경로가 없어 404이고, 계약에는 deprecated와 x-feature-flag·x-disabled-by-default로 표시한다. 자연어 분석(AI 채팅) operation 10개는 #92에서 nl-analysis-api.md로 계약했고 모두 구현돼 있다(implemented). 업무 기록·CSV 반출·진단 로그·품질 평가는 계약 밖이고, 옛 경로(/conversations 등)와 옛 형식 결과(legacyExecution)는 2026-11-08에 지웠으며, 질문은 SSE 없이 한 번의 요청·응답으로 끝난다(ADR-COM-001). M12 근태 정정·휴가·대체근무 operation은 Issue #106의 설계 계약(workforce-requests-api.md, ADR-M12-001)이며 구현은 근태 정정 #107, 휴가 부여·신청·잔여량 #108, 대체근무 #109에서 진행한다. 신청 생성은 Idempotency-Key가 필수이고 승인·반려·취소는 version과 상태로 처리한다. 본인 신청은 본인이 승인·반려·승인 취소할 수 없고(403 SELF_DECISION_FORBIDDEN), 휴가 승인 취소는 시작일 전까지다(2026-11-09 사용자 결정). 휴가 부여·보정·잔여량·신청·승인·반려·신청 취소·승인 취소 operation 13개는 #108에서 구현됐다(leave_requests 신청 지점 칼럼 V11). 대체근무 신청·조회·승인·반려·신청 취소·승인 취소 operation 7개는 #109에서 구현됐다. 근태 정정 신청·조회·승인·반려·신청 취소 operation 6개는 #107에서 구현됐다(반려 사유는 필수이며 audit_events에 저장, 2026-11-09 사용자 결정). Issue #111의 M13 지점 휴무일·상품 판매 기간/한도·중복 고객 병합·일별 마감·고급 필터·이용 지점 사용량·좌석 점유 추이는 operations-extension-api.md의 설계 계약(design-target)이다. 새 operation 12개는 #112~#116에서 구현한다. 이미 구현된 operation·schema에 더할 필드·필터·오류 코드는 x-planned-changes에 두고 구현 이슈가 본 정의로 옮긴다. 지점 휴무일 operation 4개와 룸 예약 차단·달력·홈 휴무 안내는 #112에서 구현됐다. 상품 판매 기간·한도(상품 필드·목록 필터·결제 판매 판정)는 #113에서 구현됐다. 중복 고객 확인·병합 operation 3개와 병합 고객 조회·판매·입실 처리는 #114에서 구현됐다. 일별 마감 operation 3개와 환불의 마감 조정 기록은 #115에서 구현됐다."
+    "description": "검토 완료 8중분류/61요구사항의 구현 전 목표 계약. Q1~Q12의 2026-10-23 당시 사용자 답변을 기록하되 Q8은 SRS v1.1 정책으로 대체됨. decisions.md 참고. 기존 서버 전체 구현 명세가 아니다. ID문자열·API version=DB+1. 상태 변경은 CSRF, 지점과 행위 인가를 함께 검증한다. Issue #27의 /me/profile 및 CurrentUser는 구현된 M1 닉네임 계약이다. 나머지 operation의 구현 상태는 각각의 표기를 따른다. SRS v1.1 확정 상품 정책: 거래 유무와 무관하게 물리 삭제 미제공; 판매 중지·재개 및 기존 상품·거래·revision 보존. 이전 Q8 조건부 삭제안은 적용하지 않는다. /lookups는 workspace 선택 데이터 계약이다. 변경 알림 SSE는 ADR-COM-001에 따라 제거했다. 상품/분류 선택 데이터는 관련 업무 API 구현 전까지 빈 배열이다. M4 고객·Mock 결제·발급 이용권·환불 operation은 Issue #55의 설계 계약(customer-sales-api.md, ADR-M4-002)이며 구현은 #56~#58에서 진행한다. 결제·환불 요청에는 금액 필드가 없고 Idempotency-Key가 필수다. M5 좌석·입퇴실·차감·정확 일치 조회·수동 조정 operation은 Issue #60의 설계 계약(seat-usage-api.md, ADR-M5-001)이며 구현은 #61~#64에서 진행한다. 입실·퇴실·이동·조정은 Idempotency-Key가 필수이고, 퇴실·조정 요청에 차감량 필드는 없다. M7 업무·채널·메시지·업무 카드·시설·문의·공지 operation은 Issue #74의 설계 계약(collaboration-api.md, ADR-M7-001)이며 구현은 #75~#80에서 진행한다. 메시지 전송은 clientMessageKey가 필수이고 업무에는 삭제 API가 없다. 업무 operation과 담당자 후보는 #75에서, 시설 operation은 #78에서, 고객 문의 operation은 #79에서, 공지 operation은 #80에서 구현됐다. 채널·메시지 operation은 #76에서, 업무 카드 공유 operation은 #77에서 구현됐다. 좌석 목록·상세·등록·수정·운영 중단/재개·배치도·현황 operation은 #61에서 구현됐다. 입실용 정확 일치 조회·입실·이용 기록 상세·퇴실 operation은 #62에서, 이용 중 좌석 이동 operation은 #63에서, 입퇴실 이력·이용권 수동 조정·고객 구매·사용 내역 operation은 #64에서 구현됐다. M6 룸·예약·사물함·배정·타 지점 요약 operation은 Issue #67의 설계 계약(space-operations-api.md, ADR-M6-001)이며 구현은 #68~#72에서 진행한다. 예약·배정·연장·취소는 Idempotency-Key가 필수이고 요청에 금액 필드가 없다. 룸 등록·조회·수정·운영 중단/재개와 예약 생성·목록·달력·상세 operation은 #69에서, 예약 취소와 이용 시작·완료 operation은 #70에서 구현됐다. 사물함 목록·등록·현황·상세·수정·운영 중단/재개·지점 요금 일괄 적용과 배정 목록·생성·상세·연장·반납 operation은 #71에서 구현됐다. 타 지점 고객 최소 요약과 고객의 룸·사물함 이력 operation은 #72에서 구현됐다. 본문·스레드별 독립 읽음은 Issue #155에서 계약·구현됐다(collaboration-api.md, ADR-M7-001 M7-D08·D09). POST /channels/{id}/read는 본문 위치 전용으로 바뀌어 답글 ID를 받지 않고, POST /channels/{id}/messages/{messageId}/read가 원문별 스레드 위치를 갱신한다. M8 근무표·출퇴근·근태 operation은 Issue #82의 설계 계약(workforce-api.md, ADR-M8-001)이며 구현은 근무표 #83, 근태 #84에서 진행한다. 근무 등록과 출근은 Idempotency-Key가 필수이고, 근태 명령은 /me/attendance 아래에서 경로·본문에 직원·근태 ID 없이 본인의 진행 중 근태만 바꾼다. 근무 충돌은 409 SHIFT_CONFLICT와 ShiftConflictError의 겹친 구간으로 알리고, 요청자가 볼 수 없는 지점의 근무는 \"다른 지점 근무\"로만 표시한다. 주간 근무표·근무 목록·등록·상세·수정·취소 operation은 #83에서 구현됐다. 현재 근태·출근·휴게 시작·휴게 종료·퇴근·근태 목록·근태 상세 operation은 #84에서 구현됐다. M9 정형 집계·최소 원장·홈 요약 operation은 Issue #86의 설계 계약(aggregation-api.md, ADR-M9-001)이며 구현은 매출·지점 비교·최소 원장 #87, 이용권 판매량·상품 순위·추세 #88, 홈 요약 #90에서 진행한다. 매출·지점 비교·최소 원장 operation은 #87에서 구현됐다. 이용권 판매량·상품 순위·추세 operation은 #88에서 구현됐다. 운영 홈 요약 operation은 #90에서 구현됐다(메시지 카드 제외, ADR-M10-002 M10-D11). 매출 집계는 요청한 모든 지점에 sales:read가 필요하고 하나라도 없으면 403이다. 기간이 없으면 이번 달 1일 0시~내일 0시 미만(Asia/Seoul), 366일 초과는 422 PERIOD_TOO_LONG이다. 지표 정의는 최상위 x-metric-definitions에 있고 M10이 같은 정의를 쓴다. 2026-11-05 사용자 결정: 366일 초과 422 PERIOD_TOO_LONG 확정, 홈 요약 근무 카드의 colleagues에 같은 지점 동료의 이름·근무 시각만 공개(근무표·근태 API의 M8-D02 범위는 그대로). 팀 채팅 operation(/channels/**)은 #167에서 설정 플래그 openstudy.team-chat.enabled(기본값 false)로 비활성화했다. 꺼져 있으면 서버에 경로가 없어 404이고, 계약에는 deprecated와 x-feature-flag·x-disabled-by-default로 표시한다. 자연어 분석(AI 채팅) operation 10개는 #92에서 nl-analysis-api.md로 계약했고 모두 구현돼 있다(implemented). 업무 기록·CSV 반출·진단 로그·품질 평가는 계약 밖이고, 옛 경로(/conversations 등)와 옛 형식 결과(legacyExecution)는 2026-11-08에 지웠으며, 질문은 SSE 없이 한 번의 요청·응답으로 끝난다(ADR-COM-001). M12 근태 정정·휴가·대체근무 operation은 Issue #106의 설계 계약(workforce-requests-api.md, ADR-M12-001)이며 구현은 근태 정정 #107, 휴가 부여·신청·잔여량 #108, 대체근무 #109에서 진행한다. 신청 생성은 Idempotency-Key가 필수이고 승인·반려·취소는 version과 상태로 처리한다. 본인 신청은 본인이 승인·반려·승인 취소할 수 없고(403 SELF_DECISION_FORBIDDEN), 휴가 승인 취소는 시작일 전까지다(2026-11-09 사용자 결정). 휴가 부여·보정·잔여량·신청·승인·반려·신청 취소·승인 취소 operation 13개는 #108에서 구현됐다(leave_requests 신청 지점 칼럼 V11). 대체근무 신청·조회·승인·반려·신청 취소·승인 취소 operation 7개는 #109에서 구현됐다. 근태 정정 신청·조회·승인·반려·신청 취소 operation 6개는 #107에서 구현됐다(반려 사유는 필수이며 audit_events에 저장, 2026-11-09 사용자 결정). Issue #111의 M13 지점 휴무일·상품 판매 기간/한도·중복 고객 병합·일별 마감·고급 필터·이용 지점 사용량·좌석 점유 추이는 operations-extension-api.md의 설계 계약(design-target)이다. 새 operation 12개는 #112~#116에서 구현한다. 이미 구현된 operation·schema에 더할 필드·필터·오류 코드는 x-planned-changes에 두고 구현 이슈가 본 정의로 옮긴다. 지점 휴무일 operation 4개와 룸 예약 차단·달력·홈 휴무 안내는 #112에서 구현됐다. 상품 판매 기간·한도(상품 필드·목록 필터·결제 판매 판정)는 #113에서 구현됐다. 중복 고객 확인·병합 operation 3개와 병합 고객 조회·판매·입실 처리는 #114에서 구현됐다. 일별 마감 operation 3개와 환불의 마감 조정 기록은 #115에서 구현됐다. 결제·집계 고급 필터, 이용 지점 사용량, 좌석 점유 추이는 #116에서 구현됐다. M13 계약의 operation은 모두 구현됐다."
   },
   "servers": [
     {
@@ -4252,7 +4252,7 @@
         "tags": [
           "payments"
         ],
-        "description": "scope 지점 중 payments:read가 있는 지점의 결제만 반환한다. from·to는 createdAt 기준 [from, to) UTC다. 고급 필터(수단·분류·처리자)는 M13. customerId가 대상 고객이면 흡수 고객의 행도 담는다(M13-D07). (#114)",
+        "description": "scope 지점 중 payments:read가 있는 지점의 결제만 반환한다. from·to는 createdAt 기준 [from, to) UTC다. 고급 필터(수단·분류·처리자)는 M13. customerId가 대상 고객이면 흡수 고객의 행도 담는다(M13-D07). (#114) 응답 PaymentPage에 filter·summary를 더한다(FR-PAY-13). 고급 필터(methods·productKinds·categoryCode·operatorIds·processingBranchIds)는 M13-D10(#116)이다. 결제 행의 처리자는 결제 처리자(created_by)이고, processingBranchIds는 환불 상태 행만 그 환불의 처리 지점으로 좁힌다(2026-11-10 #116 구현에서 정함).",
         "x-requirement-ids": [
           "FR-PAY-05",
           "FR-PAY-06",
@@ -4374,43 +4374,29 @@
             "schema": {
               "$ref": "#/components/schemas/Id"
             }
+          },
+          {
+            "$ref": "#/components/parameters/PassCategoryCode"
+          },
+          {
+            "$ref": "#/components/parameters/PaymentMethods"
+          },
+          {
+            "$ref": "#/components/parameters/ProductKinds"
+          },
+          {
+            "$ref": "#/components/parameters/OperatorIds"
+          },
+          {
+            "$ref": "#/components/parameters/ProcessingBranchIds"
           }
         ],
         "x-error-codes": [
           "FORBIDDEN",
           "VALIDATION_FAILED"
         ],
-        "x-planned-changes": [
-          {
-            "issue": "#116",
-            "status": "design-target",
-            "parameters": [
-              {
-                "$ref": "#/components/parameters/PassCategoryCode"
-              },
-              {
-                "$ref": "#/components/parameters/PaymentMethods"
-              },
-              {
-                "$ref": "#/components/parameters/ProductKinds"
-              },
-              {
-                "$ref": "#/components/parameters/OperatorIds"
-              },
-              {
-                "$ref": "#/components/parameters/ProcessingBranchIds"
-              }
-            ],
-            "properties": {
-              "filter": {
-                "$ref": "#/components/schemas/PaymentFilter"
-              },
-              "summary": {
-                "$ref": "#/components/schemas/PaymentListSummary"
-              }
-            },
-            "note": "응답 PaymentPage에 filter·summary를 더한다(FR-PAY-13)."
-          }
+        "x-adr-decisions": [
+          "M13-D10"
         ]
       },
       "post": {
@@ -14949,7 +14935,7 @@
         "tags": [
           "sales"
         ],
-        "description": "승인액·환불액·순매출과 용도별 소계를 반환한다. 이용권·스터디룸·사물함 결제를 모두 포함하고(M9-D03) 원결제 지점에 귀속하며, 환불도 처리 지점이 아니라 원결제 지점에서 차감한다(M9-D05). 실패 결제와 이용권 소비 차감은 포함하지 않는다. 기간은 Asia/Seoul 해석의 [from, to)이고 생략하면 이번 달 1일 0시~내일 0시 미만, 366일 초과는 422 PERIOD_TOO_LONG이다. 요청한 지점 중 하나라도 sales:read가 없으면 403이며 조용히 제외하지 않는다.",
+        "description": "승인액·환불액·순매출과 용도별 소계를 반환한다. 이용권·스터디룸·사물함 결제를 모두 포함하고(M9-D03) 원결제 지점에 귀속하며, 환불도 처리 지점이 아니라 원결제 지점에서 차감한다(M9-D05). 실패 결제와 이용권 소비 차감은 포함하지 않는다. 기간은 Asia/Seoul 해석의 [from, to)이고 생략하면 이번 달 1일 0시~내일 0시 미만, 366일 초과는 422 PERIOD_TOO_LONG이다. 요청한 지점 중 하나라도 sales:read가 없으면 403이며 조용히 제외하지 않는다. 고급 필터(methods·productKinds·categoryCode·operatorIds·processingBranchIds)는 M13-D10(#116)이다.",
         "x-requirement-ids": [
           "FR-AGG-01",
           "FR-AGG-08",
@@ -15026,6 +15012,21 @@
           },
           {
             "$ref": "#/components/parameters/SalesPurpose"
+          },
+          {
+            "$ref": "#/components/parameters/PassCategoryCode"
+          },
+          {
+            "$ref": "#/components/parameters/PaymentMethods"
+          },
+          {
+            "$ref": "#/components/parameters/ProductKinds"
+          },
+          {
+            "$ref": "#/components/parameters/OperatorIds"
+          },
+          {
+            "$ref": "#/components/parameters/ProcessingBranchIds"
           }
         ],
         "x-error-codes": [
@@ -15039,7 +15040,8 @@
           "M9-D03",
           "M9-D05",
           "M9-D07",
-          "M9-D09"
+          "M9-D09",
+          "M13-D10"
         ],
         "x-metric-ids": [
           "sales.approved_amount",
@@ -15047,29 +15049,6 @@
           "sales.net_amount",
           "sales.approved_payment_count",
           "sales.refund_count"
-        ],
-        "x-planned-changes": [
-          {
-            "issue": "#116",
-            "status": "design-target",
-            "parameters": [
-              {
-                "$ref": "#/components/parameters/PassCategoryCode"
-              },
-              {
-                "$ref": "#/components/parameters/PaymentMethods"
-              },
-              {
-                "$ref": "#/components/parameters/ProductKinds"
-              },
-              {
-                "$ref": "#/components/parameters/OperatorIds"
-              },
-              {
-                "$ref": "#/components/parameters/ProcessingBranchIds"
-              }
-            ]
-          }
         ]
       }
     },
@@ -15080,7 +15059,7 @@
         "tags": [
           "sales"
         ],
-        "description": "적용 지점마다 한 행의 매출을 요청한 정렬로 반환한다. 거래가 없는 지점도 0과 dataStatus=noData로 담는다. sort=requested는 branchIds를 보낸 순서(생략 시 ID 오름차순)이고, 금액 정렬의 동률은 branchId를 같은 방향으로 정렬한다. 기간은 Asia/Seoul 해석의 [from, to)이고 생략하면 이번 달 1일 0시~내일 0시 미만, 366일 초과는 422 PERIOD_TOO_LONG이다. 요청한 지점 중 하나라도 sales:read가 없으면 403이며 조용히 제외하지 않는다.",
+        "description": "적용 지점마다 한 행의 매출을 요청한 정렬로 반환한다. 거래가 없는 지점도 0과 dataStatus=noData로 담는다. sort=requested는 branchIds를 보낸 순서(생략 시 ID 오름차순)이고, 금액 정렬의 동률은 branchId를 같은 방향으로 정렬한다. 기간은 Asia/Seoul 해석의 [from, to)이고 생략하면 이번 달 1일 0시~내일 0시 미만, 366일 초과는 422 PERIOD_TOO_LONG이다. 요청한 지점 중 하나라도 sales:read가 없으면 403이며 조용히 제외하지 않는다. 고급 필터(methods·productKinds·categoryCode·operatorIds·processingBranchIds)는 M13-D10(#116)이다.",
         "x-requirement-ids": [
           "FR-AGG-02",
           "FR-AGG-08",
@@ -15175,6 +15154,21 @@
           },
           {
             "$ref": "#/components/parameters/Direction"
+          },
+          {
+            "$ref": "#/components/parameters/PassCategoryCode"
+          },
+          {
+            "$ref": "#/components/parameters/PaymentMethods"
+          },
+          {
+            "$ref": "#/components/parameters/ProductKinds"
+          },
+          {
+            "$ref": "#/components/parameters/OperatorIds"
+          },
+          {
+            "$ref": "#/components/parameters/ProcessingBranchIds"
           }
         ],
         "x-error-codes": [
@@ -15188,7 +15182,8 @@
           "M9-D03",
           "M9-D05",
           "M9-D07",
-          "M9-D09"
+          "M9-D09",
+          "M13-D10"
         ],
         "x-metric-ids": [
           "sales.approved_amount",
@@ -15196,29 +15191,6 @@
           "sales.net_amount",
           "sales.approved_payment_count",
           "sales.refund_count"
-        ],
-        "x-planned-changes": [
-          {
-            "issue": "#116",
-            "status": "design-target",
-            "parameters": [
-              {
-                "$ref": "#/components/parameters/PassCategoryCode"
-              },
-              {
-                "$ref": "#/components/parameters/PaymentMethods"
-              },
-              {
-                "$ref": "#/components/parameters/ProductKinds"
-              },
-              {
-                "$ref": "#/components/parameters/OperatorIds"
-              },
-              {
-                "$ref": "#/components/parameters/ProcessingBranchIds"
-              }
-            ]
-          }
         ]
       }
     },
@@ -15229,7 +15201,7 @@
         "tags": [
           "sales"
         ],
-        "description": "매출 집계의 근거가 되는 승인 항목과 환불 항목을 페이지로 반환한다. 고객 이름·연락처·고객 ID·결제 수단·처리자·환불 사유는 담지 않는다. 같은 조건의 GET /sales/revenue와 합계가 같다. 정렬은 basisAt, 같으면 승인 → 환불, 같으면 원천 ID이며 모두 direction(기본 desc)을 따른다. 결제 상세는 GET /payments/{id}에서 payments:read를 따로 확인한다. 기간은 Asia/Seoul 해석의 [from, to)이고 생략하면 이번 달 1일 0시~내일 0시 미만, 366일 초과는 422 PERIOD_TOO_LONG이다. 요청한 지점 중 하나라도 sales:read가 없으면 403이며 조용히 제외하지 않는다.",
+        "description": "매출 집계의 근거가 되는 승인 항목과 환불 항목을 페이지로 반환한다. 고객 이름·연락처·고객 ID·결제 수단·처리자·환불 사유는 담지 않는다. 같은 조건의 GET /sales/revenue와 합계가 같다. 정렬은 basisAt, 같으면 승인 → 환불, 같으면 원천 ID이며 모두 direction(기본 desc)을 따른다. 결제 상세는 GET /payments/{id}에서 payments:read를 따로 확인한다. 기간은 Asia/Seoul 해석의 [from, to)이고 생략하면 이번 달 1일 0시~내일 0시 미만, 366일 초과는 422 PERIOD_TOO_LONG이다. 요청한 지점 중 하나라도 sales:read가 없으면 403이며 조용히 제외하지 않는다. 고급 필터(methods·productKinds·categoryCode·operatorIds·processingBranchIds)는 M13-D10(#116)이다.",
         "x-requirement-ids": [
           "FR-AGG-18",
           "FR-AGG-08",
@@ -15326,6 +15298,21 @@
           },
           {
             "$ref": "#/components/parameters/Direction"
+          },
+          {
+            "$ref": "#/components/parameters/PassCategoryCode"
+          },
+          {
+            "$ref": "#/components/parameters/PaymentMethods"
+          },
+          {
+            "$ref": "#/components/parameters/ProductKinds"
+          },
+          {
+            "$ref": "#/components/parameters/OperatorIds"
+          },
+          {
+            "$ref": "#/components/parameters/ProcessingBranchIds"
           }
         ],
         "x-error-codes": [
@@ -15338,7 +15325,8 @@
           "M9-D02",
           "M9-D03",
           "M9-D05",
-          "M9-D07"
+          "M9-D07",
+          "M13-D10"
         ],
         "x-metric-ids": [
           "sales.approved_amount",
@@ -15346,29 +15334,6 @@
           "sales.net_amount",
           "sales.approved_payment_count",
           "sales.refund_count"
-        ],
-        "x-planned-changes": [
-          {
-            "issue": "#116",
-            "status": "design-target",
-            "parameters": [
-              {
-                "$ref": "#/components/parameters/PassCategoryCode"
-              },
-              {
-                "$ref": "#/components/parameters/PaymentMethods"
-              },
-              {
-                "$ref": "#/components/parameters/ProductKinds"
-              },
-              {
-                "$ref": "#/components/parameters/OperatorIds"
-              },
-              {
-                "$ref": "#/components/parameters/ProcessingBranchIds"
-              }
-            ]
-          }
         ]
       }
     },
@@ -15379,7 +15344,7 @@
         "tags": [
           "sales"
         ],
-        "description": "이용권 결제만 대상으로 결제 건수(건), 판매 수량·환불 수량·순판매량(개), 발급 건수(개)를 따로 반환한다(M9-D06). 환불된 판매는 순판매량에서 빠지고 발급 건수에는 남는다. 실패 결제는 어느 지표에도 없다. 환불 수량은 refundBasis를 따른다. 기간은 Asia/Seoul 해석의 [from, to)이고 생략하면 이번 달 1일 0시~내일 0시 미만, 366일 초과는 422 PERIOD_TOO_LONG이다. 요청한 지점 중 하나라도 sales:read가 없으면 403이며 조용히 제외하지 않는다.",
+        "description": "이용권 결제만 대상으로 결제 건수(건), 판매 수량·환불 수량·순판매량(개), 발급 건수(개)를 따로 반환한다(M9-D06). 환불된 판매는 순판매량에서 빠지고 발급 건수에는 남는다. 실패 결제는 어느 지표에도 없다. 환불 수량은 refundBasis를 따른다. 기간은 Asia/Seoul 해석의 [from, to)이고 생략하면 이번 달 1일 0시~내일 0시 미만, 366일 초과는 422 PERIOD_TOO_LONG이다. 요청한 지점 중 하나라도 sales:read가 없으면 403이며 조용히 제외하지 않는다. 고급 필터(methods·productKinds·categoryCode·operatorIds·processingBranchIds)는 M13-D10(#116)이다.",
         "x-requirement-ids": [
           "FR-PASS-05",
           "FR-AGG-03",
@@ -15458,6 +15423,18 @@
           },
           {
             "$ref": "#/components/parameters/PassCategoryCode"
+          },
+          {
+            "$ref": "#/components/parameters/PaymentMethods"
+          },
+          {
+            "$ref": "#/components/parameters/ProductKinds"
+          },
+          {
+            "$ref": "#/components/parameters/OperatorIds"
+          },
+          {
+            "$ref": "#/components/parameters/ProcessingBranchIds"
           }
         ],
         "x-error-codes": [
@@ -15471,7 +15448,8 @@
           "M9-D03",
           "M9-D05",
           "M9-D06",
-          "M9-D07"
+          "M9-D07",
+          "M13-D10"
         ],
         "x-metric-ids": [
           "pass.payment_count",
@@ -15479,26 +15457,6 @@
           "pass.refunded_quantity",
           "pass.net_sold_quantity",
           "pass.issued_count"
-        ],
-        "x-planned-changes": [
-          {
-            "issue": "#116",
-            "status": "design-target",
-            "parameters": [
-              {
-                "$ref": "#/components/parameters/PaymentMethods"
-              },
-              {
-                "$ref": "#/components/parameters/ProductKinds"
-              },
-              {
-                "$ref": "#/components/parameters/OperatorIds"
-              },
-              {
-                "$ref": "#/components/parameters/ProcessingBranchIds"
-              }
-            ]
-          }
         ]
       }
     },
@@ -15509,7 +15467,7 @@
         "tags": [
           "sales"
         ],
-        "description": "판매 당시 상품 스냅샷(상품 ID·상품명·분류 코드·분류 이름)마다 판매량과 순위를 반환한다. 순서는 netSoldQuantity 내림차순, 같으면 productId·productName·categoryCode·categoryName 오름차순으로 고정한다. 기간에 원거래가 없는 상품은 행이 없다. 기간은 Asia/Seoul 해석의 [from, to)이고 생략하면 이번 달 1일 0시~내일 0시 미만, 366일 초과는 422 PERIOD_TOO_LONG이다. 요청한 지점 중 하나라도 sales:read가 없으면 403이며 조용히 제외하지 않는다.",
+        "description": "판매 당시 상품 스냅샷(상품 ID·상품명·분류 코드·분류 이름)마다 판매량과 순위를 반환한다. 순서는 netSoldQuantity 내림차순, 같으면 productId·productName·categoryCode·categoryName 오름차순으로 고정한다. 기간에 원거래가 없는 상품은 행이 없다. 기간은 Asia/Seoul 해석의 [from, to)이고 생략하면 이번 달 1일 0시~내일 0시 미만, 366일 초과는 422 PERIOD_TOO_LONG이다. 요청한 지점 중 하나라도 sales:read가 없으면 403이며 조용히 제외하지 않는다. 고급 필터(methods·productKinds·categoryCode·operatorIds·processingBranchIds)는 M13-D10(#116)이다.",
         "x-requirement-ids": [
           "FR-AGG-06",
           "FR-AGG-07",
@@ -15595,6 +15553,18 @@
           },
           {
             "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "$ref": "#/components/parameters/PaymentMethods"
+          },
+          {
+            "$ref": "#/components/parameters/ProductKinds"
+          },
+          {
+            "$ref": "#/components/parameters/OperatorIds"
+          },
+          {
+            "$ref": "#/components/parameters/ProcessingBranchIds"
           }
         ],
         "x-error-codes": [
@@ -15607,7 +15577,8 @@
           "M9-D02",
           "M9-D03",
           "M9-D06",
-          "M9-D07"
+          "M9-D07",
+          "M13-D10"
         ],
         "x-metric-ids": [
           "pass.payment_count",
@@ -15615,26 +15586,6 @@
           "pass.refunded_quantity",
           "pass.net_sold_quantity",
           "pass.issued_count"
-        ],
-        "x-planned-changes": [
-          {
-            "issue": "#116",
-            "status": "design-target",
-            "parameters": [
-              {
-                "$ref": "#/components/parameters/PaymentMethods"
-              },
-              {
-                "$ref": "#/components/parameters/ProductKinds"
-              },
-              {
-                "$ref": "#/components/parameters/OperatorIds"
-              },
-              {
-                "$ref": "#/components/parameters/ProcessingBranchIds"
-              }
-            ]
-          }
         ]
       }
     },
@@ -15645,7 +15596,7 @@
         "tags": [
           "sales"
         ],
-        "description": "기간 안의 모든 일·주·월 구간을 시간 오름차순으로 반환하고 거래가 없는 구간은 0과 noData로 채운다. 주는 월요일 0시(Asia/Seoul)에 시작한다. 경계에 걸친 첫·마지막 구간은 기간 안의 부분만 집계하고 partial과 aggregation.partial로 표시한다(M9-D04). 구간 합은 totals와 같다. measure=revenue는 purpose 필터를, measure=passes는 productId·categoryCode 필터를 받는다. 기간은 Asia/Seoul 해석의 [from, to)이고 생략하면 이번 달 1일 0시~내일 0시 미만, 366일 초과는 422 PERIOD_TOO_LONG이다. 요청한 지점 중 하나라도 sales:read가 없으면 403이며 조용히 제외하지 않는다.",
+        "description": "기간 안의 모든 일·주·월 구간을 시간 오름차순으로 반환하고 거래가 없는 구간은 0과 noData로 채운다. 주는 월요일 0시(Asia/Seoul)에 시작한다. 경계에 걸친 첫·마지막 구간은 기간 안의 부분만 집계하고 partial과 aggregation.partial로 표시한다(M9-D04). 구간 합은 totals와 같다. measure=revenue는 purpose 필터를, measure=passes는 productId·categoryCode 필터를 받는다. 기간은 Asia/Seoul 해석의 [from, to)이고 생략하면 이번 달 1일 0시~내일 0시 미만, 366일 초과는 422 PERIOD_TOO_LONG이다. 요청한 지점 중 하나라도 sales:read가 없으면 403이며 조용히 제외하지 않는다. 고급 필터(methods·productKinds·categoryCode·operatorIds·processingBranchIds)는 M13-D10(#116)이다.",
         "x-requirement-ids": [
           "FR-AGG-14",
           "FR-AGG-08",
@@ -15754,6 +15705,18 @@
           },
           {
             "$ref": "#/components/parameters/PassCategoryCode"
+          },
+          {
+            "$ref": "#/components/parameters/PaymentMethods"
+          },
+          {
+            "$ref": "#/components/parameters/ProductKinds"
+          },
+          {
+            "$ref": "#/components/parameters/OperatorIds"
+          },
+          {
+            "$ref": "#/components/parameters/ProcessingBranchIds"
           }
         ],
         "x-error-codes": [
@@ -15769,7 +15732,8 @@
           "M9-D05",
           "M9-D06",
           "M9-D07",
-          "M9-D09"
+          "M9-D09",
+          "M13-D10"
         ],
         "x-metric-ids": [
           "sales.approved_amount",
@@ -15782,26 +15746,6 @@
           "pass.refunded_quantity",
           "pass.net_sold_quantity",
           "pass.issued_count"
-        ],
-        "x-planned-changes": [
-          {
-            "issue": "#116",
-            "status": "design-target",
-            "parameters": [
-              {
-                "$ref": "#/components/parameters/PaymentMethods"
-              },
-              {
-                "$ref": "#/components/parameters/ProductKinds"
-              },
-              {
-                "$ref": "#/components/parameters/OperatorIds"
-              },
-              {
-                "$ref": "#/components/parameters/ProcessingBranchIds"
-              }
-            ]
-          }
         ]
       }
     },
@@ -21051,7 +20995,7 @@
           "FR-AGG-15"
         ],
         "x-permission": "요청한 모든 이용 지점의 sales:read(M9-D07)",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-implementation-issue": "#116",
         "x-session-modes": [
           "WORKSPACE"
@@ -21145,7 +21089,7 @@
           "FR-SEAT-16"
         ],
         "x-permission": "OWNER 또는 지점의 유효 소속",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-implementation-issue": "#116",
         "x-session-modes": [
           "WORKSPACE"
@@ -24450,31 +24394,21 @@
           },
           "meta": {
             "$ref": "#/components/schemas/PageMeta"
+          },
+          "filter": {
+            "$ref": "#/components/schemas/PaymentFilter"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/PaymentListSummary"
           }
         },
         "required": [
           "items",
-          "meta"
+          "meta",
+          "filter",
+          "summary"
         ],
-        "additionalProperties": false,
-        "x-planned-changes": [
-          {
-            "issue": "#116",
-            "status": "design-target",
-            "properties": {
-              "filter": {
-                "$ref": "#/components/schemas/PaymentFilter"
-              },
-              "summary": {
-                "$ref": "#/components/schemas/PaymentListSummary"
-              }
-            },
-            "required": [
-              "filter",
-              "summary"
-            ]
-          }
-        ]
+        "additionalProperties": false
       },
       "RefundCreate": {
         "type": "object",
@@ -30131,7 +30065,9 @@
             "enum": [
               "processedDate",
               "paymentDate"
-            ]
+            ],
+            "nullable": true,
+            "description": "이용 지점 사용량(getPassUsageByBranch)은 null."
           },
           "purpose": {
             "type": "string",
@@ -30165,6 +30101,41 @@
             ],
             "nullable": true,
             "description": "추세에서만 값이 있다."
+          },
+          "methods": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "현금",
+                "카드",
+                "계좌이체",
+                "기타"
+              ]
+            }
+          },
+          "productKinds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "시간권",
+                "기간권",
+                "정액권"
+              ]
+            }
+          },
+          "operatorIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          "processingBranchIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Id"
+            }
           }
         },
         "required": [
@@ -30176,68 +30147,14 @@
           "purpose",
           "productId",
           "categoryCode",
-          "granularity"
+          "granularity",
+          "methods",
+          "productKinds",
+          "operatorIds",
+          "processingBranchIds"
         ],
         "additionalProperties": false,
-        "description": "집계에 실제 적용한 조건. M10이 같은 조건 객체로 공통 집계 기반을 호출한다(M10-D05). from·to는 null이 아니다.",
-        "x-planned-changes": [
-          {
-            "issue": "#116",
-            "status": "design-target",
-            "properties": {
-              "methods": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "enum": [
-                    "현금",
-                    "카드",
-                    "계좌이체",
-                    "기타"
-                  ]
-                }
-              },
-              "productKinds": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "enum": [
-                    "시간권",
-                    "기간권",
-                    "정액권"
-                  ]
-                }
-              },
-              "operatorIds": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Id"
-                }
-              },
-              "processingBranchIds": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Id"
-                }
-              },
-              "refundBasis": {
-                "type": "string",
-                "enum": [
-                  "processedDate",
-                  "paymentDate"
-                ],
-                "nullable": true,
-                "description": "이용 지점 사용량(getPassUsageByBranch)은 null."
-              }
-            },
-            "required": [
-              "methods",
-              "productKinds",
-              "operatorIds",
-              "processingBranchIds"
-            ]
-          }
-        ]
+        "description": "집계에 실제 적용한 조건. M10이 같은 조건 객체로 공통 집계 기반을 호출한다(M10-D05). from·to는 null이 아니다."
       },
       "AggregationPartial": {
         "type": "object",
@@ -30315,6 +30232,12 @@
             "items": {
               "$ref": "#/components/schemas/MetricRef"
             }
+          },
+          "conditionNotes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConditionNote"
+            }
           }
         },
         "required": [
@@ -30327,27 +30250,11 @@
           "sourceRowCount",
           "dataStatus",
           "partial",
-          "metrics"
+          "metrics",
+          "conditionNotes"
         ],
         "additionalProperties": false,
-        "description": "모든 매출·이용권 집계 응답의 공통 메타정보(FR-AGG-09). 카드·표·차트·원장이 같은 값을 쓴다. dataStatus=noData ⇔ sourceRowCount=0.",
-        "x-planned-changes": [
-          {
-            "issue": "#116",
-            "status": "design-target",
-            "properties": {
-              "conditionNotes": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/ConditionNote"
-                }
-              }
-            },
-            "required": [
-              "conditionNotes"
-            ]
-          }
-        ]
+        "description": "모든 매출·이용권 집계 응답의 공통 메타정보(FR-AGG-09). 카드·표·차트·원장이 같은 값을 쓴다. dataStatus=noData ⇔ sourceRowCount=0."
       },
       "RevenueAmounts": {
         "type": "object",
@@ -34925,7 +34832,8 @@
           },
           "label": {
             "type": "string",
-            "description": "보이지 않는 판매 지점을 합친 항목은 \"다른 지점\"."
+            "nullable": true,
+            "description": "보이지 않는 판매 지점을 합친 항목은 \"다른 지점\", 보이는 판매 지점은 null."
           },
           "sessionCount": {
             "type": "integer",
@@ -35018,7 +34926,8 @@
         "type": "object",
         "properties": {
           "label": {
-            "type": "string"
+            "type": "string",
+            "description": "hour는 Asia/Seoul \"YYYY-MM-DD HH:00\", day는 \"YYYY-MM-DD\"."
           },
           "bucketStart": {
             "type": "string",

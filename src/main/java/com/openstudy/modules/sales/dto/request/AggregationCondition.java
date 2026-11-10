@@ -22,10 +22,21 @@ import java.util.List;
  * same 422 and 403 decisions.
  */
 public record AggregationCondition(List<Long> branchIds, Instant from, Instant to, RefundBasis refundBasis,
-        SalesPurpose purpose, Long productId, String categoryCode, AggregationGranularity granularity) {
+        SalesPurpose purpose, Long productId, String categoryCode, AggregationGranularity granularity, AdvancedFilter advanced) {
     public AggregationCondition {
         // A null element is kept as a validation failure of the resolver, so copy without List.copyOf.
         branchIds = branchIds == null ? null : Collections.unmodifiableList(new ArrayList<>(branchIds));
+        advanced = advanced == null ? AdvancedFilter.NONE : advanced;
+    }
+
+    /** The M9 condition without the M13 advanced filters (#116). */
+    public AggregationCondition(List<Long> branchIds, Instant from, Instant to, RefundBasis refundBasis, SalesPurpose purpose,
+            Long productId, String categoryCode, AggregationGranularity granularity) {
+        this(branchIds, from, to, refundBasis, purpose, productId, categoryCode, granularity, AdvancedFilter.NONE);
+    }
+
+    public AggregationCondition withAdvanced(AdvancedFilter value) {
+        return new AggregationCondition(branchIds, from, to, refundBasis, purpose, productId, categoryCode, granularity, value);
     }
 
     /** Only the parameters of the revenue operations (#87). */
@@ -41,6 +52,6 @@ public record AggregationCondition(List<Long> branchIds, Instant from, Instant t
     }
 
     public AggregationCondition withGranularity(AggregationGranularity value) {
-        return new AggregationCondition(branchIds, from, to, refundBasis, purpose, productId, categoryCode, value);
+        return new AggregationCondition(branchIds, from, to, refundBasis, purpose, productId, categoryCode, value, advanced);
     }
 }
