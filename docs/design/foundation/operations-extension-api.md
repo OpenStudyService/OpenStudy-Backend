@@ -2,7 +2,7 @@
 
 Backend [#111](https://github.com/OpenStudyService/OpenStudy-Backend/issues/111)의 M13 계약이다. 구현은 지점 휴무일(#112), 상품 판매 기간·한도(#113), 중복 고객 확인·병합(#114), 일별 마감·조정 이력(#115), 고급 필터·이용 지점 사용량·좌석 점유 추이(#116)에서 이 문서를 기준으로 진행한다. Frontend는 같은 [OpenAPI](openapi.json)(`0.1.14-m13-operations-extension`)로 연동한다.
 
-2026-11-10: 이 문서의 operation은 모두 설계 계약(`design-target`)이다. 기존 operation에 더한 필드·필터도 같은 이슈에서 구현한다. 2026-11-10: 지점 휴무일 operation 4개와 룸 예약 차단·달력 `closedDates`·홈 `closures`는 #112에서 구현됐다(`implemented`, V12 `branch_closures`). 2026-11-10: 상품 판매 기간·한도(상품 필드·목록 필터·결제 판매 판정)는 #113에서 구현됐다(`implemented`, V13 `products` 칼럼). 2026-11-10: 중복 고객 확인·병합 operation 3개와 병합된 고객의 조회·판매·입실 처리는 #114에서 구현됐다(`implemented`, V14 `customers`·`customer_merges`).
+2026-11-10: 이 문서의 operation은 모두 설계 계약(`design-target`)이다. 기존 operation에 더한 필드·필터도 같은 이슈에서 구현한다. 2026-11-10: 지점 휴무일 operation 4개와 룸 예약 차단·달력 `closedDates`·홈 `closures`는 #112에서 구현됐다(`implemented`, V12 `branch_closures`). 2026-11-10: 상품 판매 기간·한도(상품 필드·목록 필터·결제 판매 판정)는 #113에서 구현됐다(`implemented`, V13 `products` 칼럼). 2026-11-10: 중복 고객 확인·병합 operation 3개와 병합된 고객의 조회·판매·입실 처리는 #114에서 구현됐다(`implemented`, V14 `customers`·`customer_merges`). 2026-11-10: 일별 마감 operation 3개와 환불의 마감 조정 기록은 #115에서 구현됐다(`implemented`, V15 `daily_closings`·`daily_closing_adjustments`).
 
 정책 근거는 [ADR-M13-001](../../db/ADR-M13-001.md)(M13-D01~D13)이다. M13-D11~D13은 이 계약을 쓰면서 사용자에게 받은 결정(2026-11-10)이다. 공통 요청·응답·오류·목록 규칙은 [API 계약](api.md)을, 원거래의 의미는 [상품 API](product-api.md)·[고객·결제 계약](customer-sales-api.md)·[공간 운영 계약](space-operations-api.md)·[좌석 이용 계약](seat-usage-api.md)을, 집계의 기간·환불 기준·메타정보·값 표현은 [정형 집계 계약](aggregation-api.md)(M9)을 따른다.
 
@@ -254,7 +254,7 @@ Backend [#111](https://github.com/OpenStudyService/OpenStudy-Backend/issues/111)
 
 ### 스냅샷(M13-D08)
 
-마감 시점(`closedAt`)에 M9 공통 집계로 그날(`[businessDate 0시, 다음 날 0시)`, Asia/Seoul)·그 지점의 수치를 계산해 저장한다. 두 환불 기준을 모두 저장한다.
+마감 시점(`closedAt`)에 M9 공통 집계로 그날(`[businessDate 0시, 다음 날 0시)`, Asia/Seoul)·그 지점의 수치를 계산해 저장한다. 두 환불 기준을 모두 저장한다. 합계와 용도별 소계는 `GET /sales/revenue`와 같은 서비스로 계산해 같은 조건의 M9 집계와 항상 같다(#115).
 
 | 묶음 | 내용 |
 | --- | --- |
@@ -288,7 +288,7 @@ Backend [#111](https://github.com/OpenStudyService/OpenStudy-Backend/issues/111)
 
 ### 목록·권한
 
-- `GET /daily-closings?branchIds=&from=&to=&page=&pageSize=`: `branchIds`는 M9와 같은 규칙(생략하면 `sales:read`가 있는 모든 지점, 하나라도 없으면 403)이다. `from`·`to`는 날짜(둘 다 포함)이고 최대 366일이다. 정렬은 `businessDate` 내림차순, 같으면 `branchId` 오름차순이다. 항목은 스냅샷의 처리일 기준 수치와 `adjustmentCount`를 담는다.
+- `GET /daily-closings?branchIds=&from=&to=&page=&pageSize=`: `branchIds`는 M9와 같은 규칙(생략하면 `sales:read`가 있는 모든 지점, 하나라도 없으면 403)이다. `from`·`to`는 날짜(둘 다 포함)이고 최대 366일이다. 생략하면 지난달 1일부터 오늘까지다(2026-11-10 #115 구현에서 정함). 정렬은 `businessDate` 내림차순, 같으면 `branchId` 오름차순이다. 항목은 스냅샷의 처리일 기준 수치와 `adjustmentCount`를 담는다.
 - 생성은 ADR의 지점 MANAGER 이상에 `sales:read`를 더한다. 응답에 매출 금액이 담기기 때문이다. 기본 관리자 권한 묶음에는 `sales:read`가 있다.
 - 운영 중지 지점도 마감할 수 있다(정리 업무).
 

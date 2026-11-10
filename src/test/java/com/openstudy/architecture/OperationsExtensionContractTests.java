@@ -121,7 +121,7 @@ class OperationsExtensionContractTests {
             assertThat(operation.get("x-adr-decisions").toString()).as(id).contains("M13-D");
             // #112 and #114 are implemented; the other issues are still design targets.
             assertThat(operation.get("x-implementation-status").asString()).as(id)
-                    .isEqualTo(List.of("#112", "#114").contains(ISSUES.get(id)) ? "implemented" : "design-target");
+                    .isEqualTo(List.of("#112", "#114", "#115").contains(ISSUES.get(id)) ? "implemented" : "design-target");
             assertThat(operation.get("x-implementation-issue").asString()).as(id).isEqualTo(ISSUES.get(id));
             String[] methodAndPath = route.split(" ");
             assertThat(contract).as(route).contains("`" + methodAndPath[0].toUpperCase() + " " + methodAndPath[1]);
@@ -174,9 +174,11 @@ class OperationsExtensionContractTests {
                     .isEqualTo("#/components/schemas/OperationsConflictError");
         }
         assertThat(spec.toString()).doesNotContain("\"issue\":\"#114\"");
+        // #115 moved its notes into the refund descriptions.
         for (String path : List.of("/payments/{id}/refund", "/room-reservations/{id}/cancel")) {
-            assertThat(planned(existing("post", path), "#115").get("note").asString()).as(path).contains("daily_closing_adjustments");
+            assertThat(existing("post", path).get("description").asString()).as(path).contains("daily_closing_adjustments");
         }
+        assertThat(spec.toString()).doesNotContain("\"issue\":\"#115\"");
         // No implemented schema gained a field before its implementation.
         assertThat(names(schema("AggregationCondition").get("properties"))).doesNotContain("methods");
     }

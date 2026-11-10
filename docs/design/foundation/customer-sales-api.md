@@ -94,6 +94,7 @@ OWNER는 모든 권한 조건을 만족한다. 고객·결제·이용권의 삭�
 - 성공하면 `refunds` 행, 결제 `REFUNDED`, 이용권 `REFUNDED`를 함께 남긴다. 이용권의 `started_at`·`expires_at`과 결제의 `amount_krw`·`approved_at`은 바꾸지 않는다(FR-PAY-10).
 - 응답은 갱신된 `Payment`(200)이며 `refund`에 환불 사건이 담긴다.
 - 스터디룸·사물함 결제 환불은 M6다. M4 API로 만들 수 있는 결제는 이용권 결제뿐이다.
+- 2026-11-10 M13 #115: 원결제가 마감된 날(원결제 지점·Asia/Seoul)에 승인됐으면 같은 트랜잭션에서 마감 조정 이력을 남긴다. 요청·응답은 그대로다([M13 계약](operations-extension-api.md)).
 
 ## 발급 이용권 조회
 

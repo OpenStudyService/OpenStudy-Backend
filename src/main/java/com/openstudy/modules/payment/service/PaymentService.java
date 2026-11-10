@@ -197,6 +197,7 @@ public class PaymentService {
             long passId = passes.refund(actor, id, now, requestId);
             var refund = refunds.saveAndFlush(Refund.full(payment, actor, reason,
                     storedKey("RFD-", actor, REFUND, scopeKey, key), now));
+            adjustClosedDay(payment, refund);
             payment.refund();
             repository.saveAndFlush(payment);
             var after = new LinkedHashMap<String, Object>();
@@ -224,6 +225,7 @@ public class PaymentService {
         var payment = repository.findById(paymentId).orElseThrow();
         if (payment.getPurpose() != PaymentPurpose.ROOM) throw new IllegalStateException("A reservation holds a room payment");
         var refund = refunds.saveAndFlush(Refund.full(payment, actor, reason, storedKey, at));
+        adjustClosedDay(payment, refund);
         payment.refund();
         repository.saveAndFlush(payment);
         var after = new LinkedHashMap<String, Object>();
@@ -233,6 +235,12 @@ public class PaymentService {
         audit.record(AuditEvent.change(actor, payment.getBranchId(), "payments", paymentId, "REFUNDED",
                 json.writeValueAsString(Map.of("status", PaymentStatus.APPROVED.name())), json.writeValueAsString(after), requestId));
         return refund.getId();
+    }
+
+    /** A refund of a payment approved on a closed day is recorded on that closing (M13-D04·D11, #115). */
+    private void adjustClosedDay(Payment payment, Refund refund) {
+        refunds.recordClosingAdjustment(refund.getId(), payment.getBranchId(),
+                java.time.LocalDate.ofInstant(payment.getApprovedAt(), java.time.ZoneId.of("Asia/Seoul")));
     }
 
     /**
