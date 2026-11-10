@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "OpenStudy 1차 기반 기능 API 설계",
-    "version": "0.1.15-m14-account",
-    "description": "검토 완료 8중분류/61요구사항의 구현 전 목표 계약. Q1~Q12의 2026-10-23 당시 사용자 답변을 기록하되 Q8은 SRS v1.1 정책으로 대체됨. decisions.md 참고. 기존 서버 전체 구현 명세가 아니다. ID문자열·API version=DB+1. 상태 변경은 CSRF, 지점과 행위 인가를 함께 검증한다. Issue #27의 /me/profile 및 CurrentUser는 구현된 M1 닉네임 계약이다. 나머지 operation의 구현 상태는 각각의 표기를 따른다. SRS v1.1 확정 상품 정책: 거래 유무와 무관하게 물리 삭제 미제공; 판매 중지·재개 및 기존 상품·거래·revision 보존. 이전 Q8 조건부 삭제안은 적용하지 않는다. /lookups는 workspace 선택 데이터 계약이다. 변경 알림 SSE는 ADR-COM-001에 따라 제거했다. 상품/분류 선택 데이터는 관련 업무 API 구현 전까지 빈 배열이다. M4 고객·Mock 결제·발급 이용권·환불 operation은 Issue #55의 설계 계약(customer-sales-api.md, ADR-M4-002)이며 구현은 #56~#58에서 진행한다. 결제·환불 요청에는 금액 필드가 없고 Idempotency-Key가 필수다. M5 좌석·입퇴실·차감·정확 일치 조회·수동 조정 operation은 Issue #60의 설계 계약(seat-usage-api.md, ADR-M5-001)이며 구현은 #61~#64에서 진행한다. 입실·퇴실·이동·조정은 Idempotency-Key가 필수이고, 퇴실·조정 요청에 차감량 필드는 없다. M7 업무·채널·메시지·업무 카드·시설·문의·공지 operation은 Issue #74의 설계 계약(collaboration-api.md, ADR-M7-001)이며 구현은 #75~#80에서 진행한다. 메시지 전송은 clientMessageKey가 필수이고 업무에는 삭제 API가 없다. 업무 operation과 담당자 후보는 #75에서, 시설 operation은 #78에서, 고객 문의 operation은 #79에서, 공지 operation은 #80에서 구현됐다. 채널·메시지 operation은 #76에서, 업무 카드 공유 operation은 #77에서 구현됐다. 좌석 목록·상세·등록·수정·운영 중단/재개·배치도·현황 operation은 #61에서 구현됐다. 입실용 정확 일치 조회·입실·이용 기록 상세·퇴실 operation은 #62에서, 이용 중 좌석 이동 operation은 #63에서, 입퇴실 이력·이용권 수동 조정·고객 구매·사용 내역 operation은 #64에서 구현됐다. M6 룸·예약·사물함·배정·타 지점 요약 operation은 Issue #67의 설계 계약(space-operations-api.md, ADR-M6-001)이며 구현은 #68~#72에서 진행한다. 예약·배정·연장·취소는 Idempotency-Key가 필수이고 요청에 금액 필드가 없다. 룸 등록·조회·수정·운영 중단/재개와 예약 생성·목록·달력·상세 operation은 #69에서, 예약 취소와 이용 시작·완료 operation은 #70에서 구현됐다. 사물함 목록·등록·현황·상세·수정·운영 중단/재개·지점 요금 일괄 적용과 배정 목록·생성·상세·연장·반납 operation은 #71에서 구현됐다. 타 지점 고객 최소 요약과 고객의 룸·사물함 이력 operation은 #72에서 구현됐다. 본문·스레드별 독립 읽음은 Issue #155에서 계약·구현됐다(collaboration-api.md, ADR-M7-001 M7-D08·D09). POST /channels/{id}/read는 본문 위치 전용으로 바뀌어 답글 ID를 받지 않고, POST /channels/{id}/messages/{messageId}/read가 원문별 스레드 위치를 갱신한다. M8 근무표·출퇴근·근태 operation은 Issue #82의 설계 계약(workforce-api.md, ADR-M8-001)이며 구현은 근무표 #83, 근태 #84에서 진행한다. 근무 등록과 출근은 Idempotency-Key가 필수이고, 근태 명령은 /me/attendance 아래에서 경로·본문에 직원·근태 ID 없이 본인의 진행 중 근태만 바꾼다. 근무 충돌은 409 SHIFT_CONFLICT와 ShiftConflictError의 겹친 구간으로 알리고, 요청자가 볼 수 없는 지점의 근무는 \"다른 지점 근무\"로만 표시한다. 주간 근무표·근무 목록·등록·상세·수정·취소 operation은 #83에서 구현됐다. 현재 근태·출근·휴게 시작·휴게 종료·퇴근·근태 목록·근태 상세 operation은 #84에서 구현됐다. M9 정형 집계·최소 원장·홈 요약 operation은 Issue #86의 설계 계약(aggregation-api.md, ADR-M9-001)이며 구현은 매출·지점 비교·최소 원장 #87, 이용권 판매량·상품 순위·추세 #88, 홈 요약 #90에서 진행한다. 매출·지점 비교·최소 원장 operation은 #87에서 구현됐다. 이용권 판매량·상품 순위·추세 operation은 #88에서 구현됐다. 운영 홈 요약 operation은 #90에서 구현됐다(메시지 카드 제외, ADR-M10-002 M10-D11). 매출 집계는 요청한 모든 지점에 sales:read가 필요하고 하나라도 없으면 403이다. 기간이 없으면 이번 달 1일 0시~내일 0시 미만(Asia/Seoul), 366일 초과는 422 PERIOD_TOO_LONG이다. 지표 정의는 최상위 x-metric-definitions에 있고 M10이 같은 정의를 쓴다. 2026-11-05 사용자 결정: 366일 초과 422 PERIOD_TOO_LONG 확정, 홈 요약 근무 카드의 colleagues에 같은 지점 동료의 이름·근무 시각만 공개(근무표·근태 API의 M8-D02 범위는 그대로). 팀 채팅 operation(/channels/**)은 #167에서 설정 플래그 openstudy.team-chat.enabled(기본값 false)로 비활성화했다. 꺼져 있으면 서버에 경로가 없어 404이고, 계약에는 deprecated와 x-feature-flag·x-disabled-by-default로 표시한다. 자연어 분석(AI 채팅) operation 10개는 #92에서 nl-analysis-api.md로 계약했고 모두 구현돼 있다(implemented). 업무 기록·CSV 반출·진단 로그·품질 평가는 계약 밖이고, 옛 경로(/conversations 등)와 옛 형식 결과(legacyExecution)는 2026-11-08에 지웠으며, 질문은 SSE 없이 한 번의 요청·응답으로 끝난다(ADR-COM-001). M12 근태 정정·휴가·대체근무 operation은 Issue #106의 설계 계약(workforce-requests-api.md, ADR-M12-001)이며 구현은 근태 정정 #107, 휴가 부여·신청·잔여량 #108, 대체근무 #109에서 진행한다. 신청 생성은 Idempotency-Key가 필수이고 승인·반려·취소는 version과 상태로 처리한다. 본인 신청은 본인이 승인·반려·승인 취소할 수 없고(403 SELF_DECISION_FORBIDDEN), 휴가 승인 취소는 시작일 전까지다(2026-11-09 사용자 결정). 휴가 부여·보정·잔여량·신청·승인·반려·신청 취소·승인 취소 operation 13개는 #108에서 구현됐다(leave_requests 신청 지점 칼럼 V11). 대체근무 신청·조회·승인·반려·신청 취소·승인 취소 operation 7개는 #109에서 구현됐다. 근태 정정 신청·조회·승인·반려·신청 취소 operation 6개는 #107에서 구현됐다(반려 사유는 필수이며 audit_events에 저장, 2026-11-09 사용자 결정). Issue #111의 M13 지점 휴무일·상품 판매 기간/한도·중복 고객 병합·일별 마감·고급 필터·이용 지점 사용량·좌석 점유 추이는 operations-extension-api.md의 설계 계약(design-target)이다. 새 operation 12개는 #112~#116에서 구현한다. 이미 구현된 operation·schema에 더할 필드·필터·오류 코드는 x-planned-changes에 두고 구현 이슈가 본 정의로 옮긴다. 지점 휴무일 operation 4개와 룸 예약 차단·달력·홈 휴무 안내는 #112에서 구현됐다. 상품 판매 기간·한도(상품 필드·목록 필터·결제 판매 판정)는 #113에서 구현됐다. 중복 고객 확인·병합 operation 3개와 병합 고객 조회·판매·입실 처리는 #114에서 구현됐다. 일별 마감 operation 3개와 환불의 마감 조정 기록은 #115에서 구현됐다. 결제·집계 고급 필터, 이용 지점 사용량, 좌석 점유 추이는 #116에서 구현됐다. M13 계약의 operation은 모두 구현됐다. Issue #118의 M14 비밀번호 변경·관리자 초기화·재설정 링크·잠금 해제·프로필 사진·감사 검색은 account-collab-api.md의 설계 계약(design-target)이다. 새 operation 10개는 #119(비밀번호·잠금 해제), #120(사진), #122(감사)에서 구현한다. SessionUser·Employee의 avatar 의미 변경은 x-planned-changes에 두고 #120이 본 정의로 옮긴다. 감사 로그 검색·상세 operation 2개는 #122에서 구현됐다. 비밀번호 변경·관리자 초기화·재설정 링크·로그인 잠금 해제 operation 5개는 #119에서 구현됐다(V16 password_reset_tokens). 프로필 사진 업로드·삭제·조회 operation 3개와 SessionUser·Employee avatar 경로는 #120에서 구현됐다. M14 계약의 operation은 모두 구현됐다."
+    "version": "0.1.16-m15-analysis-reuse",
+    "description": "검토 완료 8중분류/61요구사항의 구현 전 목표 계약. Q1~Q12의 2026-10-23 당시 사용자 답변을 기록하되 Q8은 SRS v1.1 정책으로 대체됨. decisions.md 참고. 기존 서버 전체 구현 명세가 아니다. ID문자열·API version=DB+1. 상태 변경은 CSRF, 지점과 행위 인가를 함께 검증한다. Issue #27의 /me/profile 및 CurrentUser는 구현된 M1 닉네임 계약이다. 나머지 operation의 구현 상태는 각각의 표기를 따른다. SRS v1.1 확정 상품 정책: 거래 유무와 무관하게 물리 삭제 미제공; 판매 중지·재개 및 기존 상품·거래·revision 보존. 이전 Q8 조건부 삭제안은 적용하지 않는다. /lookups는 workspace 선택 데이터 계약이다. 변경 알림 SSE는 ADR-COM-001에 따라 제거했다. 상품/분류 선택 데이터는 관련 업무 API 구현 전까지 빈 배열이다. M4 고객·Mock 결제·발급 이용권·환불 operation은 Issue #55의 설계 계약(customer-sales-api.md, ADR-M4-002)이며 구현은 #56~#58에서 진행한다. 결제·환불 요청에는 금액 필드가 없고 Idempotency-Key가 필수다. M5 좌석·입퇴실·차감·정확 일치 조회·수동 조정 operation은 Issue #60의 설계 계약(seat-usage-api.md, ADR-M5-001)이며 구현은 #61~#64에서 진행한다. 입실·퇴실·이동·조정은 Idempotency-Key가 필수이고, 퇴실·조정 요청에 차감량 필드는 없다. M7 업무·채널·메시지·업무 카드·시설·문의·공지 operation은 Issue #74의 설계 계약(collaboration-api.md, ADR-M7-001)이며 구현은 #75~#80에서 진행한다. 메시지 전송은 clientMessageKey가 필수이고 업무에는 삭제 API가 없다. 업무 operation과 담당자 후보는 #75에서, 시설 operation은 #78에서, 고객 문의 operation은 #79에서, 공지 operation은 #80에서 구현됐다. 채널·메시지 operation은 #76에서, 업무 카드 공유 operation은 #77에서 구현됐다. 좌석 목록·상세·등록·수정·운영 중단/재개·배치도·현황 operation은 #61에서 구현됐다. 입실용 정확 일치 조회·입실·이용 기록 상세·퇴실 operation은 #62에서, 이용 중 좌석 이동 operation은 #63에서, 입퇴실 이력·이용권 수동 조정·고객 구매·사용 내역 operation은 #64에서 구현됐다. M6 룸·예약·사물함·배정·타 지점 요약 operation은 Issue #67의 설계 계약(space-operations-api.md, ADR-M6-001)이며 구현은 #68~#72에서 진행한다. 예약·배정·연장·취소는 Idempotency-Key가 필수이고 요청에 금액 필드가 없다. 룸 등록·조회·수정·운영 중단/재개와 예약 생성·목록·달력·상세 operation은 #69에서, 예약 취소와 이용 시작·완료 operation은 #70에서 구현됐다. 사물함 목록·등록·현황·상세·수정·운영 중단/재개·지점 요금 일괄 적용과 배정 목록·생성·상세·연장·반납 operation은 #71에서 구현됐다. 타 지점 고객 최소 요약과 고객의 룸·사물함 이력 operation은 #72에서 구현됐다. 본문·스레드별 독립 읽음은 Issue #155에서 계약·구현됐다(collaboration-api.md, ADR-M7-001 M7-D08·D09). POST /channels/{id}/read는 본문 위치 전용으로 바뀌어 답글 ID를 받지 않고, POST /channels/{id}/messages/{messageId}/read가 원문별 스레드 위치를 갱신한다. M8 근무표·출퇴근·근태 operation은 Issue #82의 설계 계약(workforce-api.md, ADR-M8-001)이며 구현은 근무표 #83, 근태 #84에서 진행한다. 근무 등록과 출근은 Idempotency-Key가 필수이고, 근태 명령은 /me/attendance 아래에서 경로·본문에 직원·근태 ID 없이 본인의 진행 중 근태만 바꾼다. 근무 충돌은 409 SHIFT_CONFLICT와 ShiftConflictError의 겹친 구간으로 알리고, 요청자가 볼 수 없는 지점의 근무는 \"다른 지점 근무\"로만 표시한다. 주간 근무표·근무 목록·등록·상세·수정·취소 operation은 #83에서 구현됐다. 현재 근태·출근·휴게 시작·휴게 종료·퇴근·근태 목록·근태 상세 operation은 #84에서 구현됐다. M9 정형 집계·최소 원장·홈 요약 operation은 Issue #86의 설계 계약(aggregation-api.md, ADR-M9-001)이며 구현은 매출·지점 비교·최소 원장 #87, 이용권 판매량·상품 순위·추세 #88, 홈 요약 #90에서 진행한다. 매출·지점 비교·최소 원장 operation은 #87에서 구현됐다. 이용권 판매량·상품 순위·추세 operation은 #88에서 구현됐다. 운영 홈 요약 operation은 #90에서 구현됐다(메시지 카드 제외, ADR-M10-002 M10-D11). 매출 집계는 요청한 모든 지점에 sales:read가 필요하고 하나라도 없으면 403이다. 기간이 없으면 이번 달 1일 0시~내일 0시 미만(Asia/Seoul), 366일 초과는 422 PERIOD_TOO_LONG이다. 지표 정의는 최상위 x-metric-definitions에 있고 M10이 같은 정의를 쓴다. 2026-11-05 사용자 결정: 366일 초과 422 PERIOD_TOO_LONG 확정, 홈 요약 근무 카드의 colleagues에 같은 지점 동료의 이름·근무 시각만 공개(근무표·근태 API의 M8-D02 범위는 그대로). 팀 채팅 operation(/channels/**)은 #167에서 설정 플래그 openstudy.team-chat.enabled(기본값 false)로 비활성화했다. 꺼져 있으면 서버에 경로가 없어 404이고, 계약에는 deprecated와 x-feature-flag·x-disabled-by-default로 표시한다. 자연어 분석(AI 채팅) operation 10개는 #92에서 nl-analysis-api.md로 계약했고 모두 구현돼 있다(implemented). 업무 기록·CSV 반출·진단 로그·품질 평가는 계약 밖이고, 옛 경로(/conversations 등)와 옛 형식 결과(legacyExecution)는 2026-11-08에 지웠으며, 질문은 SSE 없이 한 번의 요청·응답으로 끝난다(ADR-COM-001). M12 근태 정정·휴가·대체근무 operation은 Issue #106의 설계 계약(workforce-requests-api.md, ADR-M12-001)이며 구현은 근태 정정 #107, 휴가 부여·신청·잔여량 #108, 대체근무 #109에서 진행한다. 신청 생성은 Idempotency-Key가 필수이고 승인·반려·취소는 version과 상태로 처리한다. 본인 신청은 본인이 승인·반려·승인 취소할 수 없고(403 SELF_DECISION_FORBIDDEN), 휴가 승인 취소는 시작일 전까지다(2026-11-09 사용자 결정). 휴가 부여·보정·잔여량·신청·승인·반려·신청 취소·승인 취소 operation 13개는 #108에서 구현됐다(leave_requests 신청 지점 칼럼 V11). 대체근무 신청·조회·승인·반려·신청 취소·승인 취소 operation 7개는 #109에서 구현됐다. 근태 정정 신청·조회·승인·반려·신청 취소 operation 6개는 #107에서 구현됐다(반려 사유는 필수이며 audit_events에 저장, 2026-11-09 사용자 결정). Issue #111의 M13 지점 휴무일·상품 판매 기간/한도·중복 고객 병합·일별 마감·고급 필터·이용 지점 사용량·좌석 점유 추이는 operations-extension-api.md의 설계 계약(design-target)이다. 새 operation 12개는 #112~#116에서 구현한다. 이미 구현된 operation·schema에 더할 필드·필터·오류 코드는 x-planned-changes에 두고 구현 이슈가 본 정의로 옮긴다. 지점 휴무일 operation 4개와 룸 예약 차단·달력·홈 휴무 안내는 #112에서 구현됐다. 상품 판매 기간·한도(상품 필드·목록 필터·결제 판매 판정)는 #113에서 구현됐다. 중복 고객 확인·병합 operation 3개와 병합 고객 조회·판매·입실 처리는 #114에서 구현됐다. 일별 마감 operation 3개와 환불의 마감 조정 기록은 #115에서 구현됐다. 결제·집계 고급 필터, 이용 지점 사용량, 좌석 점유 추이는 #116에서 구현됐다. M13 계약의 operation은 모두 구현됐다. Issue #118의 M14 비밀번호 변경·관리자 초기화·재설정 링크·잠금 해제·프로필 사진·감사 검색은 account-collab-api.md의 설계 계약(design-target)이다. 새 operation 10개는 #119(비밀번호·잠금 해제), #120(사진), #122(감사)에서 구현한다. SessionUser·Employee의 avatar 의미 변경은 x-planned-changes에 두고 #120이 본 정의로 옮긴다. 감사 로그 검색·상세 operation 2개는 #122에서 구현됐다. 비밀번호 변경·관리자 초기화·재설정 링크·로그인 잠금 해제 operation 5개는 #119에서 구현됐다(V16 password_reset_tokens). 프로필 사진 업로드·삭제·조회 operation 3개와 SessionUser·Employee avatar 경로는 #120에서 구현됐다. M14 계약의 operation은 모두 구현됐다. Issue #124의 M15 필터 수정·최근 질의·결과 재조회·후속 질문 문맥·CSV 내보내기는 analysis-reuse-api.md의 설계 계약(design-target)이다. 새 operation 4개는 #125(필터 수정·최근 질의)와 #127(CSV)에서 구현한다. 기존 AI operation·schema의 변경은 x-planned-changes에 두고 #125·#126이 본 정의로 옮긴다. 실행 계획 재사용은 세션 30분 저장 대신 저장 실행 재실행으로 바꿨다(M15-D04, 2026-11-11)."
   },
   "servers": [
     {
@@ -16871,6 +16871,69 @@
         "x-adr-decisions": [
           "M10-D06",
           "M10-D12"
+        ],
+        "x-planned-changes": [
+          {
+            "issue": "#125",
+            "status": "design-target",
+            "parameters": [
+              {
+                "name": "datasetId",
+                "in": "query",
+                "required": false,
+                "schema": {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "description": "없으면 첫 데이터셋."
+              },
+              {
+                "name": "page",
+                "in": "query",
+                "required": false,
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 1
+                }
+              },
+              {
+                "name": "size",
+                "in": "query",
+                "required": false,
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 50,
+                  "default": 20
+                }
+              },
+              {
+                "name": "sort",
+                "in": "query",
+                "required": false,
+                "schema": {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "description": "그 데이터셋의 열 별칭."
+              },
+              {
+                "name": "direction",
+                "in": "query",
+                "required": false,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "asc",
+                    "desc"
+                  ],
+                  "default": "desc"
+                }
+              }
+            ],
+            "description": "페이지·정렬·상세: 요청마다 저장된 조건을 현재 권한·상한으로 다시 실행한다. 모델을 부르지 않고 세션·시간 제한은 없다(M15-D04, 2026-11-11 변경)."
+          }
         ]
       }
     },
@@ -22146,6 +22209,517 @@
         ],
         "x-adr-decisions": [
           "M14-D04"
+        ]
+      }
+    },
+    "/ai/executions/{executionId}/refinements": {
+      "post": {
+        "operationId": "refineAiExecution",
+        "summary": "해석 필터 수정 재실행",
+        "tags": [
+          "ai"
+        ],
+        "description": "기간·지점·상품만 바꿔 같은 등록 분석을 다시 실행하고 같은 대화에 새 실행(origin REFINEMENT)으로 남긴다. 모델을 호출하지 않는다. 고칠 수 있는 조건은 분석마다 다르다(editableFilters). 권한 밖 지점의 이름·수치는 응답에 담지 않는다.",
+        "x-requirement-ids": [
+          "FR-NL-22",
+          "FR-NL-35"
+        ],
+        "x-permission": "실행 주인. 요청마다 현재 ai:read·지점 범위·매출이면 sales:read를 다시 검사(M10-D06)",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#125",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "다시 실행한 결과(status COMPLETED).",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiQueryResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "description": "카탈로그가 준비되지 않음(AI_NOT_READY).",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiRefinement"
+              }
+            }
+          }
+        },
+        "x-error-codes": [
+          "NOT_FOUND",
+          "NOT_EXECUTABLE",
+          "ANALYSIS_UNAVAILABLE",
+          "VALIDATION_FAILED",
+          "FILTER_NOT_EDITABLE",
+          "PERIOD_TOO_LONG",
+          "NO_FILTER_CHANGE",
+          "AI_PERMISSION_DENIED",
+          "BRANCH_SCOPE_DENIED",
+          "SALES_PERMISSION_DENIED",
+          "AUTHORIZATION_SCOPE_CHECK",
+          "RATE_LIMITED",
+          "AI_NOT_READY"
+        ],
+        "x-adr-decisions": [
+          "M15-D04",
+          "M15-D05"
+        ]
+      }
+    },
+    "/ai/recent-queries": {
+      "get": {
+        "operationId": "listAiRecentQueries",
+        "summary": "최근 질의",
+        "tags": [
+          "ai"
+        ],
+        "description": "본인 질문 중 30일 안의 최신 20건(질문 시각 내림차순). 지운 대화와 필터 수정 실행은 빠진다. 재실행은 executionId로 GET /ai/executions/{executionId}를 부르며 현재 권한으로 다시 검증한다. query는 받지 않는다.",
+        "x-requirement-ids": [
+          "FR-NL-23"
+        ],
+        "x-permission": "본인(ai:read가 한 지점 이상)",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#125",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "최근 질의.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiRecentQueryList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "description": "카탈로그가 준비되지 않음(AI_NOT_READY).",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [],
+        "x-error-codes": [
+          "VALIDATION_FAILED",
+          "AI_PERMISSION_DENIED"
+        ],
+        "x-adr-decisions": [
+          "M15-D01"
+        ]
+      }
+    },
+    "/ai/executions/{executionId}/export": {
+      "get": {
+        "operationId": "exportAiExecution",
+        "summary": "자연어 분석 결과 CSV 내보내기",
+        "tags": [
+          "ai"
+        ],
+        "description": "저장된 조건을 현재 권한으로 다시 실행해 CSV로 내려준다. 승인 절차 없이 감사(entity_type ai-execution, action EXPORTED)에 남긴다(M15-D09). 형식은 analysis-reuse-api.md \"CSV 내보내기\".",
+        "x-requirement-ids": [
+          "FR-AGG-16"
+        ],
+        "x-permission": "실행 주인. 요청마다 현재 ai:read·지점 범위·매출이면 sales:read를 다시 검사(M10-D06)",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#127",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "CSV 파일.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              },
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "attachment; filename*=UTF-8''<이름>_<YYYYMMDD-HHmm>.csv"
+              }
+            },
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "description": "UTF-8 BOM, CRLF, RFC 4180. 머리말 행·빈 행·표. 최대 1,000행. 수식 주입 방지(M15-D07)."
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "description": "카탈로그가 준비되지 않음(AI_NOT_READY).",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          {
+            "name": "datasetId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "없으면 첫 데이터셋."
+          }
+        ],
+        "x-error-codes": [
+          "NOT_FOUND",
+          "NOT_EXECUTABLE",
+          "ANALYSIS_UNAVAILABLE",
+          "VALIDATION_FAILED",
+          "AI_PERMISSION_DENIED",
+          "BRANCH_SCOPE_DENIED",
+          "SALES_PERMISSION_DENIED",
+          "AUTHORIZATION_SCOPE_CHECK",
+          "RATE_LIMITED",
+          "AI_NOT_READY"
+        ],
+        "x-adr-decisions": [
+          "M15-D02",
+          "M15-D07",
+          "M15-D09",
+          "M15-D10"
+        ]
+      }
+    },
+    "/sales/exports/{report}": {
+      "get": {
+        "operationId": "exportSalesReport",
+        "summary": "정형 집계 CSV 내보내기",
+        "tags": [
+          "sales"
+        ],
+        "description": "report에 해당하는 화면 API(GET /sales/revenue 등)와 같은 query·권한·검증으로 계산해 CSV로 내려준다. 페이지 query는 받지 않는다. 승인 절차 없이 감사(entity_type sales-report, action EXPORTED)에 남긴다(M15-D09).",
+        "x-requirement-ids": [
+          "FR-AGG-16"
+        ],
+        "x-permission": "해당 화면 API와 같다: 요청한 모든 지점의 sales:read",
+        "x-implementation-status": "design-target",
+        "x-implementation-issue": "#127",
+        "x-session-modes": [
+          "WORKSPACE"
+        ],
+        "responses": {
+          "200": {
+            "description": "CSV 파일.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "no-store"
+              },
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "attachment; filename*=UTF-8''<이름>_<YYYYMMDD-HHmm>.csv"
+              }
+            },
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "description": "UTF-8 BOM, CRLF, RFC 4180. 머리말 행·빈 행·표. 최대 1,000행. 수식 주입 방지(M15-D07)."
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          }
+        },
+        "parameters": [
+          {
+            "name": "report",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "revenue",
+                "revenue-branches",
+                "ledger",
+                "trend",
+                "passes-volume",
+                "passes-products",
+                "passes-usage"
+              ]
+            },
+            "description": "revenue→/sales/revenue, revenue-branches→/sales/revenue/branches, ledger→/sales/ledger, trend→/sales/trend, passes-volume→/sales/passes/volume, passes-products→/sales/passes/products, passes-usage→/sales/passes/usage"
+          },
+          {
+            "$ref": "#/components/parameters/AggregationBranchIds"
+          },
+          {
+            "$ref": "#/components/parameters/AggregationFrom"
+          },
+          {
+            "$ref": "#/components/parameters/AggregationTo"
+          },
+          {
+            "$ref": "#/components/parameters/RefundBasis"
+          },
+          {
+            "$ref": "#/components/parameters/SalesPurpose"
+          },
+          {
+            "name": "entryType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "승인",
+                "환불"
+              ]
+            },
+            "description": "승인 또는 환불 항목만. 이 필터를 쓰면 totals는 그 항목만의 합이다."
+          },
+          {
+            "$ref": "#/components/parameters/PassCategoryCode"
+          },
+          {
+            "$ref": "#/components/parameters/PaymentMethods"
+          },
+          {
+            "$ref": "#/components/parameters/ProductKinds"
+          },
+          {
+            "$ref": "#/components/parameters/OperatorIds"
+          },
+          {
+            "$ref": "#/components/parameters/ProcessingBranchIds"
+          }
+        ],
+        "x-error-codes": [
+          "EXPORT_REPORT_UNKNOWN",
+          "FORBIDDEN",
+          "VALIDATION_FAILED",
+          "PERIOD_TOO_LONG"
+        ],
+        "x-adr-decisions": [
+          "M15-D02",
+          "M15-D07",
+          "M15-D09",
+          "M15-D10"
         ]
       }
     }
@@ -32827,7 +33401,27 @@
           "response": {
             "$ref": "#/components/schemas/AiQueryResponse"
           }
-        }
+        },
+        "x-planned-changes": [
+          {
+            "issue": "#125",
+            "status": "design-target",
+            "properties": {
+              "origin": {
+                "type": "string",
+                "enum": [
+                  "QUESTION",
+                  "REFINEMENT"
+                ]
+              },
+              "sourceExecutionId": {
+                "type": "string",
+                "nullable": true,
+                "description": "필터 수정이면 원래 실행 ID."
+              }
+            }
+          }
+        ]
       },
       "AiReopenedConversation": {
         "type": "object",
@@ -33513,7 +34107,39 @@
             "type": "object",
             "description": "진단용 판정 정보"
           }
-        }
+        },
+        "x-planned-changes": [
+          {
+            "issue": "#126",
+            "status": "design-target",
+            "properties": {
+              "conditions": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/AiConditions"
+                  }
+                ],
+                "nullable": true
+              },
+              "context": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/AiContext"
+                  }
+                ],
+                "nullable": true
+              },
+              "editableFilters": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/AiEditableFilters"
+                  }
+                ],
+                "nullable": true
+              }
+            }
+          }
+        ]
       },
       "AiCancelResult": {
         "type": "object",
@@ -33594,7 +34220,43 @@
             ],
             "nullable": true
           }
-        }
+        },
+        "x-planned-changes": [
+          {
+            "issue": "#125",
+            "status": "design-target",
+            "properties": {
+              "conditions": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/AiConditions"
+                  }
+                ],
+                "nullable": true
+              },
+              "editableFilters": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/AiEditableFilters"
+                  }
+                ],
+                "nullable": true
+              },
+              "origin": {
+                "type": "string",
+                "enum": [
+                  "QUESTION",
+                  "REFINEMENT"
+                ]
+              },
+              "sourceExecutionId": {
+                "type": "string",
+                "nullable": true,
+                "description": "필터 수정이면 원래 실행 ID."
+              }
+            }
+          }
+        ]
       },
       "RequestStatus": {
         "type": "string",
@@ -36416,6 +37078,279 @@
           "period"
         ],
         "additionalProperties": false
+      },
+      "AiPeriod": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date"
+          },
+          "to": {
+            "type": "string",
+            "format": "date"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "additionalProperties": false,
+        "description": "Asia/Seoul 날짜, 양 끝 포함."
+      },
+      "AiConditions": {
+        "type": "object",
+        "properties": {
+          "analysisId": {
+            "type": "string"
+          },
+          "period": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AiPeriod"
+              }
+            ],
+            "nullable": true,
+            "description": "기간이 없는 분석(실시간)은 null."
+          },
+          "periodSource": {
+            "type": "string",
+            "enum": [
+              "DEFAULT",
+              "EDITED"
+            ],
+            "nullable": true
+          },
+          "branchIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          "productIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Id"
+            },
+            "description": "빈 목록은 전체."
+          },
+          "refundBasis": {
+            "type": "string",
+            "enum": [
+              "processed",
+              "original"
+            ],
+            "nullable": true
+          },
+          "zeroFill": {
+            "type": "boolean",
+            "nullable": true
+          }
+        },
+        "required": [
+          "analysisId",
+          "period",
+          "periodSource",
+          "branchIds",
+          "productIds",
+          "refundBasis",
+          "zeroFill"
+        ],
+        "additionalProperties": false,
+        "description": "실행 하나가 계산된 조건(analysis-reuse-api.md \"분석 조건\")."
+      },
+      "AiEditableFilters": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "maxDays": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 366
+              }
+            },
+            "required": [
+              "maxDays"
+            ],
+            "additionalProperties": false,
+            "description": "null이면 기간을 고칠 수 없다."
+          },
+          "branches": {
+            "type": "object",
+            "properties": {
+              "single": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "single"
+            ],
+            "additionalProperties": false
+          },
+          "products": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "period",
+          "branches",
+          "products"
+        ],
+        "additionalProperties": false,
+        "description": "그 분석에서 고칠 수 있는 조건(M15-D05, 2026-11-11 사용자 결정)."
+      },
+      "AiContext": {
+        "type": "object",
+        "properties": {
+          "basedOnExecutionId": {
+            "type": "string",
+            "nullable": true
+          },
+          "inherited": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "ANALYSIS",
+                "PERIOD",
+                "BRANCHES",
+                "PRODUCTS",
+                "REFUND_BASIS",
+                "ZERO_FILL"
+              ]
+            }
+          },
+          "changed": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "ANALYSIS",
+                "PERIOD",
+                "BRANCHES",
+                "PRODUCTS",
+                "REFUND_BASIS",
+                "ZERO_FILL"
+              ]
+            }
+          },
+          "reset": {
+            "type": "boolean"
+          },
+          "resetReason": {
+            "type": "string",
+            "enum": [
+              "NO_PRIOR_RESULT",
+              "SCOPE_CHANGED",
+              "PERMISSION_LOST"
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "basedOnExecutionId",
+          "inherited",
+          "changed",
+          "reset",
+          "resetReason"
+        ],
+        "additionalProperties": false,
+        "description": "후속 질문이 이어받은 조건과 바뀐 조건(M15-D06)."
+      },
+      "AiRefinement": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "$ref": "#/components/schemas/AiPeriod"
+          },
+          "branchIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Id"
+            },
+            "minItems": 1
+          },
+          "productIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          "clientRequestKey": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:-]{1,100}$"
+          }
+        },
+        "minProperties": 1,
+        "additionalProperties": false,
+        "description": "기간·지점·상품 중 하나 이상(M15-D05). 없는 조건은 원래 실행의 값."
+      },
+      "AiRecentQuery": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string"
+          },
+          "executionId": {
+            "type": "string",
+            "nullable": true
+          },
+          "conversationId": {
+            "type": "string"
+          },
+          "conversationTitle": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "analysisId": {
+            "type": "string",
+            "nullable": true
+          },
+          "askedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "rerunnable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "requestId",
+          "executionId",
+          "conversationId",
+          "conversationTitle",
+          "question",
+          "status",
+          "analysisId",
+          "askedAt",
+          "rerunnable"
+        ],
+        "additionalProperties": false
+      },
+      "AiRecentQueryList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/AiRecentQuery"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "description": "본인 질문 중 30일 안의 최신 20건(M15-D01)."
       }
     }
   },

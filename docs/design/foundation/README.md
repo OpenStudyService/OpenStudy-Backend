@@ -26,6 +26,8 @@
 
 2026-11-10 추가: Issue #118의 M14 비밀번호 변경·관리자 초기화·재설정 링크·로그인 잠금 해제·프로필 사진·감사 로그 검색 API는 [계정 복구·프로필 사진·감사 조회 API 계약](account-collab-api.md)과 OpenAPI `0.1.15-m14-account`의 설계 계약(`design-target`)을 따른다. 정책은 [ADR-M14-001](../../db/ADR-M14-001.md)이며 구현은 비밀번호·잠금 해제 #119, 프로필 사진 #120, 감사 로그 #122에서 진행한다. `SessionUser`·`Employee`의 `avatar` 의미 변경은 `x-planned-changes`에 두고 #120이 본 정의로 옮긴다. 초기화 즉시 기존 비밀번호 무효, 감사 검색 기간, 사진 조회 방식과 열람 범위는 2026-11-10 사용자 결정(M14-D11~D14)이다.
 
+2026-11-11 추가: Issue #124의 M15 해석 필터 수정·최근 질의·결과 페이지·정렬·상세·후속 질문 문맥·CSV 내보내기 API는 [분석 재사용·내보내기 API 계약](analysis-reuse-api.md)과 OpenAPI `0.1.16-m15-analysis-reuse`의 설계 계약(`design-target`)을 따른다. 정책은 [ADR-M15-001](../../db/ADR-M15-001.md)이며 구현은 필터 수정·최근 질의·재조회 #125, 정규화·후속 질문 #126, CSV #127에서 진행한다. 기존 AI operation·schema의 변경은 `x-planned-changes`에 둔다. 등록 분석 방식(ADR-M10-003)에 맞춘 실행 계획 재사용 변경(M15-D04), 분석별 수정 가능 조건(M15-D05), 승인 없는 내보내기(M15-D09), UTF-8 BOM(M15-D10)은 2026-11-11 사용자 결정이다.
+
 2026-10-27 추가: Issue #15의 초대 미리보기·신규/기존 계정 수락·최종 승인은 [초대 수락·승인 구현 계약](invitation-acceptance-api.md)을 따른다. 기존 요청·응답 모델과 계약 버전은 유지하고 해당 operation의 구현 상태만 OpenAPI에 표시한다.
 
 2026-10-27 추가: Issue #14의 초대 발송 worker·SMTP·lease·재시도는 [메일 발송·장애 복구 계약](invitation-delivery.md)을 따른다. 기본 비활성이며 실제 운영 SMTP 수신 및 공개 수락·승인(#15)의 검증 범위를 구분한다.

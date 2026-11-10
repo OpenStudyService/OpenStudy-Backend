@@ -183,7 +183,8 @@ class AccountContractTests {
     }
 
     @Test void theContractIsPublishedAsTheM14Version() throws Exception {
-        assertThat(spec.at("/info/version").asString()).isEqualTo("0.1.15-m14-account");
+        // M14 was published in 0.1.15-m14-account; later contracts raise the version (0.1.16-m15-analysis-reuse, #124).
+        assertThat(Integer.parseInt(spec.at("/info/version").asString().split("[.-]")[2])).isGreaterThanOrEqualTo(15);
         assertThat(spec.at("/info/description").asString()).contains("Issue #118", "account-collab-api.md");
         assertThat(contract()).contains("`0.1.15-m14-account`", "operation은 모두 설계 계약(`design-target`)");
         assertThat(Files.readString(DESIGN.resolve("README.md"))).contains("account-collab-api.md", "0.1.15-m14-account");

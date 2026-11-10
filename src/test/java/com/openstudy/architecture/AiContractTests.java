@@ -63,6 +63,8 @@ class AiContractTests {
             if (method.getValue().has("tags") && method.getValue().get("tags").toString().contains("\"ai\""))
                 published.add(method.getKey() + " " + path.getKey());
         }));
+        // M15 (#124) adds its own ai operations; they are checked by AnalysisReuseContractTests.
+        published.removeAll(AnalysisReuseContractTests.OPERATIONS.values());
         assertThat(published).containsExactlyInAnyOrderElementsOf(OPERATIONS.values());
         String doc = contract();
         OPERATIONS.forEach((id, route) -> {
