@@ -31,6 +31,12 @@ spring:
     timeout: 60m
     jdbc:
       initialize-schema: never
+  # Profile photos are at most 5 MiB (#120, M14-D10). The servlet limit sits a little above it so the API answers
+  # 422 AVATAR_TOO_LARGE from its own check; anything past the limit is mapped to the same 422.
+  servlet:
+    multipart:
+      max-file-size: 6MB
+      max-request-size: 6MB
 server:
   servlet:
     session:
@@ -40,6 +46,14 @@ server:
   # Keep NONE: ClientAddressResolver applies X-Forwarded-For itself, only behind TRUSTED_PROXIES.
   forward-headers-strategy: none
 openstudy:
+  # Profile photos (#120): s3 in operations (OPENSTUDY_AVATAR_STORAGE=s3 with bucket and region, see
+  # docs/deployment/avatar-bucket-request.md), directory for local development.
+  avatar:
+    storage: ${OPENSTUDY_AVATAR_STORAGE:directory}
+    directory: ${OPENSTUDY_AVATAR_DIRECTORY:./data/avatars}
+    s3:
+      bucket: ${OPENSTUDY_AVATAR_S3_BUCKET:}
+      region: ${OPENSTUDY_AVATAR_S3_REGION:}
   # Team chat left the service (ADR-M10-002 M10-D10, #167). Off hides every /api/channels/** operation (404).
   team-chat:
     enabled: ${OPENSTUDY_TEAM_CHAT_ENABLED:false}

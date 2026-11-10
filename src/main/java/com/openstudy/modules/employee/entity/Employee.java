@@ -92,6 +92,9 @@ public class Employee {
 
     public void changeNickname(String nickname) { this.nickname = nickname; this.updatedBy = id; }
 
+    /** The storage key of the own profile photo, or null (#120). Only the employee changes it. */
+    public void changeAvatar(String key) { this.avatarUrl = key; this.updatedBy = id; }
+
     public void changeAccount(String name, EmployeeStatus status, long actor) {
         this.name = name; this.status = status; this.updatedBy = actor;
     }

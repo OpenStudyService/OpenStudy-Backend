@@ -14,6 +14,8 @@ Frontend는 같은 [OpenAPI](openapi.json)(`0.1.15-m14-account`)로 연동한다
 
 2026-11-10: 비밀번호 변경·관리자 초기화·재설정 링크 확인·새 비밀번호 설정·로그인 잠금 해제 operation 5개는 #119에서 구현됐다(`implemented`, V16 `password_reset_tokens`).
 
+2026-11-10: 프로필 사진 operation 3개와 `SessionUser`·`Employee`의 `avatar` 경로는 #120에서 구현됐다(`implemented`). `x-planned-changes`는 본 정의로 옮겨 남은 것이 없다. 이로써 이 문서의 operation은 모두 구현됐다.
+
 - 정책 근거: [ADR-M14-001](../../db/ADR-M14-001.md)(M14-D01~D06, D09~D14)
   - M14-D07·D08(1:1 대화·채팅 스트림)은 [ADR-M10-002](../../db/ADR-M10-002.md)로 범위에서 빠져 이 계약에 없다.
   - M14-D11~D14는 이 계약을 쓰면서 사용자에게 받은 결정이다(2026-11-10).
@@ -237,9 +239,12 @@ Frontend는 같은 [OpenAPI](openapi.json)(`0.1.15-m14-account`)로 연동한다
   - `Cache-Control: private, max-age=86400`
   - `X-Content-Type-Options: nosniff`
 - `user.avatar`의 `v` 값은 사진마다 다르다. 사진을 바꾸면 경로가 바뀌므로, 브라우저 캐시가 이전 사진을 보여 주지 않는다.
-- 저장소
-  - 운영: S3 비공개 버킷이다. 버킷·IAM·암호화는 인프라 팀에 요청한다(#120).
-  - 로컬 개발·테스트: 같은 인터페이스의 파일 시스템 또는 메모리 저장소를 쓴다.
+- 저장소(#120에서 확정): `openstudy.avatar.storage`로 고른다.
+  - `s3`(운영): S3 비공개 버킷이다. `openstudy.avatar.s3.bucket`·`openstudy.avatar.s3.region`이 필요하고, 자격증명은 AWS 기본 체인(인스턴스·작업 역할)에서 얻는다. 객체마다 S3 관리형 암호화를 요청한다. 버킷·IAM 요청 내용은 [인프라 요청](../../deployment/avatar-bucket-request.md)에 있다.
+  - `directory`(기본, 로컬 개발): `openstudy.avatar.directory`(기본 `./data/avatars`) 아래 파일이다.
+  - `memory`(테스트): 메모리에만 둔다.
+- 서블릿 multipart 상한은 6MB다. 상한을 넘은 요청도 422 `AVATAR_TOO_LARGE`로 답한다.
+- `avatar_url`에 저장 키 형식이 아닌 값(이전 URL 등)이 있으면 사진이 없는 것으로 본다.
 
 ## 감사 로그 검색·상세(FR-AUD-03·04, M14-D04·D12)
 

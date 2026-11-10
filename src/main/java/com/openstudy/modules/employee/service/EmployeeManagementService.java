@@ -1,5 +1,6 @@
 package com.openstudy.modules.employee.service;
 
+import com.openstudy.modules.employee.dto.AvatarKeys;
 import java.util.*;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -40,7 +41,7 @@ public class EmployeeManagementService {
                     .toList();
             return new ManagedEmployee(Long.toString(account.getId()), ApiVersion.fromDatabase(account.getVersion()), account.getCreatedAt(),
                     account.getUpdatedAt(), rows.isEmpty() ? "all" : rows.getFirst().branchId(), account.getName(), account.getEmail(),
-                    EmployeeChanges.status(account.getStatus().name()), account.getNickname(), Objects.toString(account.getAvatarUrl(), ""),
+                    EmployeeChanges.status(account.getStatus().name()), account.getNickname(), AvatarKeys.path(account.getId(), account.getAvatarUrl()),
                     account.getGlobalRole() == GlobalRole.OWNER, rows);
         });
     }

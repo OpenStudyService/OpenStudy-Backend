@@ -159,7 +159,7 @@ class OwnerBootstrapTests {
         long pending = jdbc.queryForObject("SELECT MAX(CAST(version AS UNSIGNED)) FROM flyway_schema_history WHERE success=1", Long.class) + 1;
         Files.writeString(migrations.resolve("V" + pending + "__bootstrap_pending_test.sql"),
                 "CREATE TABLE bootstrap_pending_probe (id INT PRIMARY KEY);");
-        String classpath = directory + java.io.File.pathSeparator + System.getProperty("ownerBootstrap.runtimeClasspath");
+        String classpath = directory + java.io.File.pathSeparator + runtimeClasspath();
         assertThat(command(classpath).code()).isNotZero();
         assertThat(count("employees")).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE version=?", Long.class, String.valueOf(pending))).isZero();
@@ -167,10 +167,19 @@ class OwnerBootstrapTests {
                 .isZero();
     }
 
+    /** Written by the Gradle test task; too long for a command line on Windows (build.gradle, #120). */
+    private static String runtimeClasspath() throws java.io.IOException {
+        return Files.readString(Path.of(System.getProperty("ownerBootstrap.runtimeClasspathFile")), StandardCharsets.UTF_8).strip();
+    }
+
     private Result command(String classpath) throws Exception {
         String executable = java.nio.file.Path.of(System.getProperty("java.home"), "bin", "java").toString();
-        var builder = new ProcessBuilder(executable, "-cp", classpath,
-                OwnerBootstrap.class.getName()).redirectErrorStream(true);
+        // A java @argfile carries the classpath, which no longer fits a Windows command line. Backslashes are escape
+        // characters inside argfile quotes, so the paths use forward slashes, which Java accepts on Windows.
+        Path arguments = Files.createTempFile("owner-bootstrap", ".args");
+        arguments.toFile().deleteOnExit();
+        Files.writeString(arguments, "-cp \"" + classpath.replace(java.io.File.separatorChar, '/') + "\"", StandardCharsets.UTF_8);
+        var builder = new ProcessBuilder(executable, "@" + arguments, OwnerBootstrap.class.getName()).redirectErrorStream(true);
         builder.environment().putAll(environment);
         var process = builder.start();
         assertThat(process.waitFor(45, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
@@ -181,7 +190,7 @@ class OwnerBootstrapTests {
     }
 
     @Test void actualCommandStartsNoServerAndPrintsNoSecrets() throws Exception {
-        var result = command(System.getProperty("ownerBootstrap.runtimeClasspath"));
+        var result = command(runtimeClasspath());
         assertThat(result.code()).isZero();
         assertThat(result.output().strip()).isEqualTo("Initial OWNER created.");
         assertThat(count("employees")).isEqualTo(1);
