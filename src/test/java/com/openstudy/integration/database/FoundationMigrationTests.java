@@ -58,9 +58,9 @@ class FoundationMigrationTests {
     }
     long count(String sql) { return jdbc.queryForObject(sql, Long.class); }
     @Test void createsTheConsolidatedBaselineWithIncrementalMigrationsAndPreservesDataOnRestart() {
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(12);
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(13);
         assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank", String.class))
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13");
         assertThat(count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name <> 'flyway_schema_history'"))
                 .isEqualTo(74); // V7 adds the seven ai_* tables of the AI workspace (DomainLens), V12 branch_closures
         assertThat(count("SELECT COUNT(*) FROM employees")).isZero();
@@ -274,7 +274,7 @@ class FoundationMigrationTests {
         jdbc.update("INSERT INTO conversation_members(conversation_id,employee_id,last_read_message_id,last_read_at) VALUES(30,10,NULL,NULL),(30,11,41,'2026-11-01 00:00:00'),(30,12,42,'2026-11-01 00:00:00'),(31,10,NULL,NULL)");
         jdbc.update("INSERT INTO messages(id,conversation_id,sender_employee_id,parent_message_id,body,client_message_key) VALUES(40,30,10,NULL,'original','k1'),(41,30,10,40,'reply','k2'),(42,30,10,NULL,'later','k3'),(43,31,10,NULL,'other','k4'),(44,30,10,40,'reply 2','k5')");
 
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(7); // V6, V7, V8, V9, V10, V11 and V12
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(8); // V6 through V13
         assertThat(flyway(null).validateWithResult().validationSuccessful).isTrue();
 
         // A position on a reply (41) carries over as it is, and no position stays none.
@@ -316,7 +316,7 @@ class FoundationMigrationTests {
     /** #112 (M13-D01·D05): one closure per branch and day, on an existing branch, by an existing employee. */
     @Test void v12AddsOneClosurePerBranchAndDay() {
         flyway("11").migrate();
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(flyway("12").migrate().migrationsExecuted).isEqualTo(1);
         jdbc.update("INSERT INTO employees(id,email,password_hash,name,nickname,global_role,status) VALUES(10,'a@example.com','hash','A','A','OWNER','ACTIVE')");
         jdbc.update("INSERT INTO branches(id,code,name,address,status) VALUES(20,'B1','B','서울','ACTIVE')");
         String insert = "INSERT INTO branch_closures(branch_id,closed_on,note,created_by) VALUES(%s)";
@@ -325,6 +325,21 @@ class FoundationMigrationTests {
         assertThatThrownBy(() -> jdbc.update(insert.formatted("20,'2026-12-25',NULL,10"))).hasStackTraceContaining("uk_branch_closures_1");
         assertThatThrownBy(() -> jdbc.update(insert.formatted("99,'2026-12-26',NULL,10"))).hasStackTraceContaining("fk_branch_closures_1");
         assertThatThrownBy(() -> jdbc.update(insert.formatted("20,'2026-12-26',NULL,99"))).hasStackTraceContaining("fk_branch_closures_2");
+    }
+
+    /** #113 (M13-D02·D06): the sale period and limit are optional, and the database refuses an inverted period or a bad limit. */
+    @Test void v13AddsTheOptionalSalePeriodAndLimit() {
+        flyway("12").migrate();
+        jdbc.update("INSERT INTO product_categories(id,code,name,kind,status) VALUES(30,'C1','분류','TIME','ACTIVE')");
+        jdbc.update("INSERT INTO products(id,code,name,kind,price_krw,included_minutes,category_id) VALUES(40,'P1','상품','TIME',1000,60,30)");
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(1);
+        // An existing product keeps no restriction.
+        assertThat(jdbc.queryForMap("SELECT sales_starts_at, sales_ends_at, sales_limit FROM products WHERE id=40").values()).containsOnlyNulls();
+        jdbc.update("UPDATE products SET sales_starts_at='2026-12-01 00:00:00', sales_ends_at='2026-12-31 00:00:00', sales_limit=10 WHERE id=40");
+        assertThatThrownBy(() -> jdbc.update("UPDATE products SET sales_ends_at='2026-11-01 00:00:00' WHERE id=40"))
+                .hasStackTraceContaining("ck_products_sales_period");
+        assertThatThrownBy(() -> jdbc.update("UPDATE products SET sales_limit=0 WHERE id=40")).hasStackTraceContaining("ck_products_sales_limit");
+        assertThatThrownBy(() -> jdbc.update("UPDATE products SET sales_limit=1000001 WHERE id=40")).hasStackTraceContaining("ck_products_sales_limit");
     }
 
     /** No branch is guessed for a request that predates V11: the migration fails and leaves the table as it was. */

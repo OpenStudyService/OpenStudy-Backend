@@ -2,7 +2,7 @@
 
 Backend [#111](https://github.com/OpenStudyService/OpenStudy-Backend/issues/111)의 M13 계약이다. 구현은 지점 휴무일(#112), 상품 판매 기간·한도(#113), 중복 고객 확인·병합(#114), 일별 마감·조정 이력(#115), 고급 필터·이용 지점 사용량·좌석 점유 추이(#116)에서 이 문서를 기준으로 진행한다. Frontend는 같은 [OpenAPI](openapi.json)(`0.1.14-m13-operations-extension`)로 연동한다.
 
-2026-11-10: 이 문서의 operation은 모두 설계 계약(`design-target`)이다. 기존 operation에 더한 필드·필터도 같은 이슈에서 구현한다. 2026-11-10: 지점 휴무일 operation 4개와 룸 예약 차단·달력 `closedDates`·홈 `closures`는 #112에서 구현됐다(`implemented`, V12 `branch_closures`).
+2026-11-10: 이 문서의 operation은 모두 설계 계약(`design-target`)이다. 기존 operation에 더한 필드·필터도 같은 이슈에서 구현한다. 2026-11-10: 지점 휴무일 operation 4개와 룸 예약 차단·달력 `closedDates`·홈 `closures`는 #112에서 구현됐다(`implemented`, V12 `branch_closures`). 2026-11-10: 상품 판매 기간·한도(상품 필드·목록 필터·결제 판매 판정)는 #113에서 구현됐다(`implemented`, V13 `products` 칼럼).
 
 정책 근거는 [ADR-M13-001](../../db/ADR-M13-001.md)(M13-D01~D13)이다. M13-D11~D13은 이 계약을 쓰면서 사용자에게 받은 결정(2026-11-10)이다. 공통 요청·응답·오류·목록 규칙은 [API 계약](api.md)을, 원거래의 의미는 [상품 API](product-api.md)·[고객·결제 계약](customer-sales-api.md)·[공간 운영 계약](space-operations-api.md)·[좌석 이용 계약](seat-usage-api.md)을, 집계의 기간·환불 기준·메타정보·값 표현은 [정형 집계 계약](aggregation-api.md)(M9)을 따른다.
 
@@ -161,7 +161,7 @@ Backend [#111](https://github.com/OpenStudyService/OpenStudy-Backend/issues/111)
 | `saleAvailability` | 응답 | 지금 신규 판매가 되는지: `판매 가능`, `판매 중지`, `판매 전`, `판매 종료`, `한도 소진` |
 
 - 시각은 오프셋이 있는 ISO 8601이고 초 미만은 받지 않는다. 둘 다 있으면 `salesStartsAt < salesEndsAt`이어야 한다(422 `VALIDATION_FAILED`).
-- `PATCH`에서 필드를 빼면 그대로 두고, `null`을 보내면 제한을 없앤다. 세 필드의 변경도 상품 version을 올리고 `product_revisions`에 스냅샷을 남긴다(기존 변경 규칙과 같다). 권한도 기존 `PATCH`와 같다(현재 모든 판매 지점의 `operations:write`).
+- `PATCH`에서 필드를 빼면 그대로 두고, `null`을 보내면 제한을 없앤다. 세 필드의 변경도 상품 version을 올리고 `product_revisions`에 스냅샷을 남긴다(기존 변경 규칙과 같다). 스냅샷은 `schemaVersion` 2부터 세 필드를 담고, 그 전에 저장된 버전 1 스냅샷에는 없다. 권한도 기존 `PATCH`와 같다(현재 모든 판매 지점의 `operations:write`).
 - 한도를 현재 판매 수보다 낮게 바꿀 수 있다. 이미 판 결제는 그대로이고 `remainingQuantity`는 0이다.
 - `saleAvailability`는 아래 판정 순서의 첫 결과다. 판매 지점 여부는 담지 않는다(지점마다 다르다).
 - 목록 필터 `availability`는 `saleAvailability` 값 하나로 거른다. 기존 `status`(판매 중·판매 중지)와 함께 쓸 수 있다.
@@ -183,7 +183,7 @@ Backend [#111](https://github.com/OpenStudyService/OpenStudy-Backend/issues/111)
 
 ### 동시 판매(M13-D02)
 
-- 한도가 있는 상품은 `requireSellable`이 상품 행을 `FOR UPDATE`로 잠근 뒤 판매 수를 센다. 같은 상품의 판매는 차례로 처리되어 마지막 한 개를 두 명이 동시에 사도 하나만 성공한다.
+- 한도가 있는 상품은 `requireSellable`이 상품 행을 `FOR UPDATE`로 잠근 뒤 판매 수를 센다. 잠금 방식은 잠그기 전에 한도 유무를 읽어 정한다. 모든 명령이 공통 가드 행을 먼저 잠그므로 그 사이에 한도가 바뀌지 않는다(2026-11-10 #113 구현에서 확인). 같은 상품의 판매는 차례로 처리되어 마지막 한 개를 두 명이 동시에 사도 하나만 성공한다.
 - 한도가 없는 상품은 기존대로 공유 잠금이다. 동시 판매가 서로 기다리지 않는다.
 - 환불은 결제를 `환불`로 바꾸므로 판매 수가 하나 줄어 다시 팔 수 있다. 환불은 상품 행을 잠그지 않는다. 판매 수는 결제 상태로 세므로 환불과 판매가 엇갈려도 판매 수가 한도를 넘지 않는다(환불은 수를 줄이기만 한다).
 - 판매 수는 결제 상태를 직접 센다. 별도 카운터 칼럼을 두지 않아 카운터와 원거래가 어긋날 일이 없다. #113은 `payments (product_id, status)` 인덱스 필요 여부를 실행 계획으로 확인한다.
@@ -395,7 +395,7 @@ Backend [#111](https://github.com/OpenStudyService/OpenStudy-Backend/issues/111)
 | 이슈 | 추가 |
 | --- | --- |
 | #112 | `branch_closures`(지점, 날짜, 안내, 처리자, version, 유일 키 지점+날짜) |
-| #113 | `products`·`product_revisions`의 `sales_starts_at`, `sales_ends_at`, `sales_limit` |
+| #113 | `products`의 `sales_starts_at`, `sales_ends_at`, `sales_limit`. 변경 이력은 `product_revisions.snapshot_json`(스냅샷 `schemaVersion` 2)에 담겨 칼럼을 더하지 않는다(2026-11-10 #113 구현에서 정정) |
 | #114 | `customers.status`의 `MERGED`, `customers.merged_into_customer_id`, `customer_merges`(대상, 흡수 고객, 중간 고객, 처리자, 시각, 사유) |
 | #115 | `daily_closings`(지점, 날짜, 두 환불 기준 스냅샷, 처리자, 시각, 유일 키 지점+날짜), `daily_closing_adjustments`(마감, 환불, 결제, 금액, 처리자, 시각, 유일 키 환불) |
 | #116 | 없음. 원거래에서 직접 계산한다. 인덱스가 부족하면 실행 계획을 확인한 뒤 인덱스만 추가한다 |

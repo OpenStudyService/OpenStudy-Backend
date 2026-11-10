@@ -58,6 +58,8 @@ OWNER는 모든 권한 조건을 만족한다. 고객·결제·이용권의 삭�
 | 상품이 보이지 않음 | 404 `NOT_FOUND` |
 | 상품 판매 중지 | 409 `PRODUCT_NOT_ON_SALE` |
 | `branchId`가 상품 판매 지점이 아님 | 409 `PRODUCT_NOT_AVAILABLE_AT_BRANCH` |
+| 처리 시각이 판매 기간 밖(2026-11-10 M13 #113 추가) | 409 `PRODUCT_NOT_IN_SALE_PERIOD`(`salesStartsAt`, `salesEndsAt`) |
+| 판매 한도 소진(2026-11-10 M13 #113 추가) | 409 `PRODUCT_SALE_LIMIT_REACHED`(`salesLimit`, `soldQuantity`) |
 
 - 금액은 `ProductService.requireSellable(productId, branchId)`가 공유 잠금 아래 돌려준 스냅샷의 가격이다. 이 스냅샷으로 `payments.product_name_snapshot`과 `passes.snapshot_*`, `purchase_product_revision_id`를 채운다(FR-PASS-03).
 - `mockOutcome=APPROVED`: 결제를 `APPROVED`(`approved_at`=처리 시각, `issued_pass_quantity=1`)로 저장하고 이용권 1장을 발급한다. `FAILED`: 결제를 `FAILED`(`failed_at`, `issued_pass_quantity=0`)로 저장하고 이용권을 만들지 않는다(FR-PAY-04). 두 경우 모두 201이며 응답 `status`로 구분한다.

@@ -78,6 +78,13 @@ public class Product {
     @Enumerated(EnumType.STRING) @Column(name = "sale_status", nullable = false)
     @SemanticField(id = "product.status", name = "판매 상태", role = "STATUS", allowedValues = {"ON_SALE", "STOPPED"}, allowedOps = {"EQ", "NE", "IN"})
     private SaleStatus saleStatus;
+    /** Optional sale period [salesStartsAt, salesEndsAt) and limit over every sale branch (V13, M13-D02·D06). */
+    @Column(name = "sales_starts_at")
+    private Instant salesStartsAt;
+    @Column(name = "sales_ends_at")
+    private Instant salesEndsAt;
+    @Column(name = "sales_limit", columnDefinition = INT_UNSIGNED)
+    private Integer salesLimit;
     // Both timestamps are DB-maintained (DEFAULT / ON UPDATE CURRENT_TIMESTAMP(6)).
     @Generated(event = EventType.INSERT) @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
@@ -119,6 +126,11 @@ public class Product {
         this.updatedBy = actor;
     }
 
+    /** The sale period and limit; null clears a restriction (M13-D06). */
+    public void changeSales(Instant startsAt, Instant endsAt, Integer limit) {
+        this.salesStartsAt = startsAt; this.salesEndsAt = endsAt; this.salesLimit = limit;
+    }
+
     public void replaceBranches(Set<Long> removed, Set<Long> added) {
         branchIds.removeAll(removed);
         branchIds.addAll(added);
@@ -135,6 +147,9 @@ public class Product {
     public Long getHourlyRateKrw() { return hourlyRateKrw; }
     public Long getValidDays() { return validDays; }
     public SaleStatus getSaleStatus() { return saleStatus; }
+    public Instant getSalesStartsAt() { return salesStartsAt; }
+    public Instant getSalesEndsAt() { return salesEndsAt; }
+    public Integer getSalesLimit() { return salesLimit; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public long getVersion() { return version; }

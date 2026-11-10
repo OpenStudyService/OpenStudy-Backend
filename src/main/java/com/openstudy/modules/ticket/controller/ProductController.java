@@ -35,9 +35,10 @@ public class ProductController {
             @RequestParam(defaultValue = "1") long page, @RequestParam(defaultValue = "20") int pageSize,
             @RequestParam(required = false) String q, @RequestParam(required = false) String sort,
             @RequestParam(required = false) String direction, @RequestParam(required = false) String status,
-            @RequestParam(required = false) String kind, @RequestParam(required = false) String categoryId) {
+            @RequestParam(required = false) String kind, @RequestParam(required = false) String categoryId,
+            @RequestParam(required = false) String availability) {
         return service.list(actor(actor), scope, ListQuery.parse(page, pageSize, q, sort, direction,
-                Set.of("createdAt", "name", "priceKrw"), "createdAt"), status, kind, categoryId);
+                Set.of("createdAt", "name", "priceKrw"), "createdAt"), status, kind, categoryId, availability);
     }
 
     @GetMapping("/{id}")

@@ -4,6 +4,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -25,11 +27,13 @@ import tools.jackson.databind.ObjectMapper;
 import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
+import com.openstudy.common.exception.OperationsConflict;
 import com.openstudy.common.idempotency.IdempotencyStore;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.ListQuery;
 import com.openstudy.common.web.PageResponse;
 import com.openstudy.common.web.StrictInput;
+import com.openstudy.common.web.TimeRange;
 import com.openstudy.modules.authorization.dto.AuthorizationState;
 import com.openstudy.modules.authorization.dto.BranchAction;
 import com.openstudy.modules.authorization.service.AuthorizationService;
@@ -55,6 +59,10 @@ public class ProductService {
     private static final String ON_SALE = "판매 중";
     private static final String STOPPED = "판매 중지";
     private static final String CREATE = "products:create";
+    /** saleAvailability labels (M13-D06), in the order a sale is judged. */
+    static final String AVAILABLE = "판매 가능", NOT_YET = "판매 전", ENDED = "판매 종료", SOLD_OUT = "한도 소진";
+    private static final Set<String> AVAILABILITIES = Set.of(AVAILABLE, STOPPED, NOT_YET, ENDED, SOLD_OUT);
+    private static final long LIMIT_MAX = 1_000_000;
     private final ProductRepository repository;
     private final ProductCategoryRepository categories;
     private final ProductRevisionRepository revisions;
@@ -83,8 +91,11 @@ public class ProductService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<Product> list(long actor, String scope, ListQuery query, String status, String kind, String categoryId) {
+    public PageResponse<Product> list(long actor, String scope, ListQuery query, String status, String kind, String categoryId,
+            String availability) {
         if (status != null && !Set.of(ON_SALE, STOPPED).contains(status)) throw ApiException.validation("status", "올바른 판매 상태를 선택해 주세요.");
+        if (availability != null && !AVAILABILITIES.contains(availability))
+            throw ApiException.validation("availability", "올바른 판매 가능 여부를 선택해 주세요.");
         if (kind != null && !Set.of(ProductTerms.TIME, ProductTerms.PERIOD, ProductTerms.STORED_VALUE).contains(kind))
             throw ApiException.validation("kind", "올바른 상품 유형을 선택해 주세요.");
         Long category = categoryId == null ? null : ProductInputs.id(categoryId, "categoryId");
@@ -92,14 +103,21 @@ public class ProductService {
         Set<Long> selected = policy.scope(state, scope, BranchAction.READ);
         Set<Long> visible = policy.scope(state, "all", BranchAction.READ);
         String needle = query.q().toLowerCase(Locale.ROOT);
-        var rows = repository.findAllWithDetailsByOrderByIdAsc().stream().map(ProductViews::record)
+        var matching = repository.findAllWithDetailsByOrderByIdAsc().stream().map(ProductViews::record)
                 .filter(product -> !Collections.disjoint(product.branchIds(), selected))
                 .filter(product -> status == null || status.equals(statusName(product)))
                 .filter(product -> kind == null || kind.equals(product.terms().kind()))
                 .filter(product -> category == null || category == product.categoryId())
                 .filter(product -> (product.name() + " " + product.code() + " " + product.category().name())
                         .toLowerCase(Locale.ROOT).contains(needle))
-                .map(product -> view(product, state, visible)).toList();
+                .toList();
+        var sold = new HashMap<Long, Long>();
+        if (!matching.isEmpty())
+            repository.soldQuantities(matching.stream().map(ProductRecord::id).toList())
+                    .forEach(row -> sold.put(((Number) row[0]).longValue(), ((Number) row[1]).longValue()));
+        Instant now = clock.instant();
+        var rows = matching.stream().map(product -> view(product, state, visible, sold.getOrDefault(product.id(), 0L), now))
+                .filter(product -> availability == null || availability.equals(product.saleAvailability())).toList();
         Comparator<Product> field = switch (query.sort()) {
             case "name" -> Comparator.comparing(Product::name);
             case "priceKrw" -> Comparator.comparingLong(Product::priceKrw);
@@ -114,18 +132,25 @@ public class ProductService {
         return view(visibleProduct(state, id, scope), state, policy.scope(state, "all", BranchAction.READ));
     }
 
+    private Product view(ProductRecord product, AuthorizationState state, Set<Long> readable) {
+        return view(product, state, readable, repository.soldQuantity(product.id()), clock.instant());
+    }
+
     public Product create(long actor, String scope, String key, Map<String, Object> body, String requestId) {
-        var input = new StrictInput(body).only("name", "priceKrw", "terms", "status", "categoryId", "branchIds");
+        var input = new StrictInput(body).only("name", "priceKrw", "terms", "status", "categoryId", "branchIds", "salesStartsAt",
+                "salesEndsAt", "salesLimit");
         String name = input.text("name", 120);
         long price = ProductInputs.price(body.get("priceKrw"));
         ProductTerms terms = ProductInputs.terms(body.get("terms"));
         boolean onSale = ON_SALE.equals(input.choice("status", ON_SALE, STOPPED));
         long categoryId = input.id("categoryId");
         Set<Long> branches = ProductInputs.branchIds(body.get("branchIds"));
+        var sales = SalesInput.parse(body).over(ProductRecord.Sales.NONE);
         validKey(key);
         // scope=all never means "sell everywhere"; it is only checked for syntax and for a readable branch.
         policy.scope(actor, scope, BranchAction.READ);
-        byte[] fingerprint = digest(json.writeValueAsString(Arrays.asList(name, price, terms, onSale, categoryId, branches)));
+        byte[] fingerprint = digest(json.writeValueAsString(Arrays.asList(name, price, terms, onSale, categoryId, branches,
+                String.valueOf(sales.startsAt()), String.valueOf(sales.endsAt()), sales.limit())));
         return commands.inBranches(actor, branches, BranchAction.EDIT_PRODUCT, () -> {}, state -> {
             // Authorization has just been re-evaluated under the guard; only now may a stored result be replayed.
             var prior = requests.lock(actor, CREATE, "all", key);
@@ -136,8 +161,10 @@ public class ProductService {
             }
             var category = assignableCategory(categoryId, terms.kind());
             String code = "PD-" + UUID.randomUUID().toString().replace("-", "").substring(0, 29);
-            var product = repository.saveAndFlush(new com.openstudy.modules.ticket.entity.Product(code, name,
-                    ProductViews.kind(terms.kind()), price, ProductViews.columns(terms), onSale, category.entity(), branches, actor));
+            var entity = new com.openstudy.modules.ticket.entity.Product(code, name,
+                    ProductViews.kind(terms.kind()), price, ProductViews.columns(terms), onSale, category.entity(), branches, actor);
+            entity.changeSales(sales.startsAt(), sales.endsAt(), sales.limit());
+            var product = repository.saveAndFlush(entity);
             var created = ProductViews.record(product);
             long id = created.id();
             revisions.save(new com.openstudy.modules.ticket.entity.ProductRevision(id, created.dbVersion(), RevisionEvent.CREATED,
@@ -151,13 +178,15 @@ public class ProductService {
     }
 
     public Product update(long actor, long id, String scope, Map<String, Object> body, String requestId) {
-        var input = new StrictInput(body).only("version", "name", "priceKrw", "terms", "categoryId");
+        var input = new StrictInput(body).only("version", "name", "priceKrw", "terms", "categoryId", "salesStartsAt", "salesEndsAt",
+                "salesLimit");
         if (body.size() < 2) throw ApiException.validation("body", "변경할 항목이 필요합니다.");
         long version = input.version("version");
         String name = input.has("name") ? input.text("name", 120) : null;
         Long price = input.has("priceKrw") ? ProductInputs.price(body.get("priceKrw")) : null;
         ProductTerms terms = input.has("terms") ? ProductInputs.terms(body.get("terms")) : null;
         Long categoryId = input.has("categoryId") ? input.id("categoryId") : null;
+        var salesInput = SalesInput.parse(body);
         var found = visibleProduct(policy.current(actor), id, scope);
         return commands.inBranches(actor, Set.copyOf(found.branchIds()), BranchAction.EDIT_PRODUCT, () -> repository.lock(id), state -> {
             var product = lockedProduct(id);
@@ -172,13 +201,14 @@ public class ProductService {
             String newName = name == null ? before.name() : name;
             long newPrice = price == null ? before.priceKrw() : price;
             ProductTerms newTerms = terms == null ? before.terms() : terms;
+            var newSales = salesInput.over(before.sales());
             // An identical request is not a change: no version bump, revision, audit row or event.
             if (newName.equals(before.name()) && newPrice == before.priceKrw() && newTerms.equals(before.terms())
-                    && category.id().equals(before.category().id())) {
+                    && category.id().equals(before.category().id()) && newSales.equals(before.sales())) {
                 return view(before, state, policy.scope(state, "all", BranchAction.READ));
             }
             return write(actor, state, product, before, newName, newPrice, newTerms, Long.parseLong(category.id()), before.onSale(),
-                    "UPDATED", requestId);
+                    newSales, "UPDATED", requestId);
         });
     }
 
@@ -195,7 +225,7 @@ public class ProductService {
             ApiVersion.requireCurrent(version, before.dbVersion(), reload(id));
             if (before.onSale() == onSale) return view(before, state, policy.scope(state, "all", BranchAction.READ));
             return write(actor, state, product, before, before.name(), before.priceKrw(), before.terms(), before.categoryId(), onSale,
-                    "STATUS_CHANGED", requestId);
+                    before.sales(), "STATUS_CHANGED", requestId);
         });
     }
 
@@ -219,7 +249,7 @@ public class ProductService {
             removed.removeAll(requested);
             product.replaceBranches(removed, added);
             return write(actor, state, product, before, before.name(), before.priceKrw(), before.terms(), before.categoryId(),
-                    before.onSale(), "BRANCHES_CHANGED", requestId);
+                    before.onSale(), before.sales(), "BRANCHES_CHANGED", requestId);
         });
     }
 
@@ -270,12 +300,28 @@ public class ProductService {
     /** {@link #requireSellable} plus the revision of the locked version, which the issued pass references (FR-PASS-03). */
     @Transactional
     public SaleTerms sellable(long productId, long branchId) {
-        repository.lockShared(productId);
+        // M13-D02: a limited product is locked for update, so two sales of its last unit run one after the other; an
+        // unlimited one keeps the shared lock. Every command already holds the common guard lock, so the limit cannot
+        // change between this read and the lock.
+        boolean limited = repository.salesLimitOf(productId).isPresent();
+        if (limited) repository.lock(productId); else repository.lockShared(productId);
         var product = repository.findWithDetailsById(productId).map(ProductViews::record)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        // M13-D06: sale status, sale branch, sale period, then the remaining limit, each with its own code.
         if (!product.onSale()) throw ApiException.conflict("PRODUCT_NOT_ON_SALE", "판매가 중지된 상품입니다.");
         if (!product.branchIds().contains(branchId))
             throw ApiException.conflict("PRODUCT_NOT_AVAILABLE_AT_BRANCH", "이 지점에서 판매하지 않는 상품입니다.");
+        var sales = product.sales();
+        Instant now = clock.instant();
+        if ((sales.startsAt() != null && now.isBefore(sales.startsAt())) || (sales.endsAt() != null && !now.isBefore(sales.endsAt())))
+            throw OperationsConflict.of("PRODUCT_NOT_IN_SALE_PERIOD", "판매 기간이 아닌 상품입니다.", "salesStartsAt",
+                    text(sales.startsAt()), "salesEndsAt", text(sales.endsAt()));
+        if (sales.limit() != null) {
+            long sold = repository.soldQuantity(productId);
+            if (sold >= sales.limit())
+                throw OperationsConflict.of("PRODUCT_SALE_LIMIT_REACHED", "판매 한도를 모두 판매한 상품입니다.", "salesLimit", sales.limit(),
+                        "soldQuantity", sold);
+        }
         long revision = revisions.findFirstByOriginalProductIdAndProductVersionOrderByIdDesc(productId, product.dbVersion())
                 .orElseThrow(() -> new IllegalStateException("Product version has no revision")).getId();
         return new SaleTerms(productId, revision, snapshot(product));
@@ -287,9 +333,10 @@ public class ProductService {
      */
     private Product write(long actor, AuthorizationState state, com.openstudy.modules.ticket.entity.Product product,
             ProductRecord before, String name, long price, ProductTerms terms, long categoryId, boolean onSale,
-            String action, String requestId) {
+            ProductRecord.Sales sales, String action, String requestId) {
         var category = categoryId == before.categoryId() ? product.getCategory() : categories.getReferenceById(categoryId);
         product.change(name, price, ProductViews.columns(terms), category, onSale, actor);
+        product.changeSales(sales.startsAt(), sales.endsAt(), sales.limit());
         try {
             repository.flush();
         } catch (OptimisticLockingFailureException exception) {
@@ -329,19 +376,63 @@ public class ProductService {
         return new Assignable(locked, category);
     }
 
-    private Product view(ProductRecord product, AuthorizationState state, Set<Long> readable) {
+    private Product view(ProductRecord product, AuthorizationState state, Set<Long> readable, long sold, Instant now) {
         Set<Long> all = Set.copyOf(product.branchIds());
         boolean editable = all.stream().allMatch(branch -> policy.permits(state, branch, BranchAction.EDIT_PRODUCT));
         List<String> visible = product.branchIds().stream().filter(readable::contains).map(String::valueOf).toList();
         return new Product(Long.toString(product.id()), ApiVersion.fromDatabase(product.dbVersion()),
                 product.createdAt().toString(), product.updatedAt().toString(), product.code(), product.name(),
-                product.priceKrw(), product.terms(), statusName(product), product.category(), visible, editable);
+                product.priceKrw(), product.terms(), statusName(product), product.category(), visible, editable,
+                text(product.sales().startsAt()), text(product.sales().endsAt()), product.sales().limit(), sold,
+                product.sales().limit() == null ? null : Math.max(product.sales().limit() - sold, 0), availability(product, sold, now));
+    }
+
+    /** The first reason a new sale would be refused, in the order of the sale check (M13-D06), or 판매 가능. */
+    static String availability(ProductRecord product, long sold, Instant now) {
+        var sales = product.sales();
+        if (!product.onSale()) return STOPPED;
+        if (sales.startsAt() != null && now.isBefore(sales.startsAt())) return NOT_YET;
+        if (sales.endsAt() != null && !now.isBefore(sales.endsAt())) return ENDED;
+        if (sales.limit() != null && sold >= sales.limit()) return SOLD_OUT;
+        return AVAILABLE;
+    }
+
+    private static String text(Instant at) { return at == null ? null : at.toString(); }
+
+    /**
+     * The sale fields of a create or PATCH body: an absent field keeps the current value, null clears it (M13-D06).
+     * Times carry an offset and whole seconds; the period must end after it starts.
+     */
+    record SalesInput(boolean startsGiven, Instant startsAt, boolean endsGiven, Instant endsAt, boolean limitGiven, Integer limit) {
+        static SalesInput parse(Map<String, Object> body) {
+            return new SalesInput(body.containsKey("salesStartsAt"), time(body, "salesStartsAt"), body.containsKey("salesEndsAt"),
+                    time(body, "salesEndsAt"), body.containsKey("salesLimit"),
+                    body.get("salesLimit") == null ? null : (int) ProductInputs.integer(body.get("salesLimit"), "salesLimit", 1, LIMIT_MAX));
+        }
+
+        ProductRecord.Sales over(ProductRecord.Sales current) {
+            var merged = new ProductRecord.Sales(startsGiven ? startsAt : current.startsAt(), endsGiven ? endsAt : current.endsAt(),
+                    limitGiven ? limit : current.limit());
+            if (merged.startsAt() != null && merged.endsAt() != null && !merged.startsAt().isBefore(merged.endsAt()))
+                throw ApiException.validation("salesEndsAt", "판매 종료는 판매 시작보다 뒤여야 합니다.");
+            return merged;
+        }
+
+        private static Instant time(Map<String, Object> body, String field) {
+            Object value = body.get(field);
+            if (value == null) return null;
+            if (!(value instanceof String text)) throw ApiException.validation(field, "ISO 8601 시각을 입력해 주세요.");
+            Instant parsed = TimeRange.instant(text, field);
+            if (parsed.getNano() != 0) throw ApiException.validation(field, "초 단위까지만 입력해 주세요.");
+            return parsed;
+        }
     }
 
     private ProductSnapshot snapshot(ProductRecord product) {
         return new ProductSnapshot(ProductSnapshot.SCHEMA_VERSION, product.code(), product.name(), product.priceKrw(),
                 product.terms(), statusName(product), product.category().code(), product.category().name(),
-                product.branchIds().stream().map(String::valueOf).toList());
+                product.branchIds().stream().map(String::valueOf).toList(), text(product.sales().startsAt()),
+                text(product.sales().endsAt()), product.sales().limit());
     }
 
     private String snapshotJson(ProductRecord product) { return json.writeValueAsString(snapshot(product)); }

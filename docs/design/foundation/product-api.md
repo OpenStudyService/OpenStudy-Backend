@@ -41,6 +41,10 @@ OWNER는 모든 조건을 만족한다. `DELETE /products/{id}`와 분류 삭제
 - 내용이 달라지지 않는 요청(같은 값 PATCH, 이미 같은 상태의 판매 상태 요청, 같은 지점 집합)은 현재 상태를 돌려주며 version·revision·감사·이벤트를 만들지 않는다. 낡은 version이면 이 경우에도 409다.
 - 상품 변경의 감사는 한 건이며 공유 상품은 소유 지점이 하나가 아니므로 `branch_id`를 비운다. 지점별 무효화 이벤트(`products`)는 변경 전·후 모든 지점에 대해 같은 트랜잭션에 기록한다. 분류 변경은 모든 지점에 기록한다.
 
+## 판매 기간·한도(M13, #113)
+
+2026-11-10: 상품 등록·수정은 선택 필드 `salesStartsAt`, `salesEndsAt`, `salesLimit`을 받고, 응답은 `soldQuantity`, `remainingQuantity`, `saleAvailability`를 더한다. 목록은 `availability` 필터를 받는다. 판매 판정 순서와 동시 판매 규칙은 [M13 계약](operations-extension-api.md#상품-판매-기간한도fr-prod-10-m13-d02d06)을 따른다. 변경 이력 스냅샷은 `schemaVersion` 2부터 세 필드를 담는다.
+
 ## 판매 중지와 구매 연결
 
 판매 중지는 신규 판매만 막고 상품 ID, 분류, revision, 판매 지점, 기존 구매 조건과 거래 참조를 삭제하지 않는다. 거래 유무와 관계없이 물리 삭제 경로가 없고, 결제·발급 참조는 DB의 `ON DELETE RESTRICT`가 보호한다.

@@ -155,29 +155,36 @@ class OperationsExtensionContractTests {
         assertThat(schema("HomeSummary").at("/properties/closures/items/$ref").asString())
                 .isEqualTo("#/components/schemas/HomeClosureItem");
         assertThat(spec.toString()).doesNotContain("\"issue\":\"#112\"");
-        assertThat(names(planned(schema("Product"), "#113").get("properties"))).contains("salesStartsAt", "salesEndsAt",
-                "salesLimit", "soldQuantity", "remainingQuantity", "saleAvailability");
-        assertThat(names(planned(schema("ProductCreate"), "#113").get("properties")))
-                .containsExactly("salesStartsAt", "salesEndsAt", "salesLimit");
+        // #113 moved its planned changes into the product and payment definitions.
+        assertThat(texts(schema("Product").get("required"))).contains("salesStartsAt", "salesEndsAt", "salesLimit",
+                "soldQuantity", "remainingQuantity", "saleAvailability");
+        assertThat(names(schema("ProductCreate").get("properties"))).contains("salesStartsAt", "salesEndsAt", "salesLimit");
+        assertThat(names(schema("ProductUpdate").get("properties"))).contains("salesStartsAt", "salesEndsAt", "salesLimit");
+        // Snapshots stored before #113 (schemaVersion 1) have no sale fields, so they are not required.
+        assertThat(texts(schema("ProductSnapshot").get("required"))).doesNotContain("salesLimit");
+        assertThat(schema("ProductSnapshot").at("/properties/schemaVersion/maximum").asInt()).isEqualTo(2);
+        assertThat(existing("get", "/products").get("parameters").toString()).contains("\"availability\"");
+        assertThat(spec.toString()).doesNotContain("\"issue\":\"#113\"");
         assertThat(texts(planned(schema("Customer"), "#114").at("/properties/status/enum"))).contains("병합됨");
         for (String path : List.of("/payments/{id}/refund", "/room-reservations/{id}/cancel")) {
             assertThat(planned(existing("post", path), "#115").get("note").asString()).as(path).contains("daily_closing_adjustments");
         }
         // No implemented schema gained a field before its implementation.
-        assertThat(names(schema("Product").get("properties"))).doesNotContain("salesLimit");
         assertThat(names(schema("AggregationCondition").get("properties"))).doesNotContain("methods");
     }
 
     /** Acceptance 2: the three reasons a product cannot be sold are different codes, checked in the ADR order. */
     @Test void eachReasonAProductCannotBeSoldHasItsOwnCode() throws Exception {
         var payment = existing("post", "/payments");
-        var codes = new ArrayList<String>(texts(payment.get("x-error-codes")));
-        var change = planned(payment, "#113");
-        codes.addAll(texts(change.get("errorCodes")));
-        assertThat(codes).contains("PRODUCT_NOT_ON_SALE", "PRODUCT_NOT_IN_SALE_PERIOD", "PRODUCT_SALE_LIMIT_REACHED")
-                .doesNotHaveDuplicates();
-        assertThat(change.get("conflictSchema").asString()).isEqualTo("#/components/schemas/OperationsConflictError");
-        assertThat(change.get("note").asString()).contains("판매 중지 → 판매 지점 → 판매 기간 → 남은 한도");
+        var codes = texts(payment.get("x-error-codes"));
+        assertThat(codes).doesNotHaveDuplicates();
+        // In the order of the check (M13-D06): stopped, branch, period, limit.
+        assertThat(codes.subList(codes.indexOf("PRODUCT_NOT_ON_SALE"), codes.indexOf("PRODUCT_SALE_LIMIT_REACHED") + 1))
+                .containsExactly("PRODUCT_NOT_ON_SALE", "PRODUCT_NOT_AVAILABLE_AT_BRANCH", "PRODUCT_NOT_IN_SALE_PERIOD",
+                        "PRODUCT_SALE_LIMIT_REACHED");
+        assertThat(payment.at("/responses/409/content/application~1json/schema/$ref").asString())
+                .isEqualTo("#/components/schemas/OperationsConflictError");
+        assertThat(payment.get("description").asString()).contains("판매 중지 → 판매 지점 → 판매 기간 → 남은 한도");
         assertThat(contract()).contains("| 1 | 판매 중지 | 409 `PRODUCT_NOT_ON_SALE`(기존) |",
                 "| 3 | 처리 시각 < `salesStartsAt` 또는 처리 시각 ≥ `salesEndsAt` | 409 `PRODUCT_NOT_IN_SALE_PERIOD`",
                 "| 4 | `salesLimit`이 있고 `soldQuantity` ≥ `salesLimit` | 409 `PRODUCT_SALE_LIMIT_REACHED`");
