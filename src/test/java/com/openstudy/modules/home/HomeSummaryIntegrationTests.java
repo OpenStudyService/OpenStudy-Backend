@@ -281,7 +281,8 @@ class HomeSummaryIntegrationTests {
         assertThat(seats.at("/occupancy/percent").decimalValue()).isEqualByComparingTo("0.0");
 
         // The message card left with team chat (ADR-M10-002 M10-D11).
-        assertThat(names(home)).containsExactlyInAnyOrder("meta", "seats", "tasks", "inquiries", "facilities", "shifts", "notices");
+        assertThat(names(home)).containsExactlyInAnyOrder("meta", "seats", "tasks", "inquiries", "facilities", "shifts", "notices",
+                "closures"); // M13 #112
     }
 
     @Test void theScopeIsTheRequestersOwn() throws Exception {

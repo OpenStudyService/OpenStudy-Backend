@@ -119,7 +119,9 @@ class OperationsExtensionContractTests {
             assertThat(operation.get("x-permission").asString()).as(id).isNotBlank();
             assertThat(operation.get("x-error-codes").size()).as(id).isPositive();
             assertThat(operation.get("x-adr-decisions").toString()).as(id).contains("M13-D");
-            assertThat(operation.get("x-implementation-status").asString()).as(id).isEqualTo("design-target");
+            // #112 implemented the branch closures; the other issues are still design targets.
+            assertThat(operation.get("x-implementation-status").asString()).as(id)
+                    .isEqualTo(ISSUES.get(id).equals("#112") ? "implemented" : "design-target");
             assertThat(operation.get("x-implementation-issue").asString()).as(id).isEqualTo(ISSUES.get(id));
             String[] methodAndPath = route.split(" ");
             assertThat(contract).as(route).contains("`" + methodAndPath[0].toUpperCase() + " " + methodAndPath[1]);
@@ -143,10 +145,16 @@ class OperationsExtensionContractTests {
 
     /** Acceptance: holidays, sale period/limit, merges, closings, adjustments, advanced filters and occupancy trend. */
     @Test void changesToImplementedOperationsArePlannedForTheirIssues() {
-        assertThat(texts(planned(existing("post", "/room-reservations"), "#112").get("errorCodes")))
-                .containsExactly("BRANCH_CLOSED_DAY");
-        assertThat(names(planned(schema("RoomReservationCalendar"), "#112").get("properties"))).containsExactly("closedDates");
-        assertThat(names(planned(schema("HomeSummary"), "#112").get("properties"))).containsExactly("closures");
+        // #112 moved its planned changes into the definitions and left none behind.
+        var booking = existing("post", "/room-reservations");
+        assertThat(texts(booking.get("x-error-codes"))).contains("BRANCH_CLOSED_DAY");
+        assertThat(booking.at("/responses/409/content/application~1json/schema/$ref").asString())
+                .isEqualTo("#/components/schemas/OperationsConflictError");
+        assertThat(texts(schema("RoomReservationCalendar").get("required"))).contains("closedDates");
+        assertThat(texts(schema("HomeSummary").get("required"))).contains("closures");
+        assertThat(schema("HomeSummary").at("/properties/closures/items/$ref").asString())
+                .isEqualTo("#/components/schemas/HomeClosureItem");
+        assertThat(spec.toString()).doesNotContain("\"issue\":\"#112\"");
         assertThat(names(planned(schema("Product"), "#113").get("properties"))).contains("salesStartsAt", "salesEndsAt",
                 "salesLimit", "soldQuantity", "remainingQuantity", "saleAvailability");
         assertThat(names(planned(schema("ProductCreate"), "#113").get("properties")))

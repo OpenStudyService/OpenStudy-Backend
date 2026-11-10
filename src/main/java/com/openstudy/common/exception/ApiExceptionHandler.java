@@ -31,6 +31,12 @@ public class ApiExceptionHandler {
         return ResponseEntity.status(exception.status()).body(exception.error(ApiRequestFilter.requestId(request)));
     }
 
+    /** M13 409 with its target information (OperationsConflictError). */
+    @ExceptionHandler(OperationsConflict.class)
+    ResponseEntity<java.util.Map<String, Object>> operations(OperationsConflict exception, HttpServletRequest request) {
+        return ResponseEntity.status(409).body(exception.body(ApiRequestFilter.requestId(request)));
+    }
+
     @ExceptionHandler(ResponseStatusException.class)
     ResponseEntity<ApiError> status(ResponseStatusException exception, HttpServletRequest request) {
         int status = exception.getStatusCode().value();

@@ -372,6 +372,8 @@ M5의 `SeatCounts.occupancyRate`는 좌석이 없으면 null인 기존 표현이
 
 ## 운영 홈 요약(FR-DASH-02·03·05·06, M9-D08)
 
+2026-11-10: M13 #112에서 `closures`(scope 지점의 오늘부터 7일 뒤까지의 휴무일)를 더했다. 카드가 아니라 안내 목록이며 정의는 [M13 계약](operations-extension-api.md#다른-화면의-안내)에 있다.
+
 `GET /home/summary?scope=&mine=&assigneeId=`
 
 2026-11-06: **메시지 카드를 뺀다**([ADR-M10-002](../../db/ADR-M10-002.md) M10-D11, SRS v1.14 FR-DASH-05). 팀 채팅이 범위에서 빠져 그 자리는 Frontend의 데이터 없는 AI 채팅 바로가기로 바뀐다. 아래 표와 설명의 메시지 행, `messages`·`HomeMessageCard`·`HomeChannelItem`·`link.screen=channel`은 당시 계약으로 남기고, `openapi.json`과 계약 테스트에서 지우는 일은 #90 구현에서 함께 한다.

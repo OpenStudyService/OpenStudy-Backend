@@ -26,6 +26,11 @@ public enum BranchAction {
      * branch, so a command can answer BRANCH_NOT_ACTIVE instead of 403 and a cancellation stays possible (M8-D04).
      */
     MANAGE_SHIFTS(null, true, false),
+    /**
+     * M13 branch closures "MANAGER 이상": the branch role alone, with no separate grant (M13-D05). A closure only informs,
+     * so it can be kept at a stopped branch as well.
+     */
+    MANAGE_CLOSURES(null, true, false),
     WRITE_MEMBERS("members:write", false, false),
     WRITE_FACILITIES("facilities:write", false, false),
     WRITE_NOTICES("notices:write", false, false),

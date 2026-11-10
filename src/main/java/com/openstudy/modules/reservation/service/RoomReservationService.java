@@ -26,6 +26,7 @@ import tools.jackson.databind.ObjectMapper;
 import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
+import com.openstudy.common.exception.OperationsConflict;
 import com.openstudy.common.idempotency.IdempotencyStore;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.common.web.ListQuery;
@@ -36,6 +37,7 @@ import com.openstudy.modules.authorization.dto.AuthorizationState;
 import com.openstudy.modules.authorization.dto.BranchAction;
 import com.openstudy.modules.authorization.service.AuthorizationService;
 import com.openstudy.modules.authorization.service.AuthorizedCommands;
+import com.openstudy.modules.branch.service.BranchClosureService;
 import com.openstudy.modules.customer.service.CustomerService;
 import com.openstudy.modules.employee.service.EmployeeAccountService;
 import com.openstudy.modules.payment.service.PaymentService;
@@ -80,6 +82,7 @@ public class RoomReservationService {
     private final RoomUsageRepository usages;
     private final RoomRepository rooms;
     private final CustomerService customers;
+    private final BranchClosureService closures;
     private final PaymentService payments;
     private final EmployeeAccountService employees;
     private final AuthorizationService policy;
@@ -120,6 +123,10 @@ public class RoomReservationService {
             // DATETIME(6) keeps microseconds, so the response shows exactly what is stored.
             Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
             int hours = hours(start, end, now);
+            // M13-D01: a closure refuses only a new reservation that starts on the closed day (Asia/Seoul).
+            var startDay = java.time.LocalDate.ofInstant(start, BranchClosureService.SEOUL);
+            if (closures.closed(branch, startDay))
+                throw OperationsConflict.of("BRANCH_CLOSED_DAY", "휴무일에는 예약할 수 없습니다.", "closedDate", startDay);
             if (partySize > room.getCapacity())
                 throw ApiException.unprocessable("RESERVATION_CAPACITY_EXCEEDED", "인원이 룸 정원을 넘습니다.");
             customers.requirePurchasable(state, customerId);
@@ -270,7 +277,8 @@ public class RoomReservationService {
         policy.require(state, Set.of(branch), BranchAction.READ);
         if (room != null && rooms.branchOf(room).filter(owner -> owner == branch).isEmpty()) throw notFound();
         var rows = search.calendar(new RoomReservationSearchRepository.Filter(Set.of(branch), null, room, null, range));
-        return new RoomReservationCalendar(range.from(), range.to(), views(rows, state, clock.instant()));
+        return new RoomReservationCalendar(range.from(), range.to(), closures.closedDates(branch, range.from(), range.to()),
+                views(rows, state, clock.instant()));
     }
 
     /** 404 hides reservations outside the reader's scope, so IDs are not an existence oracle. */

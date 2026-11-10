@@ -22,6 +22,7 @@ import com.openstudy.common.web.ListQuery;
 import com.openstudy.modules.authorization.dto.AuthorizationState;
 import com.openstudy.modules.authorization.dto.BranchAction;
 import com.openstudy.modules.authorization.service.AuthorizationService;
+import com.openstudy.modules.branch.service.BranchClosureService;
 import com.openstudy.modules.facility.dto.response.FacilityListItem;
 import com.openstudy.modules.facility.service.FacilityFilters;
 import com.openstudy.modules.facility.service.FacilityService;
@@ -62,6 +63,7 @@ public class HomeSummaryService {
     private final FacilityService facilities;
     private final ShiftService shifts;
     private final NoticeService notices;
+    private final BranchClosureService closures;
     private final Clock clock;
 
     /** The task condition after the M9-D08 defaults: OWNER sees the scope, everyone else their own tasks. */
@@ -93,7 +95,8 @@ public class HomeSummaryService {
                 dayEnd, SEOUL.getId(), asOf, new HomeSummary.TaskFilter(condition.mine(), condition.assigneeId(), defaulted));
         return new HomeSummary(meta, seatCard(actor, selected, listBranch), taskCard(actor, selected, listBranch, condition, day),
                 inquiryCard(actor, selected, listBranch), facilityCard(actor, selected, listBranch),
-                shiftCard(actor, state, selected, listBranch, branches, day), noticeCard(actor, selected));
+                shiftCard(actor, state, selected, listBranch, branches, day), noticeCard(actor, selected),
+                closures.upcoming(branches, date));
     }
 
     record Day(LocalDate date, Instant start, Instant end, Instant asOf) {}
