@@ -19,7 +19,8 @@ final class ProductViews {
             case STORED_VALUE -> ProductTerms.StoredValue.of(p.getCreditKrw(), p.getHourlyRateKrw(), p.getValidDays());
         };
         return new ProductRecord(p.getId(), p.getVersion(), p.getCreatedAt(), p.getUpdatedAt(), p.getCode(), p.getName(),
-                p.getPriceKrw(), terms, p.getSaleStatus() == SaleStatus.ON_SALE, category(p.getCategory()), p.getBranchIds());
+                p.getPriceKrw(), terms, p.getSaleStatus() == SaleStatus.ON_SALE, category(p.getCategory()), p.getBranchIds(),
+                new ProductRecord.Sales(p.getSalesStartsAt(), p.getSalesEndsAt(), p.getSalesLimit()));
     }
 
     static ProductCategory category(com.openstudy.modules.ticket.entity.ProductCategory c) {

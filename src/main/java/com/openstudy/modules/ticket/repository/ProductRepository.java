@@ -29,6 +29,21 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     @Query(value = "SELECT id FROM products WHERE id = :id FOR SHARE", nativeQuery = true)
     List<Long> lockShared(@Param("id") long id);
 
+    /** The limit decides the sale's lock mode before any product lock is taken (M13-D02). */
+    @Query("SELECT p.salesLimit FROM Product p WHERE p.id = :id")
+    java.util.Optional<Integer> salesLimitOf(@Param("id") long id);
+
+    /**
+     * Approved (not refunded, not failed) payments of a product over every branch: the sold quantity of the limit
+     * (M13-D02). Read by entity name so the ticket module does not depend on the payment module.
+     */
+    @Query("SELECT COUNT(p) FROM Payment p WHERE p.productId = :id AND CAST(p.status AS string) = 'APPROVED'")
+    long soldQuantity(@Param("id") long id);
+
+    @Query("SELECT p.productId, COUNT(p) FROM Payment p WHERE p.productId IN :ids AND CAST(p.status AS string) = 'APPROVED' "
+            + "GROUP BY p.productId")
+    List<Object[]> soldQuantities(@Param("ids") java.util.Collection<Long> ids);
+
     /** Advances an otherwise unchanged product's version; the caller refreshes the managed entity afterwards. */
     @Modifying(flushAutomatically = true)
     @Query("UPDATE Product p SET p.version = p.version + 1 WHERE p.id = :id")

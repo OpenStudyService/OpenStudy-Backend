@@ -126,7 +126,7 @@ public class RoomReservationService {
             // M13-D01: a closure refuses only a new reservation that starts on the closed day (Asia/Seoul).
             var startDay = java.time.LocalDate.ofInstant(start, BranchClosureService.SEOUL);
             if (closures.closed(branch, startDay))
-                throw OperationsConflict.of("BRANCH_CLOSED_DAY", "휴무일에는 예약할 수 없습니다.", "closedDate", startDay);
+                throw OperationsConflict.of("BRANCH_CLOSED_DAY", "휴무일에는 예약할 수 없습니다.", "closedDate", startDay.toString());
             if (partySize > room.getCapacity())
                 throw ApiException.unprocessable("RESERVATION_CAPACITY_EXCEEDED", "인원이 룸 정원을 넘습니다.");
             customers.requirePurchasable(state, customerId);

@@ -104,7 +104,7 @@ public class BranchClosureService {
             if (replayed.isPresent()) return replayed.get();
             var existing = closures.findByBranchIdAndClosedOn(branch, day);
             if (existing.isPresent())
-                throw OperationsConflict.of("BRANCH_CLOSURE_EXISTS", "이미 휴무일로 등록된 날짜입니다.", "closureId", existing.get().getId());
+                throw OperationsConflict.of("BRANCH_CLOSURE_EXISTS", "이미 휴무일로 등록된 날짜입니다.", "closureId", existing.get().getId().toString());
             var saved = closures.saveAndFlush(BranchClosure.of(branch, day, note, actor));
             audit.record(AuditEvent.change(actor, branch, ENTITY, saved.getId(), "CREATED", null, null,
                     json.writeValueAsString(snapshot(saved)), requestId));

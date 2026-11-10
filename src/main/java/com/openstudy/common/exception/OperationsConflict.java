@@ -15,12 +15,17 @@ public class OperationsConflict extends RuntimeException {
     private OperationsConflict(String code, String message, Map<String, Object> targets) {
         super(message);
         this.code = code;
-        this.targets = Map.copyOf(targets);
+        this.targets = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(targets));
     }
 
+    /**
+     * Targets as name/value pairs, written as given: IDs and dates as strings, counts as numbers. A null value is left out
+     * of the body ("해당 없는 필드는 담지 않는다").
+     */
     public static OperationsConflict of(String code, String message, Object... namesAndValues) {
         var targets = new LinkedHashMap<String, Object>();
-        for (int index = 0; index < namesAndValues.length; index += 2) targets.put((String) namesAndValues[index], namesAndValues[index + 1]);
+        for (int index = 0; index < namesAndValues.length; index += 2)
+            if (namesAndValues[index + 1] != null) targets.put((String) namesAndValues[index], namesAndValues[index + 1]);
         return new OperationsConflict(code, message, targets);
     }
 
@@ -29,7 +34,7 @@ public class OperationsConflict extends RuntimeException {
         body.put("code", code);
         body.put("message", getMessage());
         body.put("requestId", requestId);
-        targets.forEach((name, value) -> body.put(name, value instanceof Long id ? Long.toString(id) : value.toString()));
+        body.putAll(targets);
         return body;
     }
 }
