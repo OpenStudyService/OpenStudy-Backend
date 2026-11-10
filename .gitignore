@@ -116,3 +116,6 @@ Desktop.ini
 
 # Local ONNX embedding model (DomainLens). Not committed: place it under .models/koen-e5-tiny-q8 (see README).
 /.models/
+
+# Local profile photo store (openstudy.avatar.storage=directory, #120)
+/data/

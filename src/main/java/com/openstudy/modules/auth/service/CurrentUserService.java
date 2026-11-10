@@ -1,5 +1,6 @@
 package com.openstudy.modules.auth.service;
 
+import com.openstudy.modules.employee.dto.AvatarKeys;
 import com.openstudy.common.web.ApiVersion;
 import com.openstudy.modules.auth.dto.CurrentUser;
 import com.openstudy.modules.authorization.service.AuthorizationService;
@@ -81,7 +82,7 @@ public class CurrentUserService {
                 .email(account.email())
                 .status(status)
                 .nickname(restricted ? "" : account.nickname())
-                .avatar(restricted || account.avatar() == null ? "" : account.avatar())
+                .avatar(restricted ? "" : AvatarKeys.path(account.id(), account.avatar()))
                 .memberships(memberships)
                 .owner(!restricted && account.owner())
                 .build();

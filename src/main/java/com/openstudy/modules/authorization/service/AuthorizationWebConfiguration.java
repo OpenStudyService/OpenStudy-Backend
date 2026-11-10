@@ -27,9 +27,12 @@ public class AuthorizationWebConfiguration implements WebMvcConfigurer {
                 String path = request.getRequestURI().substring(request.getContextPath().length());
                 // Self-account endpoints have no branch scope; session and command boundaries guard profile writes.
                 if (path.equals("/api/me") || path.equals("/api/me/profile") || path.equals("/api/me/password")
+                        || path.equals("/api/me/avatar")
                         || path.startsWith("/api/auth/")
                         || path.startsWith("/api/invitations/approval-status")) return true;
                 // Link-holder endpoints are self commands verified by token and own session, not branch administration.
+                // A colleague's photo is decided by the photo service (M14-D14), not by people administration.
+                if ("GET".equals(request.getMethod()) && path.matches("/api/employees/[0-9]+/avatar")) return true;
                 if (path.equals("/api/invitations/preview") || path.equals("/api/invitations/accept")
                         || path.startsWith("/api/password-resets/")) return true;
                 var state = authorization.current(Long.parseLong(authentication.getName()));

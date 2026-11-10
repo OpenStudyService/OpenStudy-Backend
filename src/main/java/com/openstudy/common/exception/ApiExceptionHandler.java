@@ -111,6 +111,12 @@ public class ApiExceptionHandler {
                 Map.of("$request", "요청 값을 확인해 주세요."), request);
     }
 
+    /** An upload past the servlet limit is the same refusal as the photo size check (#120). */
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    ResponseEntity<ApiError> uploadTooLarge(Exception exception, HttpServletRequest request) {
+        return response(422, "AVATAR_TOO_LARGE", "사진은 5MB 이하여야 합니다.", Map.of("file", "5MB 이하의 이미지를 선택해 주세요."), request);
+    }
+
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
     ResponseEntity<ApiError> media(HttpMediaTypeNotSupportedException exception, HttpServletRequest request) {
         return response(415, "UNSUPPORTED_MEDIA_TYPE", "지원하지 않는 요청 형식입니다.", null, request);

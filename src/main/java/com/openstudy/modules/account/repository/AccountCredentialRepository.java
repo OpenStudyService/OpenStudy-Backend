@@ -43,6 +43,12 @@ public class AccountCredentialRepository {
                 "OWNER".equals(c[4]), (String) c[5]));
     }
 
+    /** The stored profile photo key; empty when the employee does not exist or has no photo. */
+    public Optional<String> avatarKey(long id) {
+        var rows = entityManager.createNativeQuery("SELECT avatar_url FROM employees WHERE id = ?").setParameter(1, id).getResultList();
+        return rows.isEmpty() ? Optional.empty() : Optional.ofNullable((String) rows.getFirst());
+    }
+
     public List<Membership> memberships(long employeeId) {
         var result = new ArrayList<Membership>();
         for (Object row : entityManager.createNativeQuery("SELECT branch_id, status FROM branch_memberships WHERE employee_id = ? ORDER BY branch_id")

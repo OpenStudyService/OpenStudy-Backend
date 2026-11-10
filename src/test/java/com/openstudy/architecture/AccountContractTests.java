@@ -89,9 +89,8 @@ class AccountContractTests {
             assertThat(operation.get("x-permission").asString()).as(id).isNotBlank();
             assertThat(operation.get("x-error-codes").size()).as(id).isPositive();
             assertThat(operation.get("x-adr-decisions").toString()).as(id).contains("M14-D");
-            // #119 and #122 implemented their operations; #120 is still to come.
-            String status = ISSUES.get(id).equals("#120") ? "design-target" : "implemented";
-            assertThat(operation.get("x-implementation-status").asString()).as(id).isEqualTo(status);
+            // #119, #120 and #122 implemented every M14 operation.
+            assertThat(operation.get("x-implementation-status").asString()).as(id).isEqualTo("implemented");
             assertThat(operation.get("x-implementation-issue").asString()).as(id).isEqualTo(ISSUES.get(id));
             String[] methodAndPath = route.split(" ");
             assertThat(contract).as(route).contains("`" + methodAndPath[0].toUpperCase() + " " + methodAndPath[1]);
@@ -173,13 +172,14 @@ class AccountContractTests {
         assertThat(adr).contains("| M14-D11 |", "| M14-D12 |", "| M14-D13 |", "| M14-D14 |", "2026-11-10 사용자 결정");
     }
 
-    /** The photo path replaces the storage key in user responses when #120 lands, not before. */
-    @Test void theAvatarChangeIsPlannedForItsIssue() {
+    /** #120 moved the photo path into the user schemas; no storage key is described and nothing is left planned. */
+    @Test void theAvatarPathIsPartOfTheUserSchemas() {
         for (String name : List.of("SessionUser", "Employee")) {
-            var planned = schema(name).get("x-planned-changes");
-            assertThat(planned).as(name).isNotNull();
-            assertThat(planned.toString()).as(name).contains("#120", "/api/employees/{id}/avatar");
+            assertThat(schema(name).has("x-planned-changes")).as(name).isFalse();
+            assertThat(schema(name).at("/properties/avatar/description").asString()).as(name)
+                    .contains("/api/employees/{id}/avatar", "저장소 키는 담지 않는다");
         }
+        assertThat(spec.toString()).doesNotContain("\"issue\":\"#120\"");
     }
 
     @Test void theContractIsPublishedAsTheM14Version() throws Exception {

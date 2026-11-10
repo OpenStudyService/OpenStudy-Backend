@@ -156,6 +156,24 @@ public class EmployeeAccountService {
         });
     }
 
+    /**
+     * Sets or clears the own profile photo key (#120) and returns the key it replaced. The account version advances once,
+     * like a profile save; the audit keeps only whether there is a photo, never the key.
+     */
+    @Transactional
+    public String changeAvatar(long id, String key, String requestId) {
+        return commands.selfAccountChange(id, () -> {
+            var account = repository.findForUpdateById(id).orElseThrow(() -> new EmptyResultDataAccessException(1));
+            long version = account.getVersion();
+            String previous = account.getAvatarUrl();
+            account.changeAvatar(key);
+            changes.saved(account, version);
+            changes.changed(id, null, id, key == null ? "AVATAR_REMOVED" : "AVATAR_CHANGED", Map.of("hasAvatar", previous != null),
+                    Map.of("hasAvatar", key != null), requestId);
+            return previous;
+        });
+    }
+
     private Map<String, Object> profileSnapshot(EmployeeAccount account) {
         return Map.of("nickname", account.nickname(), "version", ApiVersion.fromDatabase(account.version()),
                 "updatedAt", account.updatedAt().toString());
