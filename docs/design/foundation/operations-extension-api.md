@@ -2,7 +2,7 @@
 
 Backend [#111](https://github.com/OpenStudyService/OpenStudy-Backend/issues/111)의 M13 계약이다. 구현은 지점 휴무일(#112), 상품 판매 기간·한도(#113), 중복 고객 확인·병합(#114), 일별 마감·조정 이력(#115), 고급 필터·이용 지점 사용량·좌석 점유 추이(#116)에서 이 문서를 기준으로 진행한다. Frontend는 같은 [OpenAPI](openapi.json)(`0.1.14-m13-operations-extension`)로 연동한다.
 
-2026-11-10: 이 문서의 operation은 모두 설계 계약(`design-target`)이다. 기존 operation에 더한 필드·필터도 같은 이슈에서 구현한다. 2026-11-10: 지점 휴무일 operation 4개와 룸 예약 차단·달력 `closedDates`·홈 `closures`는 #112에서 구현됐다(`implemented`, V12 `branch_closures`). 2026-11-10: 상품 판매 기간·한도(상품 필드·목록 필터·결제 판매 판정)는 #113에서 구현됐다(`implemented`, V13 `products` 칼럼). 2026-11-10: 중복 고객 확인·병합 operation 3개와 병합된 고객의 조회·판매·입실 처리는 #114에서 구현됐다(`implemented`, V14 `customers`·`customer_merges`). 2026-11-10: 일별 마감 operation 3개와 환불의 마감 조정 기록은 #115에서 구현됐다(`implemented`, V15 `daily_closings`·`daily_closing_adjustments`).
+2026-11-10: 이 문서의 operation은 모두 설계 계약(`design-target`)이다. 기존 operation에 더한 필드·필터도 같은 이슈에서 구현한다. 2026-11-10: 지점 휴무일 operation 4개와 룸 예약 차단·달력 `closedDates`·홈 `closures`는 #112에서 구현됐다(`implemented`, V12 `branch_closures`). 2026-11-10: 상품 판매 기간·한도(상품 필드·목록 필터·결제 판매 판정)는 #113에서 구현됐다(`implemented`, V13 `products` 칼럼). 2026-11-10: 중복 고객 확인·병합 operation 3개와 병합된 고객의 조회·판매·입실 처리는 #114에서 구현됐다(`implemented`, V14 `customers`·`customer_merges`). 2026-11-10: 일별 마감 operation 3개와 환불의 마감 조정 기록은 #115에서 구현됐다(`implemented`, V15 `daily_closings`·`daily_closing_adjustments`). 2026-11-10: 결제·집계 고급 필터, 이용 지점 사용량, 좌석 점유 추이는 #116에서 구현됐다(`implemented`). 이로써 이 문서의 operation과 `x-planned-changes`가 모두 구현됐고 OpenAPI에 남은 `x-planned-changes`는 없다.
 
 정책 근거는 [ADR-M13-001](../../db/ADR-M13-001.md)(M13-D01~D13)이다. M13-D11~D13은 이 계약을 쓰면서 사용자에게 받은 결정(2026-11-10)이다. 공통 요청·응답·오류·목록 규칙은 [API 계약](api.md)을, 원거래의 의미는 [상품 API](product-api.md)·[고객·결제 계약](customer-sales-api.md)·[공간 운영 계약](space-operations-api.md)·[좌석 이용 계약](seat-usage-api.md)을, 집계의 기간·환불 기준·메타정보·값 표현은 [정형 집계 계약](aggregation-api.md)(M9)을 따른다.
 
@@ -331,6 +331,7 @@ Backend [#111](https://github.com/OpenStudyService/OpenStudy-Backend/issues/111)
 | `OPERATOR_BY_ENTRY` | `operatorIds` | 승인은 결제 처리자, 환불은 환불 처리자로 골랐다 |
 | `REFUND_BY_PAYMENT_METHOD` | `methods` | 환불은 원결제 수단으로 나눴다 |
 
+- 결제 목록의 행은 결제다. 처리자 조건은 결제 처리자(`created_by`)로 고르고, `processingBranchIds`는 `환불` 상태 행만 그 환불의 처리 지점으로 좁힌다(2026-11-10 #116 구현에서 정함).
 - 결제 목록: 응답에 `filter`(적용한 조건 전체)와 `summary`를 더한다. `summary`는 페이지가 아니라 조건 전체의 상태별 건수·금액 합(`승인`·`실패`·`환불`)이다. 원천 기록(목록 행)과 합계가 같은 조건에서 계산된다(FR-PAY-13 "기준별 합계와 원천 기록 일치").
 
 ### 정합성 규칙
@@ -364,7 +365,7 @@ Backend [#111](https://github.com/OpenStudyService/OpenStudy-Backend/issues/111)
 ### 응답
 
 - `items`: 이용 지점마다 `branchId`, 세 지표, `bySaleBranch`(이용권을 판 지점별 같은 세 지표). 이용 지점 ID 오름차순이다.
-- `bySaleBranch`에서 요청자에게 `sales:read`가 없는 판매 지점은 하나의 `visible=false` 항목으로 합친다(`saleBranchId` null, 라벨 `다른 지점`). M8 근무 충돌의 숨김 규칙과 같은 방식이다.
+- `bySaleBranch`에서 요청자에게 `sales:read`가 없는 판매 지점은 하나의 `visible=false` 항목으로 합친다(`saleBranchId` null, 라벨 `다른 지점`). 보이는 판매 지점의 `label`은 null이다(2026-11-10 #116 구현에서 정함). M8 근무 충돌의 숨김 규칙과 같은 방식이다.
 - `totals`: 모든 이용 지점의 합.
 - `aggregation`: M9 `AggregationMeta`. `condition.branchIds`는 이용 지점이고 `condition.refundBasis`는 null이다(사용량에는 환불 기준이 없다). `sourceRowCount`는 계산에 쓴 좌석 이용 행 수 + 원장 행 수다.
 - 기간은 M9와 같다(기본 이번 달, 최대 366일).
@@ -380,7 +381,7 @@ Backend [#111](https://github.com/OpenStudyService/OpenStudy-Backend/issues/111)
 
 | 필드 | 의미 |
 | --- | --- |
-| `bucketStart`, `bucketEnd`, `start`, `end`, `partial`, `label` | M9 추세와 같은 구간 표현. `end`는 `min(bucketEnd, to, asOf)` |
+| `bucketStart`, `bucketEnd`, `start`, `end`, `partial`, `label` | M9 추세와 같은 구간 표현. `end`는 `min(bucketEnd, to, asOf)`. `label`은 시간 단위가 `YYYY-MM-DD HH:00`, 일 단위가 `YYYY-MM-DD`(Asia/Seoul) |
 | `seatCount` | `end` 이전에 등록된 그 지점 좌석 수 |
 | `occupiedSeatMinutes` | 좌석 이용의 `[effective_checked_in_at, effective_checked_out_at 또는 asOf)`과 구간 `[start, end)`가 겹친 분의 합(초 단위로 더한 뒤 분으로 내림) |
 | `capacitySeatMinutes` | `seatCount × (end − start)`(분) |

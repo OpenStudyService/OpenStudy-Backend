@@ -17,6 +17,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.web.ListQuery;
+import com.openstudy.modules.sales.dto.request.AdvancedFilter;
+import com.openstudy.modules.sales.dto.response.PassUsageByBranch;
+import com.openstudy.modules.sales.service.AggregationMetas;
 import com.openstudy.modules.sales.dto.request.AggregationCondition;
 import com.openstudy.modules.sales.dto.request.AggregationGranularity;
 import com.openstudy.modules.sales.dto.request.BranchRevenueSort;
@@ -48,6 +51,7 @@ public class SalesController {
     private final SalesRevenueService service;
     private final PassSalesService passes;
     private final SalesTrendService trends;
+    private final com.openstudy.modules.sales.service.PassUsageService usage;
 
     @GetMapping("/revenue")
     public RevenueSummary revenue(Authentication actor, HttpServletRequest request,
@@ -82,6 +86,14 @@ public class SalesController {
         // The order is fixed by the contract (basisAt, approval/refund, source ID); only the direction is chosen.
         var query = ListQuery.parse(page, pageSize, null, null, direction, Set.of("basisAt"), "basisAt");
         return service.ledger(actor(actor), condition, type, query);
+    }
+
+    /** Pass usage per using branch (#116, M13-D12): no refund basis and no purpose. */
+    @GetMapping("/passes/usage")
+    public PassUsageByBranch passUsage(Authentication actor, HttpServletRequest request,
+            @RequestParam(required = false) String from, @RequestParam(required = false) String to,
+            @RequestParam(required = false) String productId, @RequestParam(required = false) String categoryCode) {
+        return usage.usage(actor(actor), condition(request, from, to, null, null, productId, categoryCode));
     }
 
     @GetMapping("/passes/volume")
@@ -126,7 +138,38 @@ public class SalesController {
         SalesPurpose selected = purpose == null ? null : SalesPurpose.fromLabel(purpose);
         if (purpose != null && selected == null) throw ApiException.validation("purpose", "허용되지 않은 값입니다.");
         return new AggregationCondition(branchIds(request), instant(from, "from"), instant(to, "to"), basis, selected,
-                productId == null ? null : id(productId, "productId"), categoryCode, null);
+                productId == null ? null : id(productId, "productId"), categoryCode, null, advanced(request));
+    }
+
+    /** The M13 advanced filters (M13-D10, #116): repeated parameters, contract labels in, stored values out. Duplicates are 422. */
+    public static AdvancedFilter advanced(HttpServletRequest request) {
+        return new AdvancedFilter(labels(request, "methods", AggregationMetas.METHOD_LABELS),
+                labels(request, "productKinds", AggregationMetas.KIND_LABELS), ids(request, "operatorIds"), ids(request, "processingBranchIds"));
+    }
+
+    private static List<String> labels(HttpServletRequest request, String name, java.util.Map<String, String> stored) {
+        String[] values = request.getParameterValues(name);
+        if (values == null) return List.of();
+        var result = new ArrayList<String>();
+        for (String value : values) {
+            String key = stored.entrySet().stream().filter(entry -> entry.getValue().equals(value)).map(java.util.Map.Entry::getKey)
+                    .findFirst().orElseThrow(() -> ApiException.validation(name, "허용되지 않은 값입니다."));
+            if (result.contains(key)) throw ApiException.validation(name, "같은 값을 두 번 보낼 수 없습니다.");
+            result.add(key);
+        }
+        return result;
+    }
+
+    private static List<Long> ids(HttpServletRequest request, String name) {
+        String[] values = request.getParameterValues(name);
+        if (values == null) return List.of();
+        var result = new ArrayList<Long>();
+        for (String value : values) {
+            long id = id(value, name);
+            if (result.contains(id)) throw ApiException.validation(name, "같은 값을 두 번 보낼 수 없습니다.");
+            result.add(id);
+        }
+        return result;
     }
 
     /** branchIds is a repeated parameter (branchIds=1&branchIds=2); each value is one ID string. */

@@ -141,7 +141,9 @@ class SalesConditionIntegrationTests extends SalesIntegrationSupport {
                     branchIds(first, first),
                     "branchIds=abc", "branchIds=0", "branchIds=", "branchIds=1,2",
                     one + "&refundBasis=processed", one + "&purpose=PASS", one + "&purpose=" + enc("좌석"),
-                    one + "&productId=1", one + "&categoryCode=TIME");
+                    one + "&productId=1",
+                    // M13-D10 (#116): a category narrows revenue to passes, so only a contradicting purpose is refused now.
+                    one + "&categoryCode=TIME&purpose=" + enc("스터디룸"));
             for (String operation : OPERATIONS) {
                 for (String query : cases) {
                     var refused = get(s, operation + "?" + query);

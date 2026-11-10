@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
 import com.openstudy.modules.sales.dto.request.LedgerEntryType;
+import com.openstudy.modules.sales.dto.request.AdvancedFilter;
 import com.openstudy.modules.sales.dto.request.RefundBasis;
 import com.openstudy.modules.sales.dto.request.SalesPurpose;
 
@@ -57,8 +58,16 @@ public class SalesSourceRepository {
      * are only ever set for pass metrics; the revenue reads never see them (the resolver refuses them there).
      */
     public record SourceFilter(List<Long> branchIds, Instant from, Instant to, RefundBasis refundBasis, SalesPurpose purpose,
-            Long productId, String categoryCode) {
-        public SourceFilter { branchIds = List.copyOf(branchIds); }
+            Long productId, String categoryCode, AdvancedFilter advanced) {
+        public SourceFilter {
+            branchIds = List.copyOf(branchIds);
+            advanced = advanced == null ? AdvancedFilter.NONE : advanced;
+        }
+
+        public SourceFilter(List<Long> branchIds, Instant from, Instant to, RefundBasis refundBasis, SalesPurpose purpose,
+                Long productId, String categoryCode) {
+            this(branchIds, from, to, refundBasis, purpose, productId, categoryCode, AdvancedFilter.NONE);
+        }
     }
 
     /** One (branch, purpose, item type) group: how many source rows and the sum of their amount_krw. */
@@ -213,6 +222,7 @@ public class SalesSourceRepository {
         binds.add(filter.from());
         binds.add(filter.to());
         purpose(where, binds, filter);
+        advanced(where, binds, filter, "p.created_by", false);
         return new Fragment(" FROM payments p", where.toString(), binds);
     }
 
@@ -224,6 +234,7 @@ public class SalesSourceRepository {
         binds.add(filter.from());
         binds.add(filter.to());
         purpose(where, binds, filter);
+        advanced(where, binds, filter, "r.processed_by", true);
         return new Fragment(" FROM refunds r JOIN payments p ON p.id = r.payment_id", where.toString(), binds);
     }
 
@@ -235,6 +246,34 @@ public class SalesSourceRepository {
         if (filter.purpose() == null) return;
         where.append(" AND p.purpose = ?");
         binds.add(filter.purpose().name());
+    }
+
+    /**
+     * The M13 advanced filters (M13-D10, #116) on an approval (p) or refund (r, p) fragment: the method is the payment's,
+     * the operator the payment's creator or the refund's processor, the processing branch only narrows refunds, and a
+     * product kind or category matches the sale-time snapshot of the pass the payment issued.
+     */
+    private static void advanced(StringBuilder where, List<Object> binds, SourceFilter filter, String operator, boolean refund) {
+        var advanced = filter.advanced();
+        in(where, binds, "p.method", advanced.methods());
+        in(where, binds, operator, advanced.operatorIds());
+        if (refund) in(where, binds, "r.processing_branch_id", advanced.processingBranchIds());
+        if (!advanced.productKinds().isEmpty()) {
+            where.append(" AND EXISTS (SELECT 1 FROM passes k WHERE k.purchase_payment_id = p.id AND k.kind IN (")
+                    .append(placeholders(advanced.productKinds().size())).append("))");
+            binds.addAll(advanced.productKinds());
+        }
+        if (filter.categoryCode() != null) {
+            where.append(" AND EXISTS (SELECT 1 FROM passes k WHERE k.purchase_payment_id = p.id AND k.snapshot_category_code")
+                    .append(BINARY).append(" = ?)");
+            binds.add(filter.categoryCode());
+        }
+    }
+
+    private static void in(StringBuilder where, List<Object> binds, String column, List<?> values) {
+        if (values.isEmpty()) return;
+        where.append(" AND ").append(column).append(" IN (").append(placeholders(values.size())).append(")");
+        binds.addAll(values);
     }
 
     private static String placeholders(int count) { return String.join(",", Collections.nCopies(count, "?")); }

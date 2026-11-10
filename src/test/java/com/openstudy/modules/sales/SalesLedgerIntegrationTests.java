@@ -90,7 +90,9 @@ class SalesLedgerIntegrationTests extends SalesIntegrationSupport {
             var page = json.readTree(body);
             assertThat(fields(page)).containsExactly("items", "meta", "aggregation", "totals");
             for (var item : page.get("items")) assertThat(fields(item)).containsExactlyElementsOf(contract);
-            assertThat(body).doesNotContain("매출 고객", "01012345678", "010-1234-5678", "고객 요청", "예약 취소", "카드",
+            // The entries and totals carry no customer data; the applied condition names its (empty) advanced filters (#116).
+            assertThat(page.get("items").toString() + page.get("totals") + page.get("meta")).doesNotContain("매출 고객", "01012345678",
+                    "010-1234-5678", "고객 요청", "예약 취소", "카드",
                     "customer", "method", "reason", "processedBy", "createdBy", "매출 직원");
         }
     }

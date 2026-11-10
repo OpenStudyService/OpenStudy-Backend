@@ -167,12 +167,13 @@ class AggregationContractTests {
         }
         var meta = schema("AggregationMeta");
         assertThat(names(meta)).containsExactlyInAnyOrder("condition", "defaultPeriod", "timeZone", "currency", "asOf",
-                "rowCount", "sourceRowCount", "dataStatus", "partial", "metrics");
-        assertThat(meta.get("required").size()).isEqualTo(10);
+                "rowCount", "sourceRowCount", "dataStatus", "partial", "metrics", "conditionNotes"); // conditionNotes: M13 #116
+        assertThat(meta.get("required").size()).isEqualTo(11);
         assertThat(meta.at("/properties/timeZone/enum").toString()).isEqualTo("[\"Asia/Seoul\"]");
         assertThat(meta.at("/properties/currency/enum").toString()).isEqualTo("[\"KRW\"]");
         assertThat(names(schema("AggregationCondition"))).containsExactlyInAnyOrder("branchIds", "allBranches", "from", "to",
-                "refundBasis", "purpose", "productId", "categoryCode", "granularity");
+                "refundBasis", "purpose", "productId", "categoryCode", "granularity", "methods", "productKinds", "operatorIds",
+                "processingBranchIds"); // the M13 advanced filters (#116)
         assertThat(names(schema("AggregationPartial"))).containsExactlyInAnyOrder("periodOpen", "firstBucketPartial", "lastBucketPartial");
         assertThat(spec.at("/components/parameters/RefundBasis/schema/default").asString()).isEqualTo("processedDate");
     }

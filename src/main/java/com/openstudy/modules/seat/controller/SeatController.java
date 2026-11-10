@@ -31,6 +31,7 @@ import com.openstudy.modules.seat.service.SeatService;
 @RequiredArgsConstructor
 public class SeatController {
     private final SeatService service;
+    private final com.openstudy.modules.seat.service.SeatOccupancyTrendService trends;
 
     @GetMapping
     public PageResponse<SeatView> list(Authentication actor, @RequestParam(defaultValue = "all") String scope,
@@ -46,6 +47,14 @@ public class SeatController {
     public SeatBoard board(Authentication actor, @RequestParam(required = false) String branchId,
             @RequestParam(required = false) String kind) {
         return service.board(actor(actor), branchId, kind);
+    }
+
+    /** Occupancy per hour or day of one branch (#116, M13-D09). */
+    @GetMapping("/occupancy-trend")
+    public com.openstudy.modules.seat.dto.response.SeatOccupancyTrend occupancyTrend(Authentication actor,
+            @RequestParam(required = false) String branchId, @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to, @RequestParam(required = false) String granularity) {
+        return trends.trend(actor(actor), branchId, from, to, granularity);
     }
 
     @GetMapping("/occupancy")

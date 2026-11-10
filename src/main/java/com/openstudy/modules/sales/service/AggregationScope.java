@@ -1,5 +1,6 @@
 package com.openstudy.modules.sales.service;
 
+import com.openstudy.modules.sales.dto.request.AdvancedFilter;
 import java.time.Instant;
 import java.util.List;
 
@@ -17,13 +18,16 @@ import com.openstudy.modules.sales.repository.SalesSourceRepository.SourceFilter
  */
 public record AggregationScope(AuthorizationState requester, List<Long> branchIds, List<Long> requestedOrder,
         boolean allBranches, Instant from, Instant to, boolean defaultPeriod, RefundBasis refundBasis, SalesPurpose purpose,
-        Long productId, String categoryCode, AggregationGranularity granularity, Instant asOf) {
+        Long productId, String categoryCode, AggregationGranularity granularity, Instant asOf, AdvancedFilter advanced,
+        boolean passOnly) {
     public AggregationScope {
         branchIds = List.copyOf(branchIds);
         requestedOrder = List.copyOf(requestedOrder);
     }
 
-    public SourceFilter sourceFilter() { return new SourceFilter(branchIds, from, to, refundBasis, purpose, productId, categoryCode); }
+    public SourceFilter sourceFilter() {
+        return new SourceFilter(branchIds, from, to, refundBasis, purpose, productId, categoryCode, advanced);
+    }
 
     public boolean periodOpen() { return to.isAfter(asOf); }
 }
