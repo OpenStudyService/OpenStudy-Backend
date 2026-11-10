@@ -110,6 +110,7 @@ Backend [#67](https://github.com/OpenStudyService/OpenStudy-Backend/issues/67)�
 | 지점 운영 중지 | 409 `BRANCH_NOT_ACTIVE` |
 | 룸 운영 중단 | 422 `ROOM_NOT_AVAILABLE` |
 | 정시 시작 아님, 1시간 배수 아님, `endAt ≤ startAt`, `startAt ≤ 현재`, 24시간 초과 | 422 `RESERVATION_TIME_INVALID` |
+| 시작 시각의 Asia/Seoul 날짜가 지점 휴무일(2026-11-10 M13 #112 추가, [M13 계약](operations-extension-api.md#지점-휴무일fr-br-09-m13-d01d05)) | 409 `BRANCH_CLOSED_DAY`(`closedDate`) |
 | `partySize > capacity` | 422 `RESERVATION_CAPACITY_EXCEEDED` |
 | 고객이 없거나 조회 범위 밖 | 404 `NOT_FOUND` |
 | 고객이 정상이 아님 | 409 `CUSTOMER_NOT_ACTIVE` |

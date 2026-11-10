@@ -368,7 +368,7 @@ class AggregationContractTests {
         assertThat(home.get("x-adr-decisions").toString()).contains("M9-D08", "M8-D02");
         // ADR-M10-002 M10-D11: team chat left the service, so the home has no message card.
         assertThat(names(schema("HomeSummary"))).containsExactlyInAnyOrder("meta", "seats", "tasks", "inquiries", "facilities",
-                "shifts", "notices");
+                "shifts", "notices", "closures"); // closures: M13 #112
         assertThat(spec.at("/components/schemas/HomeMessageCard").isMissingNode()).isTrue();
         assertThat(spec.at("/components/schemas/HomeChannelItem").isMissingNode()).isTrue();
         assertThat(schema("HomeLink").at("/properties/screen/enum").toString()).doesNotContain("channel");

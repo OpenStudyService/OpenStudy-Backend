@@ -199,6 +199,16 @@ erDiagram
     varchar_128 request_id
     enum__SUCCESS___DENIED___FAILED result
   }
+  branch_closures {
+    bigint_unsigned id PK
+    bigint_unsigned branch_id FK
+    date closed_on
+    varchar_200 note
+    bigint_unsigned created_by FK
+    datetime_6 created_at
+    datetime_6 updated_at
+    bigint_unsigned version
+  }
   branch_memberships {
     bigint_unsigned id PK
     bigint_unsigned employee_id FK
@@ -888,6 +898,8 @@ erDiagram
   shifts |o--o{ attendance_records : "fk_attendance_records_2: shift_id"
   employees |o--o{ audit_events : "fk_audit_events_1: actor_employee_id"
   branches |o--o{ audit_events : "fk_audit_events_2: branch_id"
+  branches ||--o{ branch_closures : "fk_branch_closures_1: branch_id"
+  employees ||--o{ branch_closures : "fk_branch_closures_2: created_by"
   employees ||--o{ branch_memberships : "fk_branch_memberships_1: employee_id"
   branches ||--o{ branch_memberships : "fk_branch_memberships_2: branch_id"
   employees |o--o{ branch_memberships : "fk_memberships_approved_by: approved_by"

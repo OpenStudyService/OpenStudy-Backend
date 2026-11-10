@@ -2,7 +2,7 @@
 
 Backend [#111](https://github.com/OpenStudyService/OpenStudy-Backend/issues/111)의 M13 계약이다. 구현은 지점 휴무일(#112), 상품 판매 기간·한도(#113), 중복 고객 확인·병합(#114), 일별 마감·조정 이력(#115), 고급 필터·이용 지점 사용량·좌석 점유 추이(#116)에서 이 문서를 기준으로 진행한다. Frontend는 같은 [OpenAPI](openapi.json)(`0.1.14-m13-operations-extension`)로 연동한다.
 
-2026-11-10: 이 문서의 operation은 모두 설계 계약(`design-target`)이다. 기존 operation에 더한 필드·필터도 같은 이슈에서 구현한다.
+2026-11-10: 이 문서의 operation은 모두 설계 계약(`design-target`)이다. 기존 operation에 더한 필드·필터도 같은 이슈에서 구현한다. 2026-11-10: 지점 휴무일 operation 4개와 룸 예약 차단·달력 `closedDates`·홈 `closures`는 #112에서 구현됐다(`implemented`, V12 `branch_closures`).
 
 정책 근거는 [ADR-M13-001](../../db/ADR-M13-001.md)(M13-D01~D13)이다. M13-D11~D13은 이 계약을 쓰면서 사용자에게 받은 결정(2026-11-10)이다. 공통 요청·응답·오류·목록 규칙은 [API 계약](api.md)을, 원거래의 의미는 [상품 API](product-api.md)·[고객·결제 계약](customer-sales-api.md)·[공간 운영 계약](space-operations-api.md)·[좌석 이용 계약](seat-usage-api.md)을, 집계의 기간·환불 기준·메타정보·값 표현은 [정형 집계 계약](aggregation-api.md)(M9)을 따른다.
 
@@ -112,7 +112,7 @@ Backend [#111](https://github.com/OpenStudyService/OpenStudy-Backend/issues/111)
 
 | 업무 | 휴무일의 효과 |
 | --- | --- |
-| 스터디룸 신규 예약 | 시작 시각의 Asia/Seoul 날짜가 휴무일이면 409 `BRANCH_CLOSED_DAY`. 전날 시작해 휴무일로 넘어가는 예약은 막지 않는다 |
+| 스터디룸 신규 예약 | 시작 시각의 Asia/Seoul 날짜가 휴무일이면 409 `BRANCH_CLOSED_DAY`. 전날 시작해 휴무일로 넘어가는 예약은 막지 않는다. 검사 위치는 시간 규칙(422) 뒤, 정원·고객·시간 충돌 앞이다 |
 | 이미 있는 스터디룸 예약 | 자동 취소하지 않는다. 등록 응답의 `affectedReservations`로 경고한다 |
 | 판매·입실·출근·근무 등록 | 막지 않는다 |
 | 화면 | 달력의 `closedDates`, 홈의 `closures`로 안내한다 |
@@ -125,21 +125,21 @@ Backend [#111](https://github.com/OpenStudyService/OpenStudy-Backend/issues/111)
 
 | 조건 | 결과 |
 | --- | --- |
-| 지점이 보이지 않음 | 404 |
+| 지점에 접근할 수 없음(없는 지점 포함) | 403. 지점 상세(`GET /branches/{id}`)와 같이 지점이 있는지 알리지 않는다(2026-11-10 #112 구현에서 정정) |
 | 지점의 MANAGER 이상이 아님 | 403 |
 | 날짜 형식 오류, `note` 길이 | 422 `VALIDATION_FAILED` |
 | `date` < 오늘(Asia/Seoul) 또는 `date` > 오늘 + 366일 | 422 `CLOSURE_DATE_INVALID` |
 | 같은 지점·날짜의 휴무일이 있음 | 409 `BRANCH_CLOSURE_EXISTS`(`closureId`) |
 
 - 운영 중지 지점에도 등록할 수 있다. 휴무일은 안내 정보라 신규 거래 제한과 무관하다.
-- 응답은 201 `BranchClosureCreated`다. 휴무일과 함께, 그날(Asia/Seoul) 시작하는 `예약`·`이용 중` 상태 예약의 `id`, `roomId`, `roomName`, `startAt`, `endAt`을 `affectedReservations`에 담는다(시작 시각 순, 최대 100건과 `affectedReservationCount`). 고객 정보는 담지 않는다. 화면은 예약 목록으로 이동해 연락·취소를 처리한다.
+- 응답은 201 `BranchClosureCreated`다. 휴무일과 함께, 그날(Asia/Seoul) 시작하는 `확정`·`이용 중` 상태 예약의 `id`, `roomId`, `roomName`, `startAt`, `endAt`을 `affectedReservations`에 담는다(시작 시각 순, 최대 100건과 `affectedReservationCount`). 고객 정보는 담지 않는다. 화면은 예약 목록으로 이동해 연락·취소를 처리한다.
 - 같은 키·같은 입력은 처음 결과(201)를 재생한다. 경고 목록도 처음 결과 그대로다.
 
 ### 수정·삭제·조회
 
 - 수정(`PATCH /branch-closures/{id}`)은 `version`과 `note`만 받는다. 날짜는 바꿀 수 없다(422 `IMMUTABLE_FIELD`가 아니라 정의되지 않은 필드라 422 `VALIDATION_FAILED`). 날짜를 바꾸려면 삭제 후 다시 등록한다. 지난 휴무일의 문구도 고칠 수 있다.
 - 삭제(`DELETE /branch-closures/{id}?version=`)는 `date` > 오늘(Asia/Seoul)인 휴무일만이다. 오늘이거나 지난 휴무일은 409 `CLOSURE_ALREADY_STARTED`다. 지난 휴무는 기록으로 남긴다. 성공은 204다. 행을 지우고 감사(`branch-closures`, `DELETED`)를 남긴다.
-- 목록 필터는 `from`·`to`(날짜, 둘 다 포함)이다. 생략하면 오늘부터 앞으로 90일이다. 기간은 최대 366일이고 넘으면 422 `PERIOD_TOO_LONG`이다. 정렬은 `date` 오름차순이고 페이지가 없다(지점·기간당 최대 367행).
+- 목록은 지점에 접근할 수 있는 사용자(OWNER 또는 유효 소속)가 본다. 접근할 수 없으면 403이다. 필터는 `from`·`to`(날짜, 둘 다 포함)이다. 생략하면 오늘부터 앞으로 90일이다. 기간은 최대 366일이고 넘으면 422 `PERIOD_TOO_LONG`이다. 정렬은 `date` 오름차순이고 페이지가 없다(지점·기간당 최대 367행).
 - 감사: 등록·수정·삭제마다 `audit_events`에 지점·처리자를 남긴다.
 
 ### 다른 화면의 안내

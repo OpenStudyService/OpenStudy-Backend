@@ -7,13 +7,16 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
+import com.openstudy.modules.branch.dto.response.ClosureNotice;
+
 /**
  * Contract schema {@code HomeSummary} (aggregation-api.md "운영 홈 요약", FR-DASH-02·03·05·06). Every card follows the
  * permission and scope of its source feature; the shift card's colleagues are the one documented exception.
- * The message card was dropped with team chat (ADR-M10-002 M10-D11).
+ * The message card was dropped with team chat (ADR-M10-002 M10-D11). {@code closures} announces the scope branches'
+ * closed days from today through seven days ahead (M13-D01, #112).
  */
 public record HomeSummary(Meta meta, SeatCard seats, TaskCard tasks, InquiryCard inquiries, FacilityCard facilities,
-        ShiftCard shifts, NoticeCard notices) {
+        ShiftCard shifts, NoticeCard notices, List<ClosureNotice> closures) {
 
     public record Meta(List<String> branchIds, boolean allBranches, LocalDate date, Instant dayStart, Instant dayEnd,
             String timeZone, Instant asOf, TaskFilter taskFilter) {}
