@@ -89,8 +89,8 @@ class AccountContractTests {
             assertThat(operation.get("x-permission").asString()).as(id).isNotBlank();
             assertThat(operation.get("x-error-codes").size()).as(id).isPositive();
             assertThat(operation.get("x-adr-decisions").toString()).as(id).contains("M14-D");
-            // #122 implemented the audit operations; #119 and #120 are still to come.
-            String status = ISSUES.get(id).equals("#122") ? "implemented" : "design-target";
+            // #119 and #122 implemented their operations; #120 is still to come.
+            String status = ISSUES.get(id).equals("#120") ? "design-target" : "implemented";
             assertThat(operation.get("x-implementation-status").asString()).as(id).isEqualTo(status);
             assertThat(operation.get("x-implementation-issue").asString()).as(id).isEqualTo(ISSUES.get(id));
             String[] methodAndPath = route.split(" ");

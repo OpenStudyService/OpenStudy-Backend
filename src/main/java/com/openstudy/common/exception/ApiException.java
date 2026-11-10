@@ -40,6 +40,11 @@ public class ApiException extends RuntimeException {
     }
 
     /** A 404 that does not say whether the item exists for someone else, e.g. another employee's AI conversation. */
+    /** A refusal with its own code, e.g. SELF_RESET_FORBIDDEN; a bare refusal stays the common 403 FORBIDDEN. */
+    public static ApiException forbidden(String code, String message) {
+        return new ApiException(403, code, message, null, null, null);
+    }
+
     public static ApiException notFound(String message) {
         return new ApiException(404, "NOT_FOUND", message, null, null, null);
     }

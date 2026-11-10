@@ -67,6 +67,42 @@ public class LoginAttemptLimiter {
         accounts.remove(normalize(email));
     }
 
+    /**
+     * Password change (#119): the account limit is exhausted. The check counts nothing; only a wrong current password does,
+     * through {@link #accountFailure}, so a session holder cannot guess the password through this path either.
+     */
+    public synchronized boolean accountExhausted(String email) {
+        accounts.purge(clock.instant());
+        return accounts.exhausted(normalize(email));
+    }
+
+    /** One failed check of an account's current password, counted like a failed login on the account key only. */
+    public synchronized void accountFailure(String email) {
+        Instant now = clock.instant();
+        accounts.purge(now);
+        accounts.record(normalize(email), now);
+    }
+
+    /**
+     * Login unlock and a completed reset (#119, M14-D06): clears the account key only; the source keeps counting.
+     * Returns whether the account was locked out at that moment. This instance only (see the class comment).
+     */
+    public synchronized boolean clearAccount(String email) {
+        String account = normalize(email);
+        accounts.purge(clock.instant());
+        boolean locked = accounts.exhausted(account);
+        accounts.remove(account);
+        return locked;
+    }
+
+    /** The public reset-link endpoints count against the source key only, with the login limit (#119). */
+    public synchronized void checkSource(String source) {
+        Instant now = clock.instant();
+        sources.purge(now);
+        if (sources.exhausted(source)) throw new LoginRateLimitedException(Scope.SOURCE, sources.markReported(source));
+        sources.record(source, now);
+    }
+
     synchronized int size(Scope scope) { return (scope == Scope.ACCOUNT ? accounts : sources).attempts.size(); }
 
     private static String normalize(String email) { return email.trim().toLowerCase(Locale.ROOT); }
