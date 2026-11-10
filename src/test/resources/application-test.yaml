@@ -5,7 +5,9 @@ spring:
     username: testcontainers_required
     password: testcontainers_required
     hikari:
-      connection-timeout: 1000
+      # Commands serialize on the administration guard while holding a connection, so with four connections the
+      # other concurrent requests queue for one. 1s ran out under the parallel suite (#201); 30s is Hikari's default.
+      connection-timeout: 30000
       initialization-fail-timeout: 1
       maximum-pool-size: 4
   flyway:
