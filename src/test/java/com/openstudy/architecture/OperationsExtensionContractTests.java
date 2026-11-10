@@ -169,8 +169,9 @@ class OperationsExtensionContractTests {
         }
         assertThat(spec.toString()).doesNotContain("\"issue\":\"#115\"");
         // No implemented schema gained a field before its implementation.
-        // Every planned change moved into its definition (#116 was the last).
-        assertThat(spec.toString()).doesNotContain("\"x-planned-changes\":");
+        // Every M13 planned change moved into its definition (#116 was the last). Later contracts (M14, #118) may plan
+        // their own changes, so only M13 issues are checked.
+        assertThat(spec.toString()).doesNotContain("\"issue\":\"#116\"");
     }
 
     /** Acceptance 2: the three reasons a product cannot be sold are different codes, checked in the ADR order. */
@@ -244,7 +245,8 @@ class OperationsExtensionContractTests {
     }
 
     @Test void theContractIsPublishedAsTheM13Version() throws Exception {
-        assertThat(spec.at("/info/version").asString()).isEqualTo("0.1.14-m13-operations-extension");
+        // M13 was published in 0.1.14-m13-operations-extension; later contracts raise the version (0.1.15-m14-account, #118).
+        assertThat(Integer.parseInt(spec.at("/info/version").asString().split("[.-]")[2])).isGreaterThanOrEqualTo(14);
         assertThat(spec.at("/info/description").asString()).contains("Issue #111", "operations-extension-api.md",
                 "x-planned-changes");
         assertThat(contract()).contains("`0.1.14-m13-operations-extension`", "operation은 모두 설계 계약(`design-target`)");
