@@ -25,6 +25,8 @@ import jakarta.persistence.EntityManager;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import static com.openstudy.modules.ai.service.QuestionNormalizer.has;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -533,34 +535,36 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         if (aliasToAnalysisId.containsKey(q)) {
             return Optional.of(aliasToAnalysisId.get(q));
         }
-        if (q.contains("지점별 매출") || (q.contains("이번 달") && q.contains("매출"))) {
+        // #126 (M15-D08): the rules read the normalized question, so spacing, case and reviewed synonyms do not matter.
+        String k = QuestionNormalizer.key(q);
+        if (has(k, "지점별 매출") || (has(k, "이번 달") && has(k, "매출"))) {
             return Optional.of(ID_POC_001);
         }
-        if (q.contains("붐벼") || q.contains("혼잡") || q.contains("피크")) {
+        if (has(k, "붐벼") || has(k, "혼잡") || has(k, "피크")) {
             return Optional.of(ID_POC_002);
         }
-        if (q.contains("TOP 5") || q.contains("잘 팔린 이용권") || q.contains("인기 이용권")) {
+        if (has(k, "TOP 5") || has(k, "잘 팔린 이용권") || has(k, "인기 이용권")) {
             return Optional.of(ID_POC_003);
         }
-        if (q.contains("빈자리") || q.contains("남은 좌석") || (q.contains("지금") && q.contains("좌석"))) {
+        if (has(k, "빈자리") || has(k, "남은 좌석") || (has(k, "지금") && has(k, "좌석"))) {
             return Optional.of(ID_POC_004);
         }
-        if (q.contains("스터디룸 예약") || (q.contains("이번 주") && q.contains("스터디룸"))) {
+        if (has(k, "스터디룸 예약") || (has(k, "이번 주") && has(k, "스터디룸"))) {
             return Optional.of(ID_POC_005);
         }
-        if (q.contains("7일 이내") || q.contains("만료되는 이용권") || q.contains("만료 예정")) {
+        if (has(k, "7일 이내") || has(k, "만료되는 이용권") || has(k, "만료 예정")) {
             return Optional.of(ID_POC_006);
         }
-        if (q.contains("일별 매출") || q.contains("매출 추이")) {
+        if (has(k, "일별 매출") || has(k, "매출 추이")) {
             return Optional.of(ID_POC_007);
         }
-        if ((q.contains("이용권") && q.contains("스터디룸") && q.contains("사물함")) || q.contains("어디서 매출이 가장")) {
+        if ((has(k, "이용권") && has(k, "스터디룸") && has(k, "사물함")) || has(k, "어디서 매출이 가장")) {
             return Optional.of(ID_POC_008);
         }
-        if (q.contains("급하게 처리해야 할 업무") || q.contains("긴급 업무") || (q.contains("급하게") && q.contains("업무"))) {
+        if (has(k, "급하게 처리해야 할 업무") || has(k, "긴급 업무") || (has(k, "급하게") && has(k, "업무"))) {
             return Optional.of(ID_POC_009);
         }
-        if (q.contains("직원별 근무시간") || (q.contains("지난주") && q.contains("근무시간"))) {
+        if (has(k, "직원별 근무시간") || (has(k, "지난주") && has(k, "근무시간"))) {
             return Optional.of(ID_POC_010);
         }
         return Optional.empty();

@@ -32,6 +32,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -111,8 +112,23 @@ public class AiWorkspaceService {
             List<OpenStudyPlaybackGateway.ClarificationOption> clarificationOptions,
             List<StageSpan> stages,
             List<OpenStudyPlaybackGateway.RetrievalCandidate> retrievedCandidates,
-            Map<String, Object> securityGate
-    ) {}
+            Map<String, Object> securityGate,
+            Map<String, Object> conditions,
+            Map<String, Object> context,
+            Map<String, Object> editableFilters
+    ) {
+        /** A response without M15 conditions (#126): refusals, clarifications and reopened questions. */
+        public AiQueryResponse(String requestId, String executionId, String conversationId, String traceId, String status,
+                int httpStatus, String errorCode, String resultCategory, String behavior, String message, String pocCode,
+                String analysisId, String intentDomain, String semanticStatus, Object querySpec, ViewSpec viewSpec,
+                ResultEnvelope envelope, Map<String, Object> summary, OpenStudyPlaybackGateway.TruncationInfo truncation,
+                List<OpenStudyPlaybackGateway.ClarificationOption> clarificationOptions, List<StageSpan> stages,
+                List<OpenStudyPlaybackGateway.RetrievalCandidate> retrievedCandidates, Map<String, Object> securityGate) {
+            this(requestId, executionId, conversationId, traceId, status, httpStatus, errorCode, resultCategory, behavior, message,
+                    pocCode, analysisId, intentDomain, semanticStatus, querySpec, viewSpec, envelope, summary, truncation,
+                    clarificationOptions, stages, retrievedCandidates, securityGate, null, null, null);
+        }
+    }
 
     private final OpenStudyUserContextResolver userResolver;
     private final OpenStudyPlaybackGateway playbackGateway;
@@ -436,11 +452,24 @@ public class AiWorkspaceService {
             existing.get().touch(null, now);
         }
 
+        // #126 (M15-D06): the conversation's last result, unless the scope changed or its branches are no longer allowed.
+        var prior = existing.isEmpty() ? Optional.<AiExecutionEntity>empty()
+                : executionRepository.findFirstByConversationIdAndStatusOrderByCreatedAtDescIdDesc(convId, "READY")
+                        .filter(e -> e.getAnalysisId() != null);
+        String resetReason = prior.isEmpty() ? "NO_PRIOR_RESULT"
+                : !Objects.equals(prior.get().getScopeKey(), scope) ? "SCOPE_CHANGED"
+                : permitted(actor, prior.get(), "sales".equals(prior.get().getIntentDomain())) ? null : "PERMISSION_LOST";
+        AiExecutionEntity basis = resetReason == null ? prior.get() : null;
+        Set<Long> namedBranches = rawQuestion == null ? Set.of() : userResolver.mentionedBranches(rawQuestion);
+        String followUp = basis != null && clarificationChoice == null && AiReuse.isFollowUp(rawQuestion, !namedBranches.isEmpty())
+                ? basis.getAnalysisId() : null;
         var plan = playbackGateway.planQuestion(
                 rawQuestion,
                 clarificationChoice,
                 actor,
-                scope
+                scope,
+                followUp,
+                basis == null ? null : previousConditions(basis)
         );
 
         List<StageSpan> stages = new ArrayList<>();
@@ -521,6 +550,37 @@ public class AiWorkspaceService {
                 "sales".equals(plan.intentDomain())
         );
         Set<Long> targetBranches = scopeDecision.effectiveBranches();
+        // #126: what this question takes over from the previous result. Its branches are checked again for this analysis:
+        // a follow-up that turns to sales needs sales:read on every branch it would take over.
+        if (basis != null && !permitted(actor, basis, "sales".equals(plan.intentDomain()))) {
+            basis = null;
+            resetReason = "PERMISSION_LOST";
+        }
+        boolean sameAnalysis = basis != null && basis.getAnalysisId().equals(plan.analysisId());
+        Set<Long> priorBranches = basis == null ? Set.of() : parseBranchCsv(basis.getBranchIdsCsv());
+        boolean inheritBranches = basis != null && namedBranches.isEmpty()
+                && (!OpenStudyAnalyses.SINGLE_BRANCH.contains(plan.analysisId()) || priorBranches.size() == 1);
+        if (inheritBranches) targetBranches = priorBranches;
+        String refundBasis = plan.refundBasisOverride();
+        boolean zeroFill = plan.zeroFillOverrideRequested();
+        OpenStudyClock.KstPeriod inheritedPeriod = null;
+        Set<Long> inheritedProducts = Set.of();
+        Map<String, Object> context = AiReuse.resetContext(resetReason);
+        if (basis != null) {
+            if (sameAnalysis) {
+                if (refundBasis == null) refundBasis = basis.getRefundBasis();
+                zeroFill = zeroFill || basis.isZeroFillRequested();
+                inheritedPeriod = savedPeriod(basis);
+                inheritedProducts = parseBranchCsv(basis.getProductIdsCsv());
+            }
+            boolean sales = "sales".equals(plan.intentDomain());
+            context = AiReuse.followUpContext(basis.getId(), sameAnalysis,
+                    sameAnalysis && analyses.defaultPeriod(plan.analysisId()) != null,
+                    !targetBranches.equals(priorBranches),
+                    sameAnalysis && AiReuse.editable(plan.analysisId()).products(),
+                    sameAnalysis && sales ? !Objects.equals(refundBasis, basis.getRefundBasis()) : null,
+                    sameAnalysis && OpenStudyAnalyses.ID_POC_007.equals(plan.analysisId()) ? zeroFill != basis.isZeroFillRequested() : null);
+        }
         securityGate.put("authorizedBranches", targetBranches);
 
         // A one-branch analysis over several branches asks which branch, offering only branches already in scope.
@@ -564,8 +624,10 @@ public class AiWorkspaceService {
                 actor.employeeId(),
                 plan.analysisId(),
                 targetBranches,
-                plan.refundBasisOverride(),
-                plan.zeroFillOverrideRequested()
+                refundBasis,
+                zeroFill,
+                inheritedPeriod,
+                inheritedProducts
         );
         long execMs = Math.max(2L, Duration.ofNanos(System.nanoTime() - execStart).toMillis());
         stages.add(new StageSpan("executing", "데이터베이스 집계 실행", "COMPLETED", execMs,
@@ -575,15 +637,19 @@ public class AiWorkspaceService {
 
 
         long totalMs = Math.max(5L, Duration.ofNanos(System.nanoTime() - startNanos).toMillis());
-        persistExecutionAndTrace(
+        var saved = persistExecutionAndTrace(
                 executionId, requestId, traceId, convId, actor, scope, targetBranches,
                 rawQuestion,
                 pocResult.pocCode(), pocResult.analysisId(), plan.intentDomain(),
                 "READY", plan.resultCategory(), null,
                 querySpec, pocResult.envelope().view(),
                 totalMs, stages, plan.retrievedCandidates(), securityGate, now,
-                plan.refundBasisOverride(), plan.zeroFillOverrideRequested(), clientKey
+                refundBasis, zeroFill, clientKey
         );
+        if (inheritedPeriod != null || !inheritedProducts.isEmpty()) {
+            saved.keeps(basis.getPeriodFrom(), basis.getPeriodTo(),
+                    inheritedProducts.isEmpty() ? null : OpenStudyUserContextResolver.toCsv(inheritedProducts));
+        }
 
         messageRepository.save(new AiMessageEntity(convId, "USER", rawQuestion, executionId, now));
         messageRepository.save(new AiMessageEntity(convId, "ASSISTANT", pocResult.question(), executionId, now));
@@ -611,7 +677,30 @@ public class AiWorkspaceService {
                 List.of(),
                 stages,
                 plan.retrievedCandidates(),
-                securityGate);
+                securityGate,
+                conditionsOf(saved).toMap(),
+                context,
+                AiReuse.editable(plan.analysisId()).toMap());
+    }
+
+    /** #126: whether the previous result's branches are all still allowed; a follow-up never relies on old permissions. */
+    private boolean permitted(OpenStudyUserContextResolver.ResolvedActor actor, AiExecutionEntity execution, boolean sales) {
+        try {
+            verifyBranchReaccess(actor, parseBranchCsv(execution.getBranchIdsCsv()), sales);
+            return true;
+        } catch (ApiException denied) {
+            return false;
+        }
+    }
+
+    /** #126: what the model hears about the previous result: its conditions, never the earlier question's text. */
+    private String previousConditions(AiExecutionEntity execution) {
+        var conditions = conditionsOf(execution);
+        return "analysisId=" + conditions.analysisId()
+                + "; period=" + (conditions.from() == null ? "none" : conditions.from() + "~" + conditions.to())
+                + "; branchIds=" + conditions.branchIds().stream().sorted().toList()
+                + "; productIds=" + conditions.productIds().stream().sorted().toList()
+                + "; refundBasis=" + conditions.refundBasis() + "; zeroFill=" + conditions.zeroFill();
     }
 
     @Transactional

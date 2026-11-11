@@ -97,8 +97,9 @@ class AnalysisReuseContractTests {
         assertThat(texts(context.at("/inherited/items/enum"))).containsExactly("ANALYSIS", "PERIOD", "BRANCHES", "PRODUCTS",
                 "REFUND_BASIS", "ZERO_FILL");
         assertThat(texts(context.at("/resetReason/enum"))).contains("SCOPE_CHANGED", "PERMISSION_LOST");
-        var planned = schema("AiQueryResponse").get("x-planned-changes").toString();
-        assertThat(planned).contains("#126", "AiContext", "AiConditions");
+        // #126 moved the question result's conditions and context into the definition.
+        assertThat(schema("AiQueryResponse").has("x-planned-changes")).isFalse();
+        assertThat(schema("AiQueryResponse").get("properties").toString()).contains("AiContext", "AiConditions", "AiEditableFilters");
         // #125 moved its planned changes into the definitions.
         assertThat(schema("AiExecution").has("x-planned-changes")).isFalse();
         assertThat(schema("AiExecution").get("properties").toString()).contains("editableFilters", "REFINEMENT", "sourceExecutionId");

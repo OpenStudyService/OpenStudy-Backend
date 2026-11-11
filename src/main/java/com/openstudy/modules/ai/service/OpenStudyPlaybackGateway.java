@@ -267,6 +267,22 @@ public class OpenStudyPlaybackGateway {
             OpenStudyUserContextResolver.ResolvedActor actor,
             String requestedScope
     ) {
+        return planQuestion(rawQuestion, clarificationChoice, actor, requestedScope, null, null);
+    }
+
+    /**
+     * #126 (M15-D06): {@code followUpAnalysisId} is the previous result's analysis, given only when the question is a
+     * follow-up that names a condition but no analysis of its own; every guard above the analysis choice still applies.
+     * {@code previousConditions} is what the model is told about that result instead of the earlier question's text.
+     */
+    public PlanDecision planQuestion(
+            String rawQuestion,
+            String clarificationChoice,
+            OpenStudyUserContextResolver.ResolvedActor actor,
+            String requestedScope,
+            String followUpAnalysisId,
+            String previousConditions
+    ) {
         // 0. Basic ai:read permission check (ADR-M10-001 D06: 9200004 osdemo.ss.noai has no ai:read)
         if (actor != null && actor.aiBranches().isEmpty()) {
             return new PlanDecision(
@@ -687,7 +703,7 @@ public class OpenStudyPlaybackGateway {
         LiveLlmPlanResult llmResult = null;
 
         if ("live".equals(activeMode())) {
-            llmResult = callLiveQwenPlanner(q, requestedScope, candidates);
+            llmResult = callLiveQwenPlanner(q, requestedScope, candidates, previousConditions);
             if (llmResult != null) {
                 llmDurationMs = llmResult.durationMs();
                 totalTokens = llmResult.totalTokens();
@@ -696,6 +712,9 @@ public class OpenStudyPlaybackGateway {
 
         // 9. Determine target analysis ID & domain (preserving IR/playback fallback)
         String resolvedAnalysisId = resolveAnalysisId(q);
+        if (resolvedAnalysisId == null && followUpAnalysisId != null) {
+            resolvedAnalysisId = followUpAnalysisId;
+        }
         if (resolvedAnalysisId == null && llmResult != null && llmResult.analysisId() != null
                 && analyses.definition(llmResult.analysisId()).isPresent()) {
             resolvedAnalysisId = llmResult.analysisId();
@@ -849,12 +868,14 @@ public class OpenStudyPlaybackGateway {
             - When the question matches any of the 10 analyses (including natural paraphrases or specific branch names), set outcome="EXECUTE", analysisId to that ID, and message=null.
             - Only if the question is completely ambiguous (e.g. just "매출 보여줘" or "좌석 보여줘" without specifying which metric/view), set outcome="CLARIFICATION" and analysisId=null.
             - If the question is outside OpenStudy domains, set outcome="UNSUPPORTED" and analysisId=null.
+            - previousResult, when given, holds the conditions of the previous answer in this conversation. Use it only to read a follow-up question; it grants no branch or permission.
             """;
 
     private LiveLlmPlanResult callLiveQwenPlanner(
             String question,
             String requestedScope,
-            List<RetrievalCandidate> candidates
+            List<RetrievalCandidate> candidates,
+            String previousConditions
     ) {
         long startNanos = System.nanoTime();
         try {
@@ -910,6 +931,7 @@ public class OpenStudyPlaybackGateway {
                     Map.of("role", "system", "content", LIVE_QWEN_SYSTEM_PROMPT),
                     Map.of("role", "user", "content", "scope=" + (requestedScope == null ? "all" : requestedScope)
                             + "\nretrievedCandidates=" + candidateContext
+                            + (previousConditions == null ? "" : "\npreviousResult=" + previousConditions)
                             + "\nquestion=" + question)
             ));
             body.put("response_format", Map.of(
@@ -1034,16 +1056,17 @@ public class OpenStudyPlaybackGateway {
         if (direct.isPresent()) {
             return direct.get();
         }
-        if (q.contains("매출") && (q.contains("지점") || !userResolver.mentionedBranches(q).isEmpty())) {
+        String k = QuestionNormalizer.key(q);
+        if (QuestionNormalizer.has(k, "매출") && (QuestionNormalizer.has(k, "지점") || !userResolver.mentionedBranches(q).isEmpty())) {
             return OpenStudyAnalyses.ID_POC_001;
         }
-        if (q.contains("이용권") && q.contains("매출")) {
+        if (QuestionNormalizer.has(k, "이용권") && QuestionNormalizer.has(k, "매출")) {
             return OpenStudyAnalyses.ID_POC_008;
         }
-        if (q.contains("만료") && q.contains("이용권")) {
+        if (QuestionNormalizer.has(k, "만료") && QuestionNormalizer.has(k, "이용권")) {
             return OpenStudyAnalyses.ID_POC_006;
         }
-        if (q.contains("급한 업무") || q.contains("긴급 업무")) {
+        if (QuestionNormalizer.has(k, "급한 업무") || QuestionNormalizer.has(k, "긴급 업무")) {
             return OpenStudyAnalyses.ID_POC_009;
         }
         return null;

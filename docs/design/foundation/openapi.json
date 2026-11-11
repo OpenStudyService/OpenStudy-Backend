@@ -34113,40 +34113,33 @@
           "securityGate": {
             "type": "object",
             "description": "진단용 판정 정보"
-          }
-        },
-        "x-planned-changes": [
-          {
-            "issue": "#126",
-            "status": "design-target",
-            "properties": {
-              "conditions": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/AiConditions"
-                  }
-                ],
-                "nullable": true
-              },
-              "context": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/AiContext"
-                  }
-                ],
-                "nullable": true
-              },
-              "editableFilters": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/AiEditableFilters"
-                  }
-                ],
-                "nullable": true
+          },
+          "conditions": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AiConditions"
               }
-            }
+            ],
+            "nullable": true
+          },
+          "context": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AiContext"
+              }
+            ],
+            "nullable": true,
+            "description": "후속 질문 문맥(M15-D06, #126). 질문 결과와 필터 수정 결과에 있다. 확인 질문·거절과 대화를 다시 열 때의 질문은 null이다."
+          },
+          "editableFilters": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AiEditableFilters"
+              }
+            ],
+            "nullable": true
           }
-        ]
+        }
       },
       "AiCancelResult": {
         "type": "object",

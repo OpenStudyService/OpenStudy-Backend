@@ -202,6 +202,55 @@ final class AiReuse {
     }
 
     /**
+     * #126 (2026-11-11 decision): phrases that change or keep a condition of the previous result. A question without an
+     * analysis of its own builds on the previous result only when it names a branch or holds one of these; anything else
+     * is not linked to it.
+     */
+    static final List<String> FOLLOW_UP_PHRASES = List.of("같은 조건", "그대로", "이어서", "원결제일", "환불 처리일", "없는 날",
+            "0원인 날");
+
+    static boolean isFollowUp(String question, boolean namesBranch) {
+        if (question == null) return false;
+        String key = QuestionNormalizer.key(question);
+        return namesBranch || FOLLOW_UP_PHRASES.stream().anyMatch(phrase -> QuestionNormalizer.has(key, phrase));
+    }
+
+    /** {@code AiContext} when nothing was taken over: no earlier result, or the context was cut for {@code reason}. */
+    static Map<String, Object> resetContext(String reason) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("basedOnExecutionId", null);
+        map.put("inherited", List.of());
+        map.put("changed", List.of());
+        map.put("reset", reason != null && !"NO_PRIOR_RESULT".equals(reason));
+        map.put("resetReason", reason);
+        return map;
+    }
+
+    /**
+     * {@code AiContext} of a follow-up question. A null {@code refundBasisChanged} or {@code zeroFillChanged} means the
+     * condition does not apply to the analysis. A different analysis takes over only the branches; its period and other
+     * conditions are its own defaults.
+     */
+    static Map<String, Object> followUpContext(String basedOn, boolean sameAnalysis, boolean periodApplies, boolean branchesChanged,
+            boolean productsApply, Boolean refundBasisChanged, Boolean zeroFillChanged) {
+        List<String> inherited = new ArrayList<>();
+        List<String> changed = new ArrayList<>();
+        (sameAnalysis ? inherited : changed).add("ANALYSIS");
+        if (periodApplies) inherited.add("PERIOD");
+        (branchesChanged ? changed : inherited).add("BRANCHES");
+        if (productsApply) inherited.add("PRODUCTS");
+        if (refundBasisChanged != null) (refundBasisChanged ? changed : inherited).add("REFUND_BASIS");
+        if (zeroFillChanged != null) (zeroFillChanged ? changed : inherited).add("ZERO_FILL");
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("basedOnExecutionId", basedOn);
+        map.put("inherited", inherited);
+        map.put("changed", changed);
+        map.put("reset", false);
+        map.put("resetReason", null);
+        return map;
+    }
+
+    /**
      * {@code GET /ai/executions/{id}} with a table query: one dataset sorted within the result's 1,000-row cap and cut to
      * a page. Without any of these queries the result comes back whole, as before #125.
      */
