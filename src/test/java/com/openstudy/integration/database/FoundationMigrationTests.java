@@ -58,11 +58,11 @@ class FoundationMigrationTests {
     }
     long count(String sql) { return jdbc.queryForObject(sql, Long.class); }
     @Test void createsTheConsolidatedBaselineWithIncrementalMigrationsAndPreservesDataOnRestart() {
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(18);
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(19);
         assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank", String.class))
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19");
         assertThat(count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name <> 'flyway_schema_history'"))
-                .isEqualTo(77); // V7 adds the seven ai_* tables of the AI workspace (DomainLens), V12 branch_closures, V14 customer_merges, V15 daily_closings and daily_closing_adjustments, V16 password_reset_tokens, V18 drops ai_export_approvals
+                .isEqualTo(79); // V7 adds the seven ai_* tables of the AI workspace (DomainLens), V12 branch_closures, V14 customer_merges, V15 daily_closings and daily_closing_adjustments, V16 password_reset_tokens, V18 drops ai_export_approvals, V19 retention_rules and retention_runs
         assertThat(count("SELECT COUNT(*) FROM employees")).isZero();
         assertThat(count("SELECT COUNT(*) FROM administration_guard WHERE id=1")).isEqualTo(1);
         jdbc.update("INSERT INTO branches(code,name,address) VALUES('RESTART','Restart test','Test')");
@@ -274,7 +274,7 @@ class FoundationMigrationTests {
         jdbc.update("INSERT INTO conversation_members(conversation_id,employee_id,last_read_message_id,last_read_at) VALUES(30,10,NULL,NULL),(30,11,41,'2026-11-01 00:00:00'),(30,12,42,'2026-11-01 00:00:00'),(31,10,NULL,NULL)");
         jdbc.update("INSERT INTO messages(id,conversation_id,sender_employee_id,parent_message_id,body,client_message_key) VALUES(40,30,10,NULL,'original','k1'),(41,30,10,40,'reply','k2'),(42,30,10,NULL,'later','k3'),(43,31,10,NULL,'other','k4'),(44,30,10,40,'reply 2','k5')");
 
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(13); // V6 through V18
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(14); // V6 through V19
         assertThat(flyway(null).validateWithResult().validationSuccessful).isTrue();
 
         // A position on a reply (41) carries over as it is, and no position stays none.
@@ -423,6 +423,28 @@ class FoundationMigrationTests {
         assertThat(flyway("18").migrate().migrationsExecuted).isEqualTo(1);
         assertThat(count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='ai_export_approvals'")).isZero();
         assertThat(count("SELECT COUNT(*) FROM ai_executions WHERE id='exec-1'")).isEqualTo(1);
+    }
+
+    /**
+     * #100: every retention rule starts disabled, a rule cannot be enabled without a period or set below its legal minimum,
+     * a run record carries counts only, and existing customers start not anonymized.
+     */
+    @Test void v19StartsEveryRetentionRuleDisabledAndGuardsItsPeriod() {
+        flyway("18").migrate();
+        jdbc.update("INSERT INTO customers(id,member_no,name) VALUES(50,'C','Customer')");
+        assertThat(flyway("19").migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(count("SELECT COUNT(*) FROM retention_rules")).isEqualTo(5);
+        assertThat(count("SELECT COUNT(*) FROM retention_rules WHERE enabled = 1")).isZero();
+        assertThat(jdbc.queryForObject("SELECT anonymized_at FROM customers WHERE id=50", Object.class)).isNull();
+        assertThatThrownBy(() -> jdbc.update("UPDATE retention_rules SET enabled = 1 WHERE code = 'AUDIT_EVENT'"))
+                .hasStackTraceContaining("ck_retention_rules_1");
+        assertThatThrownBy(() -> jdbc.update("UPDATE retention_rules SET period_days = 364 WHERE code = 'AUDIT_EVENT'"))
+                .hasStackTraceContaining("ck_retention_rules_2");
+        jdbc.update("UPDATE retention_rules SET enabled = 1 WHERE code = 'CUSTOMER_IDENTITY'");
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO retention_runs(rule_code,period_days,cutoff_at,started_at,finished_at,result) "
+                + "VALUES('CUSTOMER_IDENTITY',365,NOW(6),NOW(6),NOW(6),'FAILED')")).hasStackTraceContaining("ck_retention_runs_1");
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO retention_runs(rule_code,period_days,cutoff_at,started_at,finished_at,result) "
+                + "VALUES('NO_SUCH_RULE',1,NOW(6),NOW(6),NOW(6),'SUCCESS')")).hasStackTraceContaining("fk_retention_runs_1");
     }
 
     /** No branch is guessed for a request that predates V11: the migration fails and leaves the table as it was. */
