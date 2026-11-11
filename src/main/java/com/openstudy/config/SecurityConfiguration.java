@@ -24,6 +24,7 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.authentication.logout.CookieClearingLogoutHandler;
 import org.springframework.security.web.authentication.logout.LogoutHandler;
@@ -47,6 +48,9 @@ import com.openstudy.modules.employee.service.EmployeeAccountService;
 
 @Configuration(proxyBeanMethods = false)
 public class SecurityConfiguration {
+    /** #101: nothing loads, frames, submits or sets a base from an API response. */
+    static final String CONTENT_SECURITY_POLICY = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+
     @Bean
     @ConditionalOnMissingBean(Clock.class)
     Clock authenticationClock() { return Clock.systemUTC(); }
@@ -102,6 +106,13 @@ public class SecurityConfiguration {
             ObjectProvider<CookieSerializer> sessionCookies) throws Exception {
         LogoutHandler goneSessionCookie = goneSessionCookie(sessionCookies.getIfAvailable());
         return http
+                // #101 (ADR-M11-001 M11-D08): the app sets the content headers; HSTS belongs to the HTTPS proxy, so one
+                // place owns it. The API returns JSON, images and CSV only, so the CSP allows nothing to load or embed.
+                .headers(headers -> headers
+                        .frameOptions(frame -> frame.deny())
+                        .referrerPolicy(referrer -> referrer.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER))
+                        .contentSecurityPolicy(csp -> csp.policyDirectives(CONTENT_SECURITY_POLICY))
+                        .httpStrictTransportSecurity(hsts -> hsts.disable()))
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .requestCache(AbstractHttpConfigurer::disable)

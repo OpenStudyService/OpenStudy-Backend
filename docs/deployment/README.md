@@ -9,6 +9,7 @@
 - 실제 AWS 배포와 공개 HTTPS 검증은 [Infra #2](https://github.com/OpenStudyService/OpenStudy-Infra/issues/2)에서 한다.
 - DB 이력·실행 주체 인계는 [Infra #1](https://github.com/OpenStudyService/OpenStudy-Infra/issues/1)에서 한다.
 - 로컬 검증 결과와 결정 이유는 [개발 기록](../development-log/2026-10-28-runtime-image-and-proxy-contract.md)에 있다.
+- 보안 헤더와 운영 HTTPS 요청·최종 점검표는 [운영 HTTPS 보안 요청 사항](https-security-request.md)(#101)에 있다.
 
 ## 1. 이미지 빌드
 
