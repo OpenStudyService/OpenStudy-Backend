@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import lombok.RequiredArgsConstructor;
@@ -47,6 +48,8 @@ public class AccountCredentialService {
     private final AuditTrail audit;
     private final ObjectMapper json;
     private final Clock clock;
+    /** Present only when reset mail is enabled (PasswordResetMailConfiguration). */
+    private final Optional<PasswordResetWorker> resetMail;
 
     private enum Change { CHANGED, RATE_LIMITED, MISMATCH }
 
@@ -92,6 +95,9 @@ public class AccountCredentialService {
             var account = manageable(state, target, false);
             if (!"ACTIVE".equals(account.status()))
                 throw ApiException.conflict("INVALID_STATE", "활성 계정만 비밀번호를 초기화할 수 있습니다.");
+            // The reset kills the old password, so without a mail to carry the link it would lock the employee out.
+            if (resetMail.isEmpty())
+                throw ApiException.unavailable("PASSWORD_RESET_MAIL_DISABLED", "재설정 메일을 보낼 수 없어 비밀번호를 초기화하지 않았습니다. 관리자에게 문의해 주세요.");
             Instant now = now();
             repository.updatePassword(target, encoder.encode(Passwords.unknowable()));
             repository.deleteSessions(target, null);

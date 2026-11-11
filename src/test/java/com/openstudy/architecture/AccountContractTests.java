@@ -107,6 +107,7 @@ class AccountContractTests {
         assertThat(operation("changeMyPassword").get("responses").has("204")).isTrue();
         assertThat(operation("completePasswordReset").get("responses").has("204")).isTrue();
         assertThat(operation("requestPasswordReset").get("responses").has("202")).isTrue();
+        assertThat(operation("requestPasswordReset").get("responses").has("503")).as("mail off refuses the reset").isTrue();
         // Only the reset-link operations are reachable without a session.
         for (String id : OPERATIONS.keySet()) {
             boolean open = id.equals("previewPasswordReset") || id.equals("completePasswordReset");
