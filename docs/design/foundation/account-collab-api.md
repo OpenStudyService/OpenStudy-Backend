@@ -75,6 +75,7 @@ Frontend는 같은 [OpenAPI](openapi.json)(`0.1.15-m14-account`)로 연동한다
 | 422 | `CURRENT_PASSWORD_MISMATCH` | 본인 변경에서 기존 비밀번호가 틀림 | `fieldErrors.currentPassword` |
 | 422 | `PASSWORD_SAME_AS_CURRENT` | 새 비밀번호가 기존 비밀번호와 같음 | `fieldErrors.newPassword` |
 | 403 | `SELF_RESET_FORBIDDEN` | 관리자 초기화의 대상이 요청자 본인. 본인은 `POST /me/password`를 쓴다 | - |
+| 503 | `PASSWORD_RESET_MAIL_DISABLED` | 재설정 메일 발송이 꺼져 있어(`openstudy.invitation-mail.enabled`가 `true`가 아님) 초기화를 받지 않음. 아무것도 바뀌지 않는다 | - |
 | 422 | `PASSWORD_RESET_LINK_INVALID` | 재설정 토큰이 틀림·만료·사용됨·더 새 링크로 대체됨. 네 경우를 구분하지 않는다 | - |
 | 422 | `AVATAR_TYPE_UNSUPPORTED` | 파일 시그니처가 JPG·PNG·WebP가 아님(확장자·Content-Type은 보지 않는다) | `fieldErrors.file` |
 | 422 | `AVATAR_TOO_LARGE` | 파일이 5MB(5,242,880바이트)를 넘음 | `fieldErrors.file` |
@@ -121,6 +122,7 @@ Frontend는 같은 [OpenAPI](openapi.json)(`0.1.15-m14-account`)로 연동한다
 | 대상이 OWNER이고 요청자가 OWNER가 아님 | 403 `FORBIDDEN` |
 | 대상이 OWNER가 아니고, 요청자가 OWNER가 아니며, 대상의 활성 소속 지점 어느 곳에서도 `people:manage`가 있는 MANAGER가 아님 | 403 `FORBIDDEN` |
 | 대상 계정 상태가 `활성`이 아님(승인 대기·이용 제한·비활성) | 409 `INVALID_STATE` |
+| 위 검사를 모두 통과했지만 재설정 메일 발송이 꺼져 있음 | 503 `PASSWORD_RESET_MAIL_DISABLED`. 비밀번호·세션·링크는 그대로다 |
 
 ### 효과(한 트랜잭션)
 
@@ -153,7 +155,7 @@ Frontend는 같은 [OpenAPI](openapi.json)(`0.1.15-m14-account`)로 연동한다
   - SMTP, 발신 주소, 발송 간격·lease·재시도·시도 한도는 초대 메일 설정(`openstudy.invitation-mail.*`)을 함께 쓴다. 발송도 `openstudy.invitation-mail.enabled=true`일 때만 켜진다.
   - 재설정 URL `openstudy.password-reset.url`은 기본값이 없다. 신뢰할 HTTPS 주소(개발 loopback만 HTTP)이고 경로가 `/password-reset`으로 끝나야 하며, query·fragment·사용자 정보를 넣을 수 없다.
   - 메일이 켜져 있는데 이 URL이 없거나 틀리면 기동이 실패한다. 초기화는 기존 비밀번호를 바로 무효로 하므로, 보낼 수 없는 요청이 직원을 잠그지 않게 하기 위해서다.
-  - 메일이 꺼져 있으면(개발·테스트 기본값) 초기화 요청은 받지만 발송 작업이 대기 상태로 남는다.
+  - 메일이 꺼져 있으면(개발·테스트 기본값) 초기화 요청을 503 `PASSWORD_RESET_MAIL_DISABLED`로 거부하고 아무것도 바꾸지 않는다. 받아 두면 기존 비밀번호는 바로 무효가 되는데 링크는 보낼 수 없어, 직원이 잠기기 때문이다(2026-11-11 변경).
   - 발송 결과는 감사 `PASSWORD_RESET_MAIL_SENT`·`PASSWORD_RESET_MAIL_FAILED`(대상 직원)로 남는다.
 
 ## 재설정 링크 사용(FR-AUTH-14, M14-D01·D05)

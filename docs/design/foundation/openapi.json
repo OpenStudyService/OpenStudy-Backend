@@ -21395,6 +21395,23 @@
           },
           "500": {
             "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "description": "재설정 메일 발송이 꺼져 있다(PASSWORD_RESET_MAIL_DISABLED). 아무것도 바뀌지 않는다.",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "parameters": [
@@ -21414,7 +21431,8 @@
           "NOT_FOUND",
           "FORBIDDEN",
           "SELF_RESET_FORBIDDEN",
-          "INVALID_STATE"
+          "INVALID_STATE",
+          "PASSWORD_RESET_MAIL_DISABLED"
         ],
         "x-adr-decisions": [
           "M14-D01",

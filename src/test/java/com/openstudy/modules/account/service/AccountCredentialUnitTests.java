@@ -79,11 +79,13 @@ class AccountCredentialUnitTests {
         return new Account(id, "user" + id + "@example.com", "직원" + id, status, owner, OLD_HASH);
     }
 
+    static final Optional<PasswordResetWorker> MAIL_ON = Optional.of(new PasswordResetWorker(null, null, null));
+
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
         limiter = new LoginAttemptLimiter(CLOCK, 3, 15, 30, 15, 100);
-        service = new AccountCredentialService(repository, commands, policy, limiter, ENCODER, audit, JsonMapper.builder().build(), CLOCK);
+        service = new AccountCredentialService(repository, commands, policy, limiter, ENCODER, audit, JsonMapper.builder().build(), CLOCK, MAIL_ON);
         // The command wrappers only take locks; here they run the callback directly.
         when(commands.selfAccountChange(anyLong(), any())).thenAnswer(call -> ((Supplier<Object>) call.getArgument(1)).get());
         when(commands.publicCommand(any(), any())).thenAnswer(call -> ((Supplier<Object>) call.getArgument(1)).get());
@@ -233,6 +235,20 @@ class AccountCredentialUnitTests {
         verify(repository, never()).updatePassword(anyLong(), any());
     }
 
+    @Test void withResetMailOffAResetIsRefusedAndChangesNothing() {
+        var mailOff = new AccountCredentialService(repository, commands, policy, limiter, ENCODER, audit, JsonMapper.builder().build(),
+                CLOCK, Optional.empty());
+        when(repository.account(5)).thenReturn(Optional.of(account(5, "ACTIVE", false)));
+        managerOfBranchOne();
+        var refused = assertThrows(ApiException.class, () -> mailOff.requestReset(9, 5, "r"));
+        assertThat(refused.error("t").code()).isEqualTo("PASSWORD_RESET_MAIL_DISABLED");
+        assertThat(refused.status()).isEqualTo(503);
+        verify(repository, never()).updatePassword(anyLong(), any());
+        verify(repository, never()).deleteSessions(anyLong(), any());
+        verify(repository, never()).insertPending(anyLong(), anyLong(), any());
+        verify(audit, never()).record(any());
+    }
+
     @Test void anUnlockClearsTheAccountLimitAndSaysWhetherItWasLocked() {
         when(repository.account(5)).thenReturn(Optional.of(account(5, "SUSPENDED", false)));
         managerOfBranchOne();
@@ -287,7 +303,7 @@ class AccountCredentialUnitTests {
 
     @Test void theLinkEndpointsShareTheLoginSourceLimit() {
         var tight = new LoginAttemptLimiter(CLOCK, 10, 15, 2, 15, 100);
-        var limited = new AccountCredentialService(repository, commands, policy, tight, ENCODER, audit, JsonMapper.builder().build(), CLOCK);
+        var limited = new AccountCredentialService(repository, commands, policy, tight, ENCODER, audit, JsonMapper.builder().build(), CLOCK, MAIL_ON);
         for (int i = 0; i < 2; i++) code(() -> limited.preview(body("token", "short"), "10.0.0.9"));
         assertThat(assertThrows(ResponseStatusException.class, () -> limited.preview(body("token", "short"), "10.0.0.9"))
                 .getStatusCode().value()).isEqualTo(429);
