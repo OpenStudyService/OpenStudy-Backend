@@ -9,7 +9,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.ObjectMapper;
 import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
@@ -44,6 +46,7 @@ public class CheckInLookupService {
     private final AuditTrail audit;
     private final ObjectMapper json;
     private final Clock clock;
+    private final CheckInLookupLimiter limiter;
 
     public CheckInLookupResult lookup(long actor, Map<String, Object> body, String requestId) {
         var input = new StrictInput(body).only("branchId", "memberNo", "phone");
@@ -53,6 +56,16 @@ public class CheckInLookupService {
         boolean byMemberNo = input.has("memberNo");
         String memberNo = byMemberNo ? input.text("memberNo", 40) : null;
         String phone = byMemberNo ? null : customers.normalizedPhone(body);
+        // #65: refused before anything is read, so a refusal tells nothing about customers. The first refusal of a
+        // window is audited; branch_id stays empty because the branch has not been authorized yet.
+        var refusal = limiter.check(actor, branch);
+        if (refusal != null) {
+            if (refusal.firstInWindow()) {
+                audit.record(AuditEvent.denied(actor, null, ENTITY, null, "CHECK_IN_LOOKUP_RATE_LIMITED",
+                        json.writeValueAsString(Map.of("branchId", Long.toString(branch))), requestId));
+            }
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS);
+        }
         return commands.inBranches(actor, Set.of(branch), BranchAction.READ, () -> {}, state -> {
             var matches = byMemberNo ? customers.matchMemberNo(memberNo) : customers.matchPhone(phone);
             Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
