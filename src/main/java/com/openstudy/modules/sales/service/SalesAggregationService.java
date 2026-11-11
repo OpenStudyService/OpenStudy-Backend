@@ -140,7 +140,13 @@ public class SalesAggregationService {
     /** The top pass products by net sold quantity: GET /sales/passes/products with the same condition (#88 ranking). */
     public List<PassProductSales> topPassProducts(long requester, Collection<Long> branchIds, Instant startInclusive,
             Instant endExclusive, int limit) {
-        var condition = AggregationCondition.passes(sorted(branchIds), startInclusive, endExclusive, null, null, null);
+        return topPassProducts(requester, branchIds, startInclusive, endExclusive, limit, null);
+    }
+
+    /** The same ranking narrowed to one product (M9 product filter), or every product when {@code productId} is null. */
+    public List<PassProductSales> topPassProducts(long requester, Collection<Long> branchIds, Instant startInclusive,
+            Instant endExclusive, int limit, Long productId) {
+        var condition = AggregationCondition.passes(sorted(branchIds), startInclusive, endExclusive, null, productId, null);
         return passes.products(requester, condition, new ListQuery(1, limit, "", null, ListQuery.Direction.DESC)).items();
     }
 

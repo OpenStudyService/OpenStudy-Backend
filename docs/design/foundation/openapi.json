@@ -16764,7 +16764,7 @@
         "tags": [
           "ai"
         ],
-        "description": "저장된 실행을 원래 지점 범위로, 현재 권한을 다시 확인해 다시 실행한다. 결과는 저장본이 아니다(M10-D12). 권한이 없어졌으면 403, 실행된 질문이 아니면 422 NOT_EXECUTABLE, 카탈로그에서 빠진 분석은 422 ANALYSIS_UNAVAILABLE.",
+        "description": "저장된 실행을 원래 지점 범위로, 현재 권한을 다시 확인해 다시 실행한다. 결과는 저장본이 아니다(M10-D12). 권한이 없어졌으면 403, 실행된 질문이 아니면 422 NOT_EXECUTABLE, 카탈로그에서 빠진 분석은 422 ANALYSIS_UNAVAILABLE. 페이지·정렬·상세: 요청마다 저장된 조건을 현재 권한·상한으로 다시 실행한다. 모델을 부르지 않고 세션·시간 제한은 없다(M15-D04, 2026-11-11 변경). query가 하나도 없으면 결과 전체를 그대로 돌려준다(#125).",
         "x-requirement-ids": [
           "FR-NL-01",
           "FR-NL-13",
@@ -16859,81 +16859,76 @@
               "maxLength": 64
             },
             "description": "실행 ID 또는 요청 ID"
+          },
+          {
+            "name": "datasetId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "없으면 첫 데이터셋."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "그 데이터셋의 열 별칭."
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "default": "desc"
+            }
           }
         ],
         "x-error-codes": [
           "NOT_FOUND",
-          "FORBIDDEN",
           "NOT_EXECUTABLE",
           "ANALYSIS_UNAVAILABLE",
-          "AI_NOT_READY"
+          "AI_NOT_READY",
+          "AI_PERMISSION_DENIED",
+          "BRANCH_SCOPE_DENIED",
+          "SALES_PERMISSION_DENIED",
+          "VALIDATION_FAILED"
         ],
         "x-adr-decisions": [
           "M10-D06",
-          "M10-D12"
-        ],
-        "x-planned-changes": [
-          {
-            "issue": "#125",
-            "status": "design-target",
-            "parameters": [
-              {
-                "name": "datasetId",
-                "in": "query",
-                "required": false,
-                "schema": {
-                  "type": "string",
-                  "maxLength": 100
-                },
-                "description": "없으면 첫 데이터셋."
-              },
-              {
-                "name": "page",
-                "in": "query",
-                "required": false,
-                "schema": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "default": 1
-                }
-              },
-              {
-                "name": "size",
-                "in": "query",
-                "required": false,
-                "schema": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 50,
-                  "default": 20
-                }
-              },
-              {
-                "name": "sort",
-                "in": "query",
-                "required": false,
-                "schema": {
-                  "type": "string",
-                  "maxLength": 100
-                },
-                "description": "그 데이터셋의 열 별칭."
-              },
-              {
-                "name": "direction",
-                "in": "query",
-                "required": false,
-                "schema": {
-                  "type": "string",
-                  "enum": [
-                    "asc",
-                    "desc"
-                  ],
-                  "default": "desc"
-                }
-              }
-            ],
-            "description": "페이지·정렬·상세: 요청마다 저장된 조건을 현재 권한·상한으로 다시 실행한다. 모델을 부르지 않고 세션·시간 제한은 없다(M15-D04, 2026-11-11 변경)."
-          }
+          "M10-D12",
+          "M15-D04"
         ]
       }
     },
@@ -22243,7 +22238,7 @@
           "FR-NL-35"
         ],
         "x-permission": "실행 주인. 요청마다 현재 ai:read·지점 범위·매출이면 sales:read를 다시 검사(M10-D06)",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-implementation-issue": "#125",
         "x-session-modes": [
           "WORKSPACE"
@@ -22374,7 +22369,7 @@
           "FR-NL-23"
         ],
         "x-permission": "본인(ai:read가 한 지점 이상)",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-implementation-issue": "#125",
         "x-session-modes": [
           "WORKSPACE"
@@ -33406,7 +33401,9 @@
         "required": [
           "question",
           "askedAt",
-          "response"
+          "response",
+          "origin",
+          "sourceExecutionId"
         ],
         "properties": {
           "question": {
@@ -33418,28 +33415,20 @@
           },
           "response": {
             "$ref": "#/components/schemas/AiQueryResponse"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "QUESTION",
+              "REFINEMENT"
+            ]
+          },
+          "sourceExecutionId": {
+            "type": "string",
+            "nullable": true,
+            "description": "필터 수정이면 원래 실행 ID."
           }
-        },
-        "x-planned-changes": [
-          {
-            "issue": "#125",
-            "status": "design-target",
-            "properties": {
-              "origin": {
-                "type": "string",
-                "enum": [
-                  "QUESTION",
-                  "REFINEMENT"
-                ]
-              },
-              "sourceExecutionId": {
-                "type": "string",
-                "nullable": true,
-                "description": "필터 수정이면 원래 실행 ID."
-              }
-            }
-          }
-        ]
+        }
       },
       "AiReopenedConversation": {
         "type": "object",
@@ -34186,7 +34175,11 @@
         "required": [
           "id",
           "status",
-          "envelope"
+          "envelope",
+          "conditions",
+          "editableFilters",
+          "origin",
+          "sourceExecutionId"
         ],
         "description": "저장된 실행을 지금 다시 실행한 결과. 결과는 저장본이 아니다(M10-D12)",
         "properties": {
@@ -34237,44 +34230,36 @@
               }
             ],
             "nullable": true
-          }
-        },
-        "x-planned-changes": [
-          {
-            "issue": "#125",
-            "status": "design-target",
-            "properties": {
-              "conditions": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/AiConditions"
-                  }
-                ],
-                "nullable": true
-              },
-              "editableFilters": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/AiEditableFilters"
-                  }
-                ],
-                "nullable": true
-              },
-              "origin": {
-                "type": "string",
-                "enum": [
-                  "QUESTION",
-                  "REFINEMENT"
-                ]
-              },
-              "sourceExecutionId": {
-                "type": "string",
-                "nullable": true,
-                "description": "필터 수정이면 원래 실행 ID."
+          },
+          "conditions": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AiConditions"
               }
-            }
+            ],
+            "nullable": true
+          },
+          "editableFilters": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AiEditableFilters"
+              }
+            ],
+            "nullable": true
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "QUESTION",
+              "REFINEMENT"
+            ]
+          },
+          "sourceExecutionId": {
+            "type": "string",
+            "nullable": true,
+            "description": "필터 수정이면 원래 실행 ID."
           }
-        ]
+        }
       },
       "RequestStatus": {
         "type": "string",

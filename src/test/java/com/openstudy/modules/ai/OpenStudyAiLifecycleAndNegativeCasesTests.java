@@ -280,7 +280,7 @@ class OpenStudyAiLifecycleAndNegativeCasesTests {
         assertThat(requestId).startsWith("req-");
         assertThat(executionId).startsWith("exec-");
 
-        Map<String, Object> execContract = controller.getExecution(ownerAuth, executionId);
+        Map<String, Object> execContract = controller.getExecution(ownerAuth, executionId, null, null, null, null, null);
         assertThat(execContract.get("id")).isEqualTo(executionId);
         assertThat(execContract.get("status")).isEqualTo("READY");
         assertThat(execContract.get("envelope")).isNotNull();
