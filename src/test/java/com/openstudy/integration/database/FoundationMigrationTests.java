@@ -58,11 +58,11 @@ class FoundationMigrationTests {
     }
     long count(String sql) { return jdbc.queryForObject(sql, Long.class); }
     @Test void createsTheConsolidatedBaselineWithIncrementalMigrationsAndPreservesDataOnRestart() {
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(17);
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(18);
         assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank", String.class))
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18");
         assertThat(count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name <> 'flyway_schema_history'"))
-                .isEqualTo(78); // V7 adds the seven ai_* tables of the AI workspace (DomainLens), V12 branch_closures, V14 customer_merges, V15 daily_closings and daily_closing_adjustments, V16 password_reset_tokens
+                .isEqualTo(77); // V7 adds the seven ai_* tables of the AI workspace (DomainLens), V12 branch_closures, V14 customer_merges, V15 daily_closings and daily_closing_adjustments, V16 password_reset_tokens, V18 drops ai_export_approvals
         assertThat(count("SELECT COUNT(*) FROM employees")).isZero();
         assertThat(count("SELECT COUNT(*) FROM administration_guard WHERE id=1")).isEqualTo(1);
         jdbc.update("INSERT INTO branches(code,name,address) VALUES('RESTART','Restart test','Test')");
@@ -274,7 +274,7 @@ class FoundationMigrationTests {
         jdbc.update("INSERT INTO conversation_members(conversation_id,employee_id,last_read_message_id,last_read_at) VALUES(30,10,NULL,NULL),(30,11,41,'2026-11-01 00:00:00'),(30,12,42,'2026-11-01 00:00:00'),(31,10,NULL,NULL)");
         jdbc.update("INSERT INTO messages(id,conversation_id,sender_employee_id,parent_message_id,body,client_message_key) VALUES(40,30,10,NULL,'original','k1'),(41,30,10,40,'reply','k2'),(42,30,10,NULL,'later','k3'),(43,31,10,NULL,'other','k4'),(44,30,10,40,'reply 2','k5')");
 
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(12); // V6 through V17
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(13); // V6 through V18
         assertThat(flyway(null).validateWithResult().validationSuccessful).isTrue();
 
         // A position on a reply (41) carries over as it is, and no position stays none.
@@ -411,6 +411,18 @@ class FoundationMigrationTests {
                 + "period_from,period_to,product_ids_csv,origin,source_execution_id) "
                 + "VALUES('exec-2','req-2',10,'all','1','q','READY',NOW(6),'s','p','2026-10-01','2026-10-31','3,7','REFINEMENT','exec-1')");
         assertThat(count("SELECT COUNT(*) FROM ai_executions WHERE origin='REFINEMENT' AND period_to='2026-10-31'")).isEqualTo(1);
+    }
+
+    /** #214: the ported export approvals go with their table; the executions they pointed at stay. */
+    @Test void v18DropsTheExportApprovalsAndKeepsTheExecutions() {
+        flyway("17").migrate();
+        jdbc.update("INSERT INTO employees(id,email,password_hash,name,nickname,global_role,status) VALUES(10,'a@example.com','hash','A','A','OWNER','ACTIVE')");
+        jdbc.update("INSERT INTO ai_executions(id,request_ref,employee_id,scope_key,branch_ids_csv,question,status,as_of_utc,snapshot_version,policy_version) "
+                + "VALUES('exec-1','req-1',10,'all','1','q','READY',NOW(6),'s','p')");
+        assertThat(count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='ai_export_approvals'")).isEqualTo(1);
+        assertThat(flyway("18").migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='ai_export_approvals'")).isZero();
+        assertThat(count("SELECT COUNT(*) FROM ai_executions WHERE id='exec-1'")).isEqualTo(1);
     }
 
     /** No branch is guessed for a request that predates V11: the migration fails and leaves the table as it was. */

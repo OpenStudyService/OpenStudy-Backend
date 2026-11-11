@@ -100,6 +100,29 @@ class AiContractTests {
         OPERATIONS.values().forEach(route -> assertThat(served).as(route).contains(route));
     }
 
+    /**
+     * #214 (ADR-M15-001 M15-D09): the ported CSV export approvals are gone. No route serves them (so they are 404s), and no
+     * code is left that knows the approval classes or their table.
+     */
+    @Test void thePortedExportApprovalsAreGone() throws Exception {
+        for (Method method : AiWorkspaceController.class.getDeclaredMethods()) {
+            for (var mapping : List.of(GetMapping.class, PostMapping.class)) {
+                var annotation = method.getAnnotation(mapping);
+                if (annotation == null) continue;
+                String[] routes = annotation instanceof GetMapping get ? routes(get.value(), get.path())
+                        : routes(((PostMapping) annotation).value(), ((PostMapping) annotation).path());
+                for (String route : routes) assertThat(route).as(method.getName()).doesNotStartWith("/api/ai/approvals");
+            }
+        }
+        // V7 keeps its history and V18 drops the table, so only the Java sources are read.
+        try (var sources = Files.walk(Path.of("src/main/java"))) {
+            for (var file : sources.filter(f -> f.toString().endsWith(".java")).toList()) {
+                assertThat(Files.readString(file)).as(file.toString()).doesNotContain("ApprovalService", "ApprovalStore",
+                        "ApprovalPolicy", "ArtifactStore", "AiExportApproval", "ai_export_approvals", "/api/ai/approvals");
+            }
+        }
+    }
+
     static String[] routes(String[] value, String[] path) { return value.length > 0 ? value : path; }
 
     static void add(Set<String> served, String method, String[] routes) {

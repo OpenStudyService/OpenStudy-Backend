@@ -263,7 +263,7 @@ M15-D05에 따라 고칠 수 있는 조건은 기간·지점·상품뿐이다. �
 | `passes-products` | `GET /sales/passes/products` |
 | `passes-usage` | `GET /sales/passes/usage` |
 
-**승인 절차는 없다(M15-D09, 2026-11-11 사용자 결정).** 권한을 다시 확인해 바로 내려주고 감사에 남긴다. DomainLens에서 이식된 반출 승인 기능(`/api/ai/approvals`)은 이 계약에 넣지 않는다. 그 기능의 제거는 별도 이슈로 다룬다.
+**승인 절차는 없다(M15-D09, 2026-11-11 사용자 결정).** 권한을 다시 확인해 바로 내려주고 감사에 남긴다. DomainLens에서 이식된 반출 승인 기능(`/api/ai/approvals`)은 이 계약에 넣지 않는다. 그 기능은 #214에서 지웠다(V18이 `ai_export_approvals` 테이블도 지운다).
 
 ### 응답
 

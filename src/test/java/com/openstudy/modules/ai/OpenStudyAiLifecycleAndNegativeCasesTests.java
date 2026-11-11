@@ -29,7 +29,7 @@ import tools.jackson.databind.json.JsonMapper;
  * <ul>
  *   <li>All 18 cases in {@code docs/05_TEST_CASES/negative_cases.json} ({@code NEG-001}..{@code NEG-018})</li>
  *   <li>{@code ADR-M10-001} branch scope, {@code ai:read}, {@code sales:read}, PII, budget, and rate-limit guardrails</li>
- *   <li>Flyway {@code V7__domainlens_ai_workspace.sql} persistence for conversations, executions, work records, CSV approvals, and traces</li>
+ *   <li>Flyway {@code V7__domainlens_ai_workspace.sql} persistence for conversations, executions, work records, and traces</li>
  *   <li>Full compatibility with {@code Ai.tsx}/{@code domainlens.ts} and Stage 6 console endpoints</li>
  * </ul>
  */
@@ -304,28 +304,6 @@ class OpenStudyAiLifecycleAndNegativeCasesTests {
         // Unauthorized employee (9200001 Gangnam manager lacks Seongsu 9100002 in this record) is denied on reopen!
         assertThatThrownBy(() -> controller.getWorkRecord(authForEmployee(9_200_001L), recordId))
                 .isInstanceOf(AccessDeniedException.class);
-
-        // 4. CSV Export Approval workflow (Request -> Approve -> Download CSV without PII)
-        Map<String, Object> approval = controller.createApproval(
-                ownerAuth,
-                new AiWorkspaceController.ApprovalCreateRequest(executionId, "branchSales", "월간 정산 보고용 CSV 반출")
-        );
-        String approvalId = (String) approval.get("id");
-        assertThat(approval.get("status")).isEqualTo("PENDING");
-
-        Map<String, Object> decided = controller.decideApproval(
-                ownerAuth,
-                approvalId,
-                new AiWorkspaceController.ApprovalDecisionRequest(true, "APPROVE", "승인 완료")
-        );
-        assertThat(decided.get("status")).isEqualTo("APPROVED");
-
-        ResponseEntity<byte[]> csvResponse = controller.downloadApprovalCsv(ownerAuth, approvalId);
-        assertThat(csvResponse.getStatusCode().value()).isEqualTo(200);
-        String csvText = new String(csvResponse.getBody());
-        assertThat(csvText).contains("\"branch_id\",\"branch_name\",\"approved_krw\",\"refund_krw\",\"net_krw\"");
-        assertThat(csvText).contains("강남점 (데모)");
-        assertThat(csvText).doesNotContain("password_hash", "customer_id");
 
         // 5. Execution Traces (6-stage spans, ONNX retrieval candidates, 30-day question expiry)
         List<Map<String, Object>> traces = controller.listTraces(ownerAuth);

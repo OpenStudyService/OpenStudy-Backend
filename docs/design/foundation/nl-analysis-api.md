@@ -24,7 +24,8 @@ Backend [#92](https://github.com/OpenStudyService/OpenStudy-Backend/issues/92)�
 ### 계약에 넣지 않은 것(2026-11-08 사용자 결정)
 
 - **옛 경로**: `/api/conversations`, `/api/conversations/{id}/requests`, `/api/executions/{id}`, `/api/catalog/readiness`, `/api/requests/{id}/cancel`은 `/api/ai/*`와 같은 동작의 이식 경로였다. Frontend가 `/api/ai/*`로 옮긴 뒤(Frontend #84) 2026-11-08에 서버에서 지웠다. 이제 404다.
-- **이식된 부가 기능**: 업무 기록(`/api/ai/records`), CSV 반출 승인(`/api/ai/approvals`), 진단 로그(`/api/ai/traces`), 품질 평가(`/api/ai/evaluation`)는 서버에 있지만 이 계약 범위가 아니다. 권한 기준이 확정되지 않았다. M15(#124·#127)와 운영 범위에서 계약한다.
+- **이식된 부가 기능**: 업무 기록(`/api/ai/records`), 진단 로그(`/api/ai/traces`), 품질 평가(`/api/ai/evaluation`)는 서버에 있지만 이 계약 범위가 아니다. 권한 기준이 확정되지 않았다. M15(#124·#127)와 운영 범위에서 계약한다.
+  - CSV 반출 승인(`/api/ai/approvals`)은 2026-11-11 서버에서 지웠다(#214, ADR-M15-001 M15-D09). M15 CSV 내보내기는 승인 없이 내려준다.
 - **SSE·상태 polling**: ADR-COM-001 COM-D08에 따라 없다. 질문은 한 번의 요청·응답으로 끝나고, 화면은 사용자가 요청할 때 다시 조회한다.
 
 ## 공통 규칙
