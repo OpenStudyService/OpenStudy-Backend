@@ -42,11 +42,12 @@ docker build --platform linux/amd64 \
 | 실행 사용자 | `openstudy`(uid 10001), root 아님 |
 | 프로필 | `prod` (이미지 `SPRING_PROFILES_ACTIVE`) |
 | 메모리 | `-XX:MaxRAMPercentage=65.0`. 2,048MiB 제한에서 힙 약 1.3GiB, 나머지는 네이티브 메모리 |
-| 상태 점검 | `GET /actuator/health`, 인증 없음. DB 연결 정상 시 200. 이미지에 `curl` 포함 |
+| 상태 점검 | 인증 없음, 상태만 보인다. 이미지에 `curl` 포함. **컨테이너(ECS) health는 `GET /actuator/health/liveness`**(프로세스가 살아 있으면 200). **트래픽 투입(로드밸런서·준비) 확인은 `GET /actuator/health/readiness`**(DB 장애 시 503). `GET /actuator/health`는 둘을 합친 값이다(2026-11-11 #102) |
 | 기동 | 로컬 약 8.5초(2026-11-09). ECS `startPeriod` 120초 안 |
 | 종료 | SIGTERM → graceful shutdown, 최대 20초. 종료 코드 143. 처리 중 요청이 없으면 약 1.2초 |
 
-- 이미지 `HEALTHCHECK`는 ECS 태스크 정의의 health 명령과 같다.
+- 이미지 `HEALTHCHECK`는 ECS 태스크 정의의 health 명령과 같다. #102부터 `/actuator/health/liveness`를 쓴다. DB 장애 때 정상 프로세스를 다시 시작하지 않기 위해서다. ECS 태스크 정의도 같이 바꿔야 한다([운영 관측 요청 사항](observability-request.md)).
+- 로그는 `prod` 프로필에서 한 줄 JSON(Logstash 형식)으로 표준 출력에 쓴다. 필드는 [운영 관측 요청 사항](observability-request.md)에 있다.
 - 처리 중인 요청(오래 걸리는 AI 조회 포함)은 graceful shutdown을 20초 제한까지 붙잡는다. ECS 기본 종료 대기 30초 안에 끝난다.
 - 기동 시 DB에 연결할 수 없거나 스키마가 엔터티와 맞지 않으면 프로세스가 종료 코드 1로 끝난다. ECS가 태스크를 다시 시작한다.
 

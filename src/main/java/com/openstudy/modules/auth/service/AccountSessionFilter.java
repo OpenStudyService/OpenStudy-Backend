@@ -7,11 +7,13 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+import org.slf4j.MDC;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.filter.OncePerRequestFilter;
 import tools.jackson.databind.ObjectMapper;
 
+import com.openstudy.common.web.ApiRequestFilter;
 import com.openstudy.config.SecurityConfiguration;
 import com.openstudy.modules.employee.dto.EmployeeAccount;
 import com.openstudy.modules.employee.service.EmployeeAccountService;
@@ -58,7 +60,14 @@ public class AccountSessionFilter extends OncePerRequestFilter {
                 SecurityConfiguration.error(request, response, json, 403, "FORBIDDEN", "관리자 승인이 필요합니다.");
                 return;
             }
-            chain.doFilter(request, response);
+            // #102: who made the request, for the request log line and any log written while it runs.
+            request.setAttribute(ApiRequestFilter.EMPLOYEE, account.id());
+            MDC.put("employeeId", Long.toString(account.id()));
+            try {
+                chain.doFilter(request, response);
+            } finally {
+                MDC.remove("employeeId");
+            }
             if (response.getStatus() < 400 && sessions.effectiveActivity(request)) {
                 try { sessions.recordActivity(session); }
                 catch (IllegalStateException ignored) { /* Login/logout may have replaced the session. */ }

@@ -45,6 +45,22 @@ server:
         same-site: lax
   # Keep NONE: ClientAddressResolver applies X-Forwarded-For itself, only behind TRUSTED_PROXIES.
   forward-headers-strategy: none
+# #102 (ADR-M11-001 M11-D04): health only, status without details. Readiness fails while the DB is down;
+# liveness does not, so ECS does not restart a healthy process for a DB outage.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      show-components: never
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db
 openstudy:
   # Profile photos (#120): s3 in operations (OPENSTUDY_AVATAR_STORAGE=s3 with bucket and region, see
   # docs/deployment/avatar-bucket-request.md), directory for local development.

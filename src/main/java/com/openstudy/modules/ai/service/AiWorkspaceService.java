@@ -47,6 +47,7 @@ import tools.jackson.databind.ObjectMapper;
  */
 @Service
 public class AiWorkspaceService {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AiWorkspaceService.class);
     static final java.util.regex.Pattern BRANCH_CHOICE = java.util.regex.Pattern.compile("branch:([1-9][0-9]{0,18}):([a-zA-Z.]+)");
     /**
      * A saved analysis the semantic catalog no longer offers (#168): it is shown as a reason instead of failing the
@@ -464,6 +465,9 @@ public class AiWorkspaceService {
                 followUp,
                 basis == null ? null : previousConditions(basis)
         );
+        // #102: the HTTP request ID (MDC) and the AI request/trace IDs of the M10 diagnostic log on one line.
+        log.atInfo().addKeyValue("aiRequestId", requestId).addKeyValue("aiTraceId", traceId).addKeyValue("outcome", plan.outcome())
+                .log("AI question aiRequestId={} aiTraceId={} outcome={}", requestId, traceId, plan.outcome());
 
         List<StageSpan> stages = new ArrayList<>();
         stages.add(new StageSpan("accepted", "질문 접수 및 정규화", "COMPLETED", 2L,

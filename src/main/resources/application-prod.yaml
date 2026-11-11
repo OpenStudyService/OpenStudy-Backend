@@ -8,6 +8,11 @@ spring:
   lifecycle:
     # In-flight requests (e.g. AI queries) hold graceful shutdown until this timeout; it must end before the ECS stop timeout (30s, then SIGKILL).
     timeout-per-shutdown-phase: 20s
+logging:
+  structured:
+    format:
+      # #102 (M11-D04): one JSON object per line on stdout for CloudWatch; MDC and key-value pairs become fields.
+      console: logstash
 server:
   shutdown: graceful
   servlet:

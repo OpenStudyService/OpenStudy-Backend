@@ -48,6 +48,6 @@ ENV SPRING_PROFILES_ACTIVE=prod \
 USER openstudy:openstudy
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
-    CMD curl -fsS http://localhost:8080/actuator/health >/dev/null || exit 1
+    CMD curl -fsS http://localhost:8080/actuator/health/liveness >/dev/null || exit 1
 # Exec form: java is PID 1 and receives SIGTERM directly for graceful shutdown.
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
