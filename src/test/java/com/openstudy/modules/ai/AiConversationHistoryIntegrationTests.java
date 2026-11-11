@@ -214,13 +214,13 @@ class AiConversationHistoryIntegrationTests {
             JsonNode turns = ok(s, "/api/ai/conversations/" + conversation + "?scope=all").get("turns");
             assertThat(turns.get(0).get("response").get("status").asString()).isEqualTo("COMPLETED");
             ok(s, "/api/ai/conversations/" + conversation);
-            verify(gateway, never()).planQuestion(any(), any(), any(), any());
+            verify(gateway, never()).planQuestion(any(), any(), any(), any(), any(), any());
 
             // The control: asking a question does go through the model entry point.
             var asked = send(s, "POST", "/api/ai/queries", Map.of("question", "지점별 매출을 비교해줘", "scope", "all",
                     "conversationId", conversation));
             assertThat(asked.statusCode()).as(asked.body()).isLessThan(500);
-            verify(gateway, times(1)).planQuestion(any(), any(), any(), any());
+            verify(gateway, times(1)).planQuestion(any(), any(), any(), any(), any(), any());
         }
     }
 

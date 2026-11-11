@@ -162,6 +162,11 @@ public class AiExecutionEntity {
     public void refines(String source, LocalDate from, LocalDate to, String productCsv) {
         this.origin = "REFINEMENT";
         this.sourceExecutionId = source;
+        keeps(from, to, productCsv);
+    }
+
+    /** #126: a follow-up question keeps the period and products it inherited from the previous result. */
+    public void keeps(LocalDate from, LocalDate to, String productCsv) {
         this.periodFrom = from;
         this.periodTo = to;
         this.productIdsCsv = productCsv;

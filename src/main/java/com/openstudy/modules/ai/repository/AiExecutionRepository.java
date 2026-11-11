@@ -19,5 +19,8 @@ public interface AiExecutionRepository extends JpaRepository<AiExecutionEntity, 
     /** The saved questions of one conversation in the order they were asked. */
     List<AiExecutionEntity> findByConversationIdOrderByCreatedAtAscIdAsc(String conversationId);
 
+    /** #126: the conversation's last result a follow-up builds on (READY is a completed execution). */
+    java.util.Optional<AiExecutionEntity> findFirstByConversationIdAndStatusOrderByCreatedAtDescIdDesc(String conversationId, String status);
+
     void deleteByConversationId(String conversationId);
 }
