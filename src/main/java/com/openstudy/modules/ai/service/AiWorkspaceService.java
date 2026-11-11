@@ -551,7 +551,9 @@ public class AiWorkspaceService {
         }
         boolean sameAnalysis = basis != null && basis.getAnalysisId().equals(plan.analysisId());
         Set<Long> priorBranches = basis == null ? Set.of() : parseBranchCsv(basis.getBranchIdsCsv());
-        boolean inheritBranches = basis != null && namedBranches.isEmpty()
+        // An earlier result without branches (a question saved before branches were kept) gives none to take over;
+        // the scope's branches are used instead, never an empty set.
+        boolean inheritBranches = basis != null && !priorBranches.isEmpty() && namedBranches.isEmpty()
                 && (!OpenStudyAnalyses.SINGLE_BRANCH.contains(plan.analysisId()) || priorBranches.size() == 1);
         if (inheritBranches) targetBranches = priorBranches;
         String refundBasis = plan.refundBasisOverride();
@@ -1296,7 +1298,8 @@ public class AiWorkspaceService {
                 zeroFillRequested
         );
         execEntity.assignClientRequestKey(clientKey);
-        executionRepository.save(execEntity);
+        // The ID is assigned, so save() merges and returns the managed copy; later changes must go to that copy.
+        execEntity = executionRepository.save(execEntity);
 
         String sanitized = sanitizeQuestion(rawQuestion);
         if (sanitized.length() > 1000) {
