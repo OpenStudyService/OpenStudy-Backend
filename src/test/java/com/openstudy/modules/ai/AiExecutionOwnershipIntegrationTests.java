@@ -66,7 +66,6 @@ class AiExecutionOwnershipIntegrationTests {
     @AfterEach void clean() {
         for (String id : conversations) {
             jdbc.update("DELETE FROM ai_work_records WHERE execution_id IN (SELECT id FROM ai_executions WHERE conversation_id=?)", id);
-            jdbc.update("DELETE FROM ai_export_approvals WHERE execution_id IN (SELECT id FROM ai_executions WHERE conversation_id=?)", id);
             jdbc.update("DELETE FROM ai_executions WHERE conversation_id=?", id);
             jdbc.update("DELETE FROM ai_conversations WHERE id=?", id);
         }
@@ -93,13 +92,10 @@ class AiExecutionOwnershipIntegrationTests {
                     assertNotFound(send(s, "POST", "/api/ai/requests/" + id + "/cancel", null));
                 }
                 assertNotFound(send(s, "POST", "/api/ai/records", Map.of("executionId", execution, "title", "가로채기")));
-                assertNotFound(send(s, "POST", "/api/ai/approvals",
-                        Map.of("executionId", execution, "datasetId", "branchSales", "reason", "가로채기")));
             }
         }
         assertThat(status(execution)).isEqualTo("READY");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM ai_work_records WHERE execution_id=?", Long.class, execution)).isZero();
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM ai_export_approvals WHERE execution_id=?", Long.class, execution)).isZero();
     }
 
     @Test void theAuthorCanStillLookUpReuseAndCancelTheirOwnExecution() throws Exception {

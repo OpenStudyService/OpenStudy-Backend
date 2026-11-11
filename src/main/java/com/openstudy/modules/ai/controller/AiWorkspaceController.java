@@ -25,7 +25,8 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * The AI chat API (nl-analysis-api.md, #92), under /api/ai only. The older aliases (/api/conversations,
  * /api/executions, /api/catalog/readiness, /api/requests/{id}/cancel) were removed once the screens moved to /api/ai
- * (Frontend #84). Records, approvals, traces and evaluation are outside the contract (M15 and operations).
+ * (Frontend #84). Records, traces and evaluation are outside the contract (M15 and operations). The ported CSV
+ * export approvals were removed (#214, ADR-M15-001 M15-D09): M15 exports need no approval.
  */
 @RestController
 public class AiWorkspaceController {
@@ -40,10 +41,6 @@ public class AiWorkspaceController {
     }
 
     public record WorkRecordCreateRequest(String executionId, String title, Boolean pinned) {}
-
-    public record ApprovalCreateRequest(String executionId, String datasetId, String reason) {}
-
-    public record ApprovalDecisionRequest(Boolean approved, String decision, String note) {}
 
     public record EvaluationRunRequest(String suiteId) {}
 
@@ -274,57 +271,6 @@ public class AiWorkspaceController {
     @GetMapping("/api/ai/records/{recordId}")
     public Map<String, Object> getWorkRecord(Authentication auth, @PathVariable String recordId) {
         return workspaceService.getWorkRecord(auth, recordId);
-    }
-
-    // =========================================================================
-    // CSV Export Approvals
-    // =========================================================================
-
-    @GetMapping("/api/ai/approvals")
-    public List<Map<String, Object>> listApprovals(Authentication auth) {
-        return workspaceService.listExportApprovals(auth);
-    }
-
-    @PostMapping("/api/ai/approvals")
-    public Map<String, Object> createApproval(
-            Authentication auth,
-            @RequestBody ApprovalCreateRequest body
-    ) {
-        return workspaceService.requestExportApproval(
-                auth,
-                body == null ? null : body.executionId(),
-                body == null ? null : body.datasetId(),
-                body == null ? null : body.reason()
-        );
-    }
-
-    @PostMapping("/api/ai/approvals/{approvalId}/decide")
-    public Map<String, Object> decideApproval(
-            Authentication auth,
-            @PathVariable String approvalId,
-            @RequestBody ApprovalDecisionRequest body
-    ) {
-        boolean approved = body != null && (Boolean.TRUE.equals(body.approved())
-                || "APPROVE".equalsIgnoreCase(body.decision())
-                || "APPROVED".equalsIgnoreCase(body.decision()));
-        return workspaceService.decideExportApproval(
-                auth,
-                approvalId,
-                approved,
-                body == null ? null : body.note()
-        );
-    }
-
-    @GetMapping(value = "/api/ai/approvals/{approvalId}/download", produces = "text/csv;charset=UTF-8")
-    public ResponseEntity<byte[]> downloadApprovalCsv(
-            Authentication auth,
-            @PathVariable String approvalId
-    ) {
-        String csv = workspaceService.downloadApprovedCsv(auth, approvalId);
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"openstudy-export-" + approvalId + ".csv\"")
-                .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
-                .body(csv.getBytes(StandardCharsets.UTF_8));
     }
 
     // =========================================================================

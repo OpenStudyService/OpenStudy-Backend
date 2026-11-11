@@ -7,16 +7,13 @@ import com.openstudy.domainlens.api.ir.ResultEnvelope;
 import com.openstudy.domainlens.api.ir.TypedDataset;
 import com.openstudy.domainlens.api.ir.ViewSpec;
 import com.openstudy.domainlens.catalog.SemanticRegistry;
-import com.openstudy.domainlens.work.CsvWriter;
 import com.openstudy.modules.ai.entity.AiConversationEntity;
 import com.openstudy.modules.ai.entity.AiExecutionEntity;
-import com.openstudy.modules.ai.entity.AiExportApprovalEntity;
 import com.openstudy.modules.ai.entity.AiMessageEntity;
 import com.openstudy.modules.ai.entity.AiTraceEntity;
 import com.openstudy.modules.ai.entity.AiWorkRecordEntity;
 import com.openstudy.modules.ai.repository.AiConversationRepository;
 import com.openstudy.modules.ai.repository.AiExecutionRepository;
-import com.openstudy.modules.ai.repository.AiExportApprovalRepository;
 import com.openstudy.modules.ai.repository.AiMessageRepository;
 import com.openstudy.modules.ai.repository.AiTraceRepository;
 import com.openstudy.modules.ai.repository.AiWorkRecordRepository;
@@ -44,7 +41,7 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Orchestrates the 6-stage DomainLens AI lifecycle, work records, CSV export approvals,
+ * Orchestrates the 6-stage DomainLens AI lifecycle, work records,
  * diagnostic traces (30-day question retention per {@code ADR-M10-001} D04), and quality evaluation suites
  * ({@code OS-DL-0501}..{@code OS-DL-0505}).
  */
@@ -60,10 +57,6 @@ public class AiWorkspaceService {
     private static final java.util.regex.Pattern CLIENT_KEY = java.util.regex.Pattern.compile("[A-Za-z0-9._:-]{1,100}");
     static final String ANALYSIS_UNAVAILABLE = "ANALYSIS_UNAVAILABLE";
     static final String ANALYSIS_UNAVAILABLE_MESSAGE = "저장된 분석을 지금은 제공하지 않아 다시 조회할 수 없어요. 다시 질문해 주세요.";
-    private static final Set<String> PII_COLUMN_DENYLIST = Set.of(
-            "customer_id", "customer_name", "phone", "email", "password_hash", "token_hash", "body"
-    );
-
     private static final Pattern SENSITIVE_TEXT_PATTERN = Pattern.compile(
             "(?i)(password|passwd|secret|token|bearer)\\s*[:=]\\s*\\S+|01[016789]-?\\d{3,4}-?\\d{4}"
     );
@@ -140,7 +133,6 @@ public class AiWorkspaceService {
     private final AiMessageRepository messageRepository;
     private final AiExecutionRepository executionRepository;
     private final AiWorkRecordRepository workRecordRepository;
-    private final AiExportApprovalRepository approvalRepository;
     private final AiTraceRepository traceRepository;
     private final ObjectMapper json;
     private final AiReadiness readinessCheck;
@@ -156,7 +148,6 @@ public class AiWorkspaceService {
             AiMessageRepository messageRepository,
             AiExecutionRepository executionRepository,
             AiWorkRecordRepository workRecordRepository,
-            AiExportApprovalRepository approvalRepository,
             AiTraceRepository traceRepository,
             ObjectMapper json,
             AiReadiness readinessCheck
@@ -172,7 +163,6 @@ public class AiWorkspaceService {
         this.messageRepository = messageRepository;
         this.executionRepository = executionRepository;
         this.workRecordRepository = workRecordRepository;
-        this.approvalRepository = approvalRepository;
         this.traceRepository = traceRepository;
         this.json = json;
     }
@@ -980,108 +970,6 @@ public class AiWorkspaceService {
     }
 
     // =========================================================================
-    // CSV Export Approvals (/api/ai/approvals)
-    // =========================================================================
-
-    @Transactional
-    public Map<String, Object> requestExportApproval(
-            Authentication auth,
-            String executionId,
-            String datasetId,
-            String reason
-    ) {
-        var actor = userResolver.resolve(auth, null);
-        if (reason == null || reason.isBlank()) {
-            throw ApiException.validation("reason", "반출 요청 사유를 입력해 주세요.");
-        }
-        AiExecutionEntity exec = ownExecution(actor.employeeId(), executionId);
-
-        verifyBranchReaccess(actor, parseBranchCsv(exec.getBranchIdsCsv()), "sales".equals(exec.getIntentDomain()));
-
-        TypedDataset ds = selectDataset(rerunSaved(actor, exec).envelope(), datasetId);
-        String approvalId = "apr-" + UUID.randomUUID().toString().substring(0, 12);
-        Instant now = clock.asOf();
-
-        var approval = new AiExportApprovalEntity(
-                approvalId,
-                exec.getId(),
-                ds.id(),
-                actor.employeeId(),
-                exec.getScopeKey(),
-                exec.getBranchIdsCsv(),
-                reason.trim(),
-                ds.rows().size(),
-                now,
-                now.plus(Duration.ofDays(7))
-        );
-        approvalRepository.save(approval);
-        return toApprovalDto(approval);
-    }
-
-    @Transactional(readOnly = true)
-    public List<Map<String, Object>> listExportApprovals(Authentication auth) {
-        var actor = userResolver.resolve(auth, null);
-        List<AiExportApprovalEntity> list = actor.owner()
-                ? approvalRepository.findAllByOrderByRequestedAtDesc()
-                : approvalRepository.findByRequesterEmployeeIdOrderByRequestedAtDesc(actor.employeeId());
-        return list.stream().map(this::toApprovalDto).toList();
-    }
-
-    @Transactional
-    public Map<String, Object> decideExportApproval(
-            Authentication auth,
-            String approvalId,
-            boolean approved,
-            String decisionNote
-    ) {
-        var actor = userResolver.resolve(auth, null);
-        // Only OWNER or branch MANAGER can approve/reject CSV export
-        boolean isManager = actor.owner() || actor.state().memberships().values().stream()
-                .anyMatch(m -> "ACTIVE".equals(m.status()) && "MANAGER".equals(m.role()));
-        if (!isManager) {
-            throw new AccessDeniedException("CSV 반출 승인은 소유자(OWNER) 또는 지점 관리자(MANAGER)만 처리할 수 있습니다.");
-        }
-
-        AiExportApprovalEntity approval = approvalRepository.findById(approvalId)
-                .orElseThrow(() -> ApiException.unprocessable("NOT_FOUND", "승인 요청을 찾을 수 없습니다."));
-
-        approval.decide(actor.employeeId(), approved, decisionNote, clock.asOf());
-        approvalRepository.save(approval);
-        return toApprovalDto(approval);
-    }
-
-    @Transactional(readOnly = true)
-    public String downloadApprovedCsv(Authentication auth, String approvalId) {
-        var actor = userResolver.resolve(auth, null);
-        AiExportApprovalEntity approval = approvalRepository.findById(approvalId)
-                .orElseThrow(() -> ApiException.unprocessable("NOT_FOUND", "승인 요청을 찾을 수 없습니다."));
-
-        if (!"APPROVED".equals(approval.getStatus())) {
-            throw new AccessDeniedException("승인 완료(APPROVED)된 요청만 CSV로 다운로드할 수 있습니다.");
-        }
-        verifyBranchReaccess(actor, parseBranchCsv(approval.getBranchIdsCsv()), false);
-
-        AiExecutionEntity exec = executionRepository.findById(approval.getExecutionId())
-                .orElseThrow(() -> ApiException.unprocessable("NOT_FOUND", "원본 실행 스냅샷을 찾을 수 없습니다."));
-        // The CSV holds the data as of the download, re-checked against the current permissions (M10-D12).
-        TypedDataset dataset = selectDataset(rerunSaved(actor, exec).envelope(), approval.getDatasetId());
-
-        // Enforce PII column stripping before CSV generation
-        List<TypedDataset.Column> safeColumns = dataset.columns().stream()
-                .filter(c -> !PII_COLUMN_DENYLIST.contains(c.alias().toLowerCase(Locale.ROOT)))
-                .toList();
-        java.io.StringWriter writer = new java.io.StringWriter();
-        CsvWriter.row(writer, safeColumns.stream().map(TypedDataset.Column::alias).toList());
-        for (Map<String, Object> row : dataset.rows()) {
-            List<Object> values = safeColumns.stream()
-                    .map(col -> row.get(col.alias()))
-                    .toList();
-            CsvWriter.row(writer, values);
-        }
-        return writer.toString();
-    }
-
-    // =========================================================================
     // Diagnostic Traces (/api/ai/traces)
     // =========================================================================
 
@@ -1444,24 +1332,6 @@ public class AiWorkspaceService {
         return m;
     }
 
-    private Map<String, Object> toApprovalDto(AiExportApprovalEntity a) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("id", a.getId());
-        m.put("executionId", a.getExecutionId());
-        m.put("datasetId", a.getDatasetId());
-        m.put("requesterEmployeeId", a.getRequesterEmployeeId());
-        m.put("approverEmployeeId", a.getApproverEmployeeId());
-        m.put("scope", a.getScopeKey());
-        m.put("reason", a.getReason());
-        m.put("decisionNote", a.getDecisionNote());
-        m.put("rowCount", a.getRowCount());
-        m.put("status", a.getStatus());
-        m.put("requestedAt", a.getRequestedAt().toString());
-        m.put("decidedAt", a.getDecidedAt() == null ? null : a.getDecidedAt().toString());
-        m.put("expiresAt", a.getExpiresAt().toString());
-        return m;
-    }
-
     private Map<String, Object> toTraceDto(AiTraceEntity t, boolean detailed) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", t.getId());
@@ -1485,19 +1355,6 @@ public class AiWorkspaceService {
         return m;
     }
 
-
-    private static TypedDataset selectDataset(ResultEnvelope envelope, String datasetId) {
-        if (envelope.datasets().isEmpty()) {
-            throw ApiException.unprocessable("INVALID_STATE", "반출할 데이터셋이 없습니다.");
-        }
-        if (datasetId == null || datasetId.isBlank()) {
-            return envelope.datasets().getFirst();
-        }
-        return envelope.datasets().stream()
-                .filter(d -> d.id().equals(datasetId))
-                .findFirst()
-                .orElse(envelope.datasets().getFirst());
-    }
 
     private String toJson(Object value) {
         if (value == null) return null;
