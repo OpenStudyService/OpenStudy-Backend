@@ -39,7 +39,7 @@ API 요청마다 끝에 한 줄을 쓴다. Logstash 형식이며 주요 필드�
 | 1 | ECS 태스크 정의의 health 명령을 `curl -fsS http://localhost:8080/actuator/health/liveness`로 바꾸기 | DB 장애 때 정상 컨테이너를 다시 시작하지 않는다 | 요청 전 |
 | 2 | 로드밸런서·대상 그룹이 있으면 health 경로를 `/actuator/health/readiness`로 | DB 장애 때 트래픽을 넣지 않는다 | 요청 전 |
 | 3 | 앱 로그를 CloudWatch 로그 그룹(예: `/ecs/openstudy-backend`)으로 보내기(`awslogs`) | Logs Insights에서 `requestId`로 검색된다 | 요청 전 |
-| 4 | 로그 보존 기간 | #99(보존 기간 결정) 뒤에 정한다. 로그에 이메일·연락처는 없지만 직원 ID는 있다 | #99 대기 |
+| 4 | 로그 그룹 보존 기간 **90일** | 90일 지난 로그가 자동 삭제된다(ADR-M11-002 M11R-D09, 2026-11-11 확정). 로그에 이메일·연락처는 없고 직원 ID는 있다 | 요청 전 |
 | 5 | 로그 지표 필터(네임스페이스 예: `OpenStudy/Api`) | 아래 3절 지표가 생긴다 | 요청 전 |
 | 6 | 경보 후보(아래 3절) 등록과 알림 대상 | 장애를 알림으로 받는다 | 요청 전 |
 
