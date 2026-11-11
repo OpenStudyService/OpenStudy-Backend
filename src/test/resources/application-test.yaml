@@ -18,6 +18,9 @@ spring:
     jdbc:
       cleanup-cron: "-"
 openstudy:
+  # #100: tests run the retention rules themselves; the daily job never fires in between.
+  retention:
+    schedule-enabled: false
   avatar:
     storage: memory
   security:
