@@ -1,5 +1,10 @@
 package com.openstudy.modules.sales.controller;
 
+import com.openstudy.modules.sales.service.SalesExportService;
+import com.openstudy.common.export.CsvFile;
+import com.openstudy.common.web.ApiRequestFilter;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PathVariable;
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -52,6 +57,7 @@ public class SalesController {
     private final PassSalesService passes;
     private final SalesTrendService trends;
     private final com.openstudy.modules.sales.service.PassUsageService usage;
+    private final SalesExportService exports;
 
     @GetMapping("/revenue")
     public RevenueSummary revenue(Authentication actor, HttpServletRequest request,
@@ -128,6 +134,43 @@ public class SalesController {
         if (measure != null && counted == null) throw ApiException.validation("measure", "허용되지 않은 값입니다.");
         var condition = condition(request, from, to, refundBasis, purpose, productId, categoryCode).withGranularity(bucket);
         return trends.trend(actor(actor), condition, counted);
+    }
+
+    /**
+     * #127: a report as CSV with the same query, permissions and errors as its screen API (analysis-reuse-api.md). There
+     * is no page query: the file holds up to 1,000 rows of the whole result.
+     */
+    @GetMapping("/exports/{report}")
+    public ResponseEntity<byte[]> export(Authentication actor, HttpServletRequest request, @PathVariable String report,
+            @RequestParam(required = false) String from, @RequestParam(required = false) String to,
+            @RequestParam(required = false) String refundBasis, @RequestParam(required = false) String purpose,
+            @RequestParam(required = false) String productId, @RequestParam(required = false) String categoryCode,
+            @RequestParam(required = false) String sort, @RequestParam(required = false) String direction,
+            @RequestParam(required = false) String entryType, @RequestParam(required = false) String granularity,
+            @RequestParam(required = false) String measure) {
+        if (!SalesExportService.REPORTS.containsKey(report)) {
+            throw ApiException.notFound("EXPORT_REPORT_UNKNOWN", "내보낼 수 없는 보고서입니다.");
+        }
+        for (String paging : List.of("page", "pageSize")) {
+            if (request.getParameter(paging) != null) throw ApiException.validation(paging, "내보내기는 페이지 없이 전체 결과를 담습니다.");
+        }
+        // Each report reads only the query its screen API reads; the usage report takes no refund basis or purpose.
+        boolean usageReport = report.equals("passes-usage");
+        var condition = condition(request, from, to, usageReport ? null : refundBasis, usageReport ? null : purpose, productId,
+                categoryCode);
+        BranchRevenueSort order = sort == null ? BranchRevenueSort.NET_AMOUNT : BranchRevenueSort.fromWire(sort);
+        if (order == null) throw ApiException.validation("sort", "지원하지 않는 정렬 항목입니다.");
+        LedgerEntryType type = entryType == null ? null : LedgerEntryType.fromLabel(entryType);
+        if (entryType != null && type == null) throw ApiException.validation("entryType", "허용되지 않은 값입니다.");
+        AggregationGranularity bucket = granularity == null ? null : AggregationGranularity.fromWire(granularity);
+        if (granularity != null && bucket == null) throw ApiException.validation("granularity", "허용되지 않은 값입니다.");
+        TrendMeasure counted = measure == null ? null : TrendMeasure.fromWire(measure);
+        if (measure != null && counted == null) throw ApiException.validation("measure", "허용되지 않은 값입니다.");
+        if (report.equals("trend")) condition = condition.withGranularity(bucket);
+        Instant createdAt = Instant.now();
+        var export = exports.export(actor(actor), report, condition,
+                new SalesExportService.Options(order, direction(direction), type, counted), ApiRequestFilter.requestId(request));
+        return CsvFile.response(export.name(), createdAt, CsvFile.write(export.table(), createdAt));
     }
 
     /** Every filter is parsed for every operation, so the service can refuse the ones the operation does not take (422). */

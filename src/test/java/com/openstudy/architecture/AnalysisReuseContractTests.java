@@ -71,9 +71,8 @@ class AnalysisReuseContractTests {
                 assertThat(operation.get("responses").has(status)).as("%s %s", id, status).isTrue();
             assertThat(operation.get("x-permission").asString()).as(id).isNotBlank();
             assertThat(operation.get("x-adr-decisions").toString()).as(id).contains("M15-D");
-            // #125 implemented its operations; #127 still has the CSV ones as design targets.
-            assertThat(operation.get("x-implementation-status").asString()).as(id)
-                    .isEqualTo(ISSUES.get(id).equals("#125") ? "implemented" : "design-target");
+            // #125 and #127 implemented every M15 operation.
+            assertThat(operation.get("x-implementation-status").asString()).as(id).isEqualTo("implemented");
             assertThat(operation.get("x-implementation-issue").asString()).as(id).isEqualTo(ISSUES.get(id));
             String[] parts = route.split(" ");
             assertThat(contract).as(route).contains("`" + parts[0].toUpperCase() + " " + parts[1]);
@@ -141,7 +140,7 @@ class AnalysisReuseContractTests {
         assertThat(adr).contains("| M15-D09 |", "| M15-D10 |", "2026-11-11", "세션에 실행 계획을 30분 두지 않고");
     }
 
-    /** #125: the implemented operations are served by the AI controller. */
+    /** #125, #127: every operation is served (the AI controller under /api, the sales one under /api/sales). */
     @Test void theImplementedOperationsAreServed() {
         var served = new java.util.HashSet<String>();
         for (var method : com.openstudy.modules.ai.controller.AiWorkspaceController.class.getDeclaredMethods()) {
@@ -150,9 +149,14 @@ class AnalysisReuseContractTests {
             if (get != null) for (String route : get.value()) served.add("get " + route.substring(4));
             if (post != null) for (String route : post.value()) served.add("post " + route.substring(4));
         }
-        ISSUES.forEach((id, issue) -> {
-            if (issue.equals("#125")) assertThat(served).as(id).contains(ALL.get(id));
-        });
+        for (var method : com.openstudy.modules.sales.controller.SalesController.class.getDeclaredMethods()) {
+            var get = method.getAnnotation(org.springframework.web.bind.annotation.GetMapping.class);
+            if (get != null) for (String route : get.value()) served.add("get /sales" + route);
+        }
+        ALL.forEach((id, route) -> assertThat(served).as(id).contains(route));
+        // The report names the server takes are the contract's enum.
+        assertThat(com.openstudy.modules.sales.service.SalesExportService.REPORTS.keySet())
+                .containsExactlyElementsOf(texts(operation("exportSalesReport").at("/parameters/0/schema/enum")));
     }
 
     @Test void theContractIsPublishedAsTheM15Version() throws Exception {

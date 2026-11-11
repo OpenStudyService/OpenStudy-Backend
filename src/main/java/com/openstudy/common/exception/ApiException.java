@@ -45,6 +45,11 @@ public class ApiException extends RuntimeException {
         return new ApiException(403, code, message, null, null, null);
     }
 
+    /** A 404 with its own code, e.g. EXPORT_REPORT_UNKNOWN for a report name that is not in the contract. */
+    public static ApiException notFound(String code, String message) {
+        return new ApiException(404, code, message, null, null, null);
+    }
+
     public static ApiException notFound(String message) {
         return new ApiException(404, "NOT_FOUND", message, null, null, null);
     }
