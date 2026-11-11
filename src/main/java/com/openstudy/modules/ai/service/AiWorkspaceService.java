@@ -136,6 +136,7 @@ public class AiWorkspaceService {
     private final AiTraceRepository traceRepository;
     private final ObjectMapper json;
     private final AiReadiness readinessCheck;
+    private final com.openstudy.common.audit.AuditTrail audit;
 
     public AiWorkspaceService(
             OpenStudyUserContextResolver userResolver,
@@ -150,8 +151,10 @@ public class AiWorkspaceService {
             AiWorkRecordRepository workRecordRepository,
             AiTraceRepository traceRepository,
             ObjectMapper json,
-            AiReadiness readinessCheck
+            AiReadiness readinessCheck,
+            com.openstudy.common.audit.AuditTrail audit
     ) {
+        this.audit = audit;
         this.readinessCheck = readinessCheck;
         this.userResolver = userResolver;
         this.playbackGateway = playbackGateway;
@@ -894,6 +897,63 @@ public class AiWorkspaceService {
             items.add(item);
         }
         return Map.of("items", items);
+    }
+
+    /** #127: an exported result, named for the file. */
+    public record Export(String name, com.openstudy.common.export.CsvFile.Table table) {}
+
+    /**
+     * #127 GET /ai/executions/{id}/export (analysis-reuse-api.md "CSV 내보내기", M15-D02·D09): the saved execution run again
+     * under the current permissions, one dataset written as CSV, and an EXPORTED audit row with its conditions and row
+     * count. The model is not called and no stored result is read.
+     */
+    @Transactional
+    public Export exportExecution(Authentication auth, String executionId, String datasetId, String requestId) {
+        var actor = userResolver.resolve(auth, null);
+        var execution = ownExecution(actor.employeeId(), executionId);
+        var envelope = rerunSaved(actor, execution).envelope();
+        var dataset = datasetId == null ? envelope.datasets().stream().findFirst()
+                .orElseThrow(() -> ApiException.validation("datasetId", "결과에 데이터셋이 없습니다."))
+                : envelope.datasets().stream().filter(d -> d.id().equals(datasetId)).findFirst()
+                        .orElseThrow(() -> ApiException.validation("datasetId", "결과에 없는 데이터셋입니다."));
+        var conditions = conditionsOf(execution);
+        var columns = dataset.columns().stream().map(column -> new com.openstudy.common.export.CsvFile.Column(
+                column.unit() == null ? column.alias() : column.alias() + "(" + column.unit() + ")",
+                column.type() == com.openstudy.domainlens.api.ir.ValueType.INTEGER
+                        || column.type() == com.openstudy.domainlens.api.ir.ValueType.DECIMAL)).toList();
+        List<List<Object>> rows = dataset.rows().stream()
+                .map(row -> dataset.columns().stream().map(column -> row.get(column.alias())).toList()).toList();
+        boolean money = dataset.columns().stream().anyMatch(column -> "KRW".equals(column.unit()));
+        var asOf = dataset.asOf() != null ? dataset.asOf() : envelope.asOf();
+        var table = new com.openstudy.common.export.CsvFile.Table("AI 분석 결과 · " + execution.getQuestion(),
+                exportConditions(conditions, dataset.id()), money, asOf, columns, rows, dataset.totalElements());
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("executionId", execution.getId());
+        summary.put("analysisId", conditions.analysisId());
+        summary.put("datasetId", dataset.id());
+        summary.put("period", conditions.from() == null ? null : conditions.from() + "~" + conditions.to());
+        summary.put("branchIds", conditions.branchIds().stream().sorted().toList());
+        summary.put("productIds", conditions.productIds().stream().sorted().toList());
+        summary.put("rows", table.written());
+        summary.put("truncated", table.truncated());
+        audit.record(com.openstudy.common.audit.AuditEvent.change(actor.employeeId(), null, "ai-execution", null, "EXPORTED", null,
+                toJson(summary), requestId));
+        return new Export("AI 분석 결과", table);
+    }
+
+    /** #127: the conditions as one sentence; branch names are the ones the requester can see (they were just checked). */
+    private String exportConditions(AiReuse.Conditions conditions, String datasetId) {
+        var parts = new ArrayList<String>();
+        parts.add("분석 " + conditions.analysisId());
+        parts.add("데이터셋 " + datasetId);
+        parts.add("기간 " + (conditions.from() == null ? "지금 기준" : conditions.from() + "~" + conditions.to() + " (Asia/Seoul)"));
+        parts.add("지점 " + String.join(", ", conditions.branchIds().stream().sorted().map(userResolver::branchName).toList()));
+        if (!conditions.productIds().isEmpty()) {
+            parts.add("상품 ID " + String.join(", ", conditions.productIds().stream().sorted().map(String::valueOf).toList()));
+        }
+        if (conditions.refundBasis() != null) parts.add("환불 기준 " + ("original".equals(conditions.refundBasis()) ? "원결제일" : "처리일"));
+        if (Boolean.TRUE.equals(conditions.zeroFill())) parts.add("0원 날짜 포함");
+        return String.join(" · ", parts);
     }
 
     /** #125: the conditions an execution ran under; an unchanged period is the analysis default as of now. */

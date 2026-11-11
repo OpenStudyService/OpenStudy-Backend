@@ -22465,7 +22465,7 @@
           "FR-AGG-16"
         ],
         "x-permission": "실행 주인. 요청마다 현재 ai:read·지점 범위·매출이면 sales:read를 다시 검사(M10-D06)",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-implementation-issue": "#127",
         "x-session-modes": [
           "WORKSPACE"
@@ -22600,7 +22600,7 @@
           "FR-AGG-16"
         ],
         "x-permission": "해당 화면 API와 같다: 요청한 모든 지점의 sales:read",
-        "x-implementation-status": "design-target",
+        "x-implementation-status": "implemented",
         "x-implementation-issue": "#127",
         "x-session-modes": [
           "WORKSPACE"

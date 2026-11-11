@@ -240,6 +240,29 @@ public class AiWorkspaceController {
         }
     }
 
+    /** #127: one dataset of the execution as CSV, run again under the current permissions; counted in the M10 rate limit. */
+    @GetMapping("/api/ai/executions/{executionId}/export")
+    public ResponseEntity<byte[]> exportExecution(
+            Authentication auth,
+            jakarta.servlet.http.HttpServletRequest request,
+            @PathVariable String executionId,
+            @RequestParam(required = false) String datasetId
+    ) {
+        var actor = userResolver.resolve(auth, null);
+        if (!playbackGateway.tryAcquireRateLimit(actor.employeeId())) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS);
+        }
+        try {
+            java.time.Instant createdAt = java.time.Instant.now();
+            var export = workspaceService.exportExecution(auth, executionId, datasetId,
+                    com.openstudy.common.web.ApiRequestFilter.requestId(request));
+            return com.openstudy.common.export.CsvFile.response(export.name(), createdAt,
+                    com.openstudy.common.export.CsvFile.write(export.table(), createdAt));
+        } finally {
+            playbackGateway.releaseRateLimit(actor.employeeId());
+        }
+    }
+
     /** #125: the employee's own questions of the last 30 days, newest 20 (M15-D01). */
     @GetMapping("/api/ai/recent-queries")
     public ResponseEntity<Map<String, Object>> recentQueries(Authentication auth) {
