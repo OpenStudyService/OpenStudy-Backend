@@ -595,6 +595,46 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         };
     }
 
+    /**
+     * #125: an analysis run under a refinement's conditions. A null {@code period} keeps the analysis default and an empty
+     * {@code products} is every product; analyses without that condition never receive one (AiReuse.EDITABLE).
+     */
+    public PocExecutionResult executeCase(String analysisId, Collection<Long> branchScope, long requester,
+            OpenStudyClock.KstPeriod period, Set<Long> products) {
+        if (period == null && products.isEmpty()) return executeCase(analysisId, branchScope, requester);
+        return switch (analysisId) {
+            case ID_POC_001 -> executePoc001BranchSales(branchScope, requester, period);
+            case ID_POC_002 -> executePoc002HourlyCongestion(singleBranch(branchScope), period);
+            case ID_POC_003 -> executePoc003Top5Passes(branchScope, requester, period, products);
+            case ID_POC_005 -> executePoc005WeeklyRoomReservations(branchScope, period);
+            case ID_POC_006 -> executePoc006ExpiringPasses(branchScope, period, products);
+            case ID_POC_007 -> executePoc007DailySalesTrend(branchScope, requester, period);
+            case ID_POC_008 -> executePoc008SalesByItemType(branchScope, requester, period);
+            case ID_POC_010 -> executePoc010WeeklyAttendance(branchScope, period);
+            default -> throw new IllegalArgumentException("Analysis " + analysisId + " takes no period or product condition");
+        };
+    }
+
+    /** #125: the period an analysis uses when nobody changed it, or null for the analyses that look at now. */
+    public OpenStudyClock.KstPeriod defaultPeriod(String analysisId) {
+        return switch (analysisId) {
+            case ID_POC_001 -> clock.thisMonth();
+            case ID_POC_002 -> clock.previousTwoWeeks();
+            case ID_POC_003, ID_POC_007, ID_POC_008 -> clock.lastMonth();
+            case ID_POC_005 -> clock.thisWeek();
+            case ID_POC_006 -> clock.next7Days();
+            case ID_POC_010 -> clock.lastWeek();
+            default -> null;
+        };
+    }
+
+    /** #125: which of these product IDs exist. Products are shared by every branch, so existing means visible. */
+    public Set<Long> existingProducts(Set<Long> ids) {
+        if (ids.isEmpty()) return Set.of();
+        return new LinkedHashSet<>(entityManager.createQuery("SELECT p.id FROM Product p WHERE p.id IN :ids", Long.class)
+                .setParameter("ids", ids).getResultList());
+    }
+
     /** An analysis always names its branches; an empty scope is a caller error, never "every branch". */
     static Collection<Long> requireBranches(Collection<Long> branchScope) {
         if (branchScope == null || branchScope.isEmpty()) {
@@ -619,7 +659,12 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
      * {@code POC-001}: "이번 달 지점별 매출을 비교해줘" ({@code 2026-11-01T00:00+09:00} ~ {@code 2026-11-03T00:00+09:00}).
      */
     public PocExecutionResult executePoc001BranchSales(Collection<Long> branchScope, long requester) {
-        var period = clock.thisMonth();
+        return executePoc001BranchSales(branchScope, requester, null);
+    }
+
+    /** #125: {@code override} is a refinement's period; null keeps the analysis default. */
+    public PocExecutionResult executePoc001BranchSales(Collection<Long> branchScope, long requester, OpenStudyClock.KstPeriod override) {
+        var period = override != null ? override : clock.thisMonth();
         var processed = salesService.aggregateByBranch(requester,
                 branchScope, period.startInclusive(), period.endExclusive(), RefundBasis.REFUND_PROCESSED_AT);
         var original = salesService.aggregateByBranch(requester,
@@ -720,7 +765,12 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
      * {@code POC-002}: "○○점은 언제 가장 붐벼?" ({@code 2026-10-19T00:00+09:00} ~ {@code 2026-11-02T00:00+09:00}, 2 weeks, sampled hours 9/12/15/18/21 KST).
      */
     public PocExecutionResult executePoc002HourlyCongestion(long branchId) {
-        var period = clock.previousTwoWeeks();
+        return executePoc002HourlyCongestion(branchId, null);
+    }
+
+    /** #125: {@code override} is a refinement's period; null keeps the analysis default. */
+    public PocExecutionResult executePoc002HourlyCongestion(long branchId, OpenStudyClock.KstPeriod override) {
+        var period = override != null ? override : clock.previousTwoWeeks();
         Instant now = clock.asOf();
         var def = definitions.get(ID_POC_002);
 
@@ -857,15 +907,26 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
      * {@code POC-003}: "지난달 가장 잘 팔린 이용권 TOP 5를 보여줘" ({@code 2026-10-01T00:00+09:00} ~ {@code 2026-11-01T00:00+09:00}).
      */
     public PocExecutionResult executePoc003Top5Passes(Collection<Long> branchScope, long requester) {
-        var period = clock.lastMonth();
+        return executePoc003Top5Passes(branchScope, requester, null, Set.of());
+    }
+
+    /** #125: {@code override} is a refinement's period; null keeps the analysis default. An empty {@code products} is every product. */
+    public PocExecutionResult executePoc003Top5Passes(Collection<Long> branchScope, long requester, OpenStudyClock.KstPeriod override, Set<Long> products) {
+        var period = override != null ? override : clock.lastMonth();
         Instant now = clock.asOf();
         var def = definitions.get(ID_POC_003);
         // GET /sales/passes/products with the same condition (#95, M10-D05): M9's ranking by net sold quantity.
-        List<TopPassProductRow> top5 = salesService.topPassProducts(requester, branchScope, period.startInclusive(),
-                period.endExclusive(), 5).stream()
+        // #125: M9 filters one product at a time, so a product condition ranks each chosen product's own row.
+        var ranked = products.isEmpty()
+                ? salesService.topPassProducts(requester, branchScope, period.startInclusive(), period.endExclusive(), 5)
+                : products.stream().flatMap(product -> salesService.topPassProducts(requester, branchScope,
+                        period.startInclusive(), period.endExclusive(), 1, product).stream()).toList();
+        var rows = ranked.stream()
                 .map(item -> new TopPassProductRow(Long.parseLong(item.productId()), item.productName(), item.soldQuantity(),
-                        item.refundedQuantity(), item.netSoldQuantity()))
-                .toList();
+                        item.refundedQuantity(), item.netSoldQuantity()));
+        List<TopPassProductRow> top5 = (products.isEmpty() ? rows : rows.sorted(Comparator
+                .comparingLong(TopPassProductRow::netUnits).reversed().thenComparingLong(TopPassProductRow::productId)))
+                .limit(5).toList();
 
         List<Map<String, Object>> datasetRows = new ArrayList<>(top5.size());
         for (var r : top5) {
@@ -1041,7 +1102,12 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
      * {@code POC-005}: "이번 주 스터디룸 예약 현황을 보여줘" ({@code 2026-11-02T00:00+09:00} ~ {@code 2026-11-09T00:00+09:00}).
      */
     public PocExecutionResult executePoc005WeeklyRoomReservations(Collection<Long> branchScope) {
-        var period = clock.thisWeek();
+        return executePoc005WeeklyRoomReservations(branchScope, null);
+    }
+
+    /** #125: {@code override} is a refinement's period; null keeps the analysis default. */
+    public PocExecutionResult executePoc005WeeklyRoomReservations(Collection<Long> branchScope, OpenStudyClock.KstPeriod override) {
+        var period = override != null ? override : clock.thisWeek();
         Instant now = clock.asOf();
         var def = definitions.get(ID_POC_005);
         Collection<Long> effectiveBranches = requireBranches(branchScope);
@@ -1211,7 +1277,12 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
      * Never exposes customer PII (`customer_id`, `customer.name`, `customer.phone`, `customer.email`).
      */
     public PocExecutionResult executePoc006ExpiringPasses(Collection<Long> branchScope) {
-        var period = clock.next7Days();
+        return executePoc006ExpiringPasses(branchScope, null, Set.of());
+    }
+
+    /** #125: {@code override} is a refinement's period; null keeps the analysis default. An empty {@code products} is every product. */
+    public PocExecutionResult executePoc006ExpiringPasses(Collection<Long> branchScope, OpenStudyClock.KstPeriod override, Set<Long> products) {
+        var period = override != null ? override : clock.next7Days();
         Instant now = clock.asOf();
         var def = definitions.get(ID_POC_006);
         Collection<Long> effectiveBranches = requireBranches(branchScope);
@@ -1230,18 +1301,20 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             byBranchCount.put(bId, 0L);
         }
 
-        List<Object[]> passTuples = entityManager.createQuery(
+        var passQuery = entityManager.createQuery(
                         "SELECT pa.id, pa.purchaseBranchId, pa.productId, pa.snapshotProductName, pa.kind, "
                                 + "pa.remainingMinutes, pa.expiresAt, pa.status "
                                 + "FROM Pass pa WHERE pa.purchaseBranchId IN :branchIds "
                                 + "AND CAST(pa.status AS string) = 'ACTIVE' "
                                 + "AND pa.expiresAt >= :startInclusive AND pa.expiresAt < :endExclusive "
+                                + (products.isEmpty() ? "" : "AND pa.productId IN :productIds ")
                                 + "ORDER BY pa.expiresAt ASC, pa.id ASC",
                         Object[].class)
                 .setParameter("branchIds", effectiveBranches)
                 .setParameter("startInclusive", period.startInclusive())
-                .setParameter("endExclusive", period.endExclusive())
-                .getResultList();
+                .setParameter("endExclusive", period.endExclusive());
+        if (!products.isEmpty()) passQuery.setParameter("productIds", products);
+        List<Object[]> passTuples = passQuery.getResultList();
 
         List<ExpiringPassItem> items = new ArrayList<>(passTuples.size());
         List<Long> passIds = new ArrayList<>(passTuples.size());
@@ -1341,7 +1414,12 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
      * {@code POC-007}: "지난달 일별 매출 추이를 그래프로 보여줘" ({@code 2026-10-01} ~ {@code 2026-10-31}, 31 days zero-filled).
      */
     public PocExecutionResult executePoc007DailySalesTrend(Collection<Long> branchScope, long requester) {
-        var period = clock.lastMonth();
+        return executePoc007DailySalesTrend(branchScope, requester, null);
+    }
+
+    /** #125: {@code override} is a refinement's period; null keeps the analysis default. */
+    public PocExecutionResult executePoc007DailySalesTrend(Collection<Long> branchScope, long requester, OpenStudyClock.KstPeriod override) {
+        var period = override != null ? override : clock.lastMonth();
         Instant now = clock.asOf();
         var def = definitions.get(ID_POC_007);
 
@@ -1421,7 +1499,12 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
      * {@code POC-008}: "지난달 이용권, 스터디룸, 사물함 중 어디서 매출이 가장 많이 나왔어?" ({@code 2026-10-01} ~ {@code 2026-11-01} KST).
      */
     public PocExecutionResult executePoc008SalesByItemType(Collection<Long> branchScope, long requester) {
-        var period = clock.lastMonth();
+        return executePoc008SalesByItemType(branchScope, requester, null);
+    }
+
+    /** #125: {@code override} is a refinement's period; null keeps the analysis default. */
+    public PocExecutionResult executePoc008SalesByItemType(Collection<Long> branchScope, long requester, OpenStudyClock.KstPeriod override) {
+        var period = override != null ? override : clock.lastMonth();
         Instant now = clock.asOf();
         var def = definitions.get(ID_POC_008);
 
@@ -1608,7 +1691,12 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
      * {@code POC-010}: "지난주 직원별 근무시간을 비교해줘" ({@code [2026-10-26T00:00:00+09:00, 2026-11-02T00:00:00+09:00)}).
      */
     public PocExecutionResult executePoc010WeeklyAttendance(Collection<Long> branchScope) {
-        var period = clock.lastWeek();
+        return executePoc010WeeklyAttendance(branchScope, null);
+    }
+
+    /** #125: {@code override} is a refinement's period; null keeps the analysis default. */
+    public PocExecutionResult executePoc010WeeklyAttendance(Collection<Long> branchScope, OpenStudyClock.KstPeriod override) {
+        var period = override != null ? override : clock.lastWeek();
         Instant now = clock.asOf();
         var def = definitions.get(ID_POC_010);
         Collection<Long> effectiveBranches = requireBranches(branchScope);

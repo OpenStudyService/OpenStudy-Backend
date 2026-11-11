@@ -5,6 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.time.LocalDate;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -77,6 +78,24 @@ public class AiExecutionEntity {
     @Column(name = "zero_fill_requested", nullable = false)
     private boolean zeroFillRequested;
 
+    /** #125: the period a refinement set (Asia/Seoul dates, both inclusive); null means the analysis default. */
+    @Column(name = "period_from")
+    private LocalDate periodFrom;
+
+    @Column(name = "period_to")
+    private LocalDate periodTo;
+
+    /** #125: the product condition a refinement set; null means every product. */
+    @Column(name = "product_ids_csv", length = 500)
+    private String productIdsCsv;
+
+    /** #125: QUESTION, or REFINEMENT for an execution made by changing another one's conditions. */
+    @Column(length = 20, nullable = false)
+    private String origin = "QUESTION";
+
+    @Column(name = "source_execution_id", length = 64)
+    private String sourceExecutionId;
+
     @Column(name = "as_of_utc", nullable = false)
     private Instant asOfUtc;
 
@@ -137,6 +156,15 @@ public class AiExecutionEntity {
 
     public void assignClientRequestKey(String key) {
         this.clientRequestKey = key;
+    }
+
+    /** #125: marks this execution as a refinement of {@code source} with the conditions it ran under. */
+    public void refines(String source, LocalDate from, LocalDate to, String productCsv) {
+        this.origin = "REFINEMENT";
+        this.sourceExecutionId = source;
+        this.periodFrom = from;
+        this.periodTo = to;
+        this.productIdsCsv = productCsv;
     }
 
     public void markCanceled() {

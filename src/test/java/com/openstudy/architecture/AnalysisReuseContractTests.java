@@ -71,7 +71,9 @@ class AnalysisReuseContractTests {
                 assertThat(operation.get("responses").has(status)).as("%s %s", id, status).isTrue();
             assertThat(operation.get("x-permission").asString()).as(id).isNotBlank();
             assertThat(operation.get("x-adr-decisions").toString()).as(id).contains("M15-D");
-            assertThat(operation.get("x-implementation-status").asString()).as(id).isEqualTo("design-target");
+            // #125 implemented its operations; #127 still has the CSV ones as design targets.
+            assertThat(operation.get("x-implementation-status").asString()).as(id)
+                    .isEqualTo(ISSUES.get(id).equals("#125") ? "implemented" : "design-target");
             assertThat(operation.get("x-implementation-issue").asString()).as(id).isEqualTo(ISSUES.get(id));
             String[] parts = route.split(" ");
             assertThat(contract).as(route).contains("`" + parts[0].toUpperCase() + " " + parts[1]);
@@ -97,9 +99,15 @@ class AnalysisReuseContractTests {
         assertThat(texts(context.at("/resetReason/enum"))).contains("SCOPE_CHANGED", "PERMISSION_LOST");
         var planned = schema("AiQueryResponse").get("x-planned-changes").toString();
         assertThat(planned).contains("#126", "AiContext", "AiConditions");
-        assertThat(schema("AiExecution").get("x-planned-changes").toString()).contains("#125", "editableFilters", "REFINEMENT");
-        assertThat(spec.at("/paths/~1ai~1executions~1{executionId}/get/x-planned-changes").toString())
-                .contains("datasetId", "\"sort\"", "\"direction\"", "M15-D04");
+        // #125 moved its planned changes into the definitions.
+        assertThat(schema("AiExecution").has("x-planned-changes")).isFalse();
+        assertThat(schema("AiExecution").get("properties").toString()).contains("editableFilters", "REFINEMENT", "sourceExecutionId");
+        assertThat(texts(schema("AiConversationTurn").get("required"))).contains("origin", "sourceExecutionId");
+        var reread = spec.at("/paths/~1ai~1executions~1{executionId}/get");
+        assertThat(reread.has("x-planned-changes")).isFalse();
+        assertThat(reread.get("parameters").toString()).contains("datasetId", "\"sort\"", "\"direction\"");
+        assertThat(reread.get("x-adr-decisions").toString()).contains("M15-D04");
+        assertThat(texts(reread.get("x-error-codes"))).contains("BRANCH_SCOPE_DENIED", "VALIDATION_FAILED").doesNotContain("FORBIDDEN");
         // A refinement takes only period, branches and products (M15-D05).
         var refinement = schema("AiRefinement");
         var fields = new ArrayList<String>();
@@ -132,10 +140,24 @@ class AnalysisReuseContractTests {
         assertThat(adr).contains("| M15-D09 |", "| M15-D10 |", "2026-11-11", "세션에 실행 계획을 30분 두지 않고");
     }
 
+    /** #125: the implemented operations are served by the AI controller. */
+    @Test void theImplementedOperationsAreServed() {
+        var served = new java.util.HashSet<String>();
+        for (var method : com.openstudy.modules.ai.controller.AiWorkspaceController.class.getDeclaredMethods()) {
+            var get = method.getAnnotation(org.springframework.web.bind.annotation.GetMapping.class);
+            var post = method.getAnnotation(org.springframework.web.bind.annotation.PostMapping.class);
+            if (get != null) for (String route : get.value()) served.add("get " + route.substring(4));
+            if (post != null) for (String route : post.value()) served.add("post " + route.substring(4));
+        }
+        ISSUES.forEach((id, issue) -> {
+            if (issue.equals("#125")) assertThat(served).as(id).contains(ALL.get(id));
+        });
+    }
+
     @Test void theContractIsPublishedAsTheM15Version() throws Exception {
         assertThat(spec.at("/info/version").asString()).isEqualTo("0.1.16-m15-analysis-reuse");
         assertThat(spec.at("/info/description").asString()).contains("Issue #124", "analysis-reuse-api.md");
-        assertThat(contract()).contains("`0.1.16-m15-analysis-reuse`", "operation은 모두 설계 계약(`design-target`)");
+        assertThat(contract()).contains("`0.1.16-m15-analysis-reuse`", "필터 수정·최근 질의를 구현했다(`implemented`)");
         assertThat(Files.readString(DESIGN.resolve("README.md"))).contains("analysis-reuse-api.md", "0.1.16-m15-analysis-reuse");
     }
 }

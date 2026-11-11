@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The AI chat API (nl-analysis-api.md, #92), under /api/ai only. The older aliases (/api/conversations,
@@ -208,9 +210,43 @@ public class AiWorkspaceController {
         return workspaceService.cancelRequest(auth, requestId);
     }
 
+    /** #125: the saved execution run again; the table query pages and sorts one dataset (M15-D04). */
     @GetMapping("/api/ai/executions/{executionId}")
-    public Map<String, Object> getExecution(Authentication auth, @PathVariable String executionId) {
-        return workspaceService.getExecution(auth, executionId);
+    public Map<String, Object> getExecution(
+            Authentication auth,
+            @PathVariable String executionId,
+            @RequestParam(required = false) String datasetId,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String direction
+    ) {
+        return workspaceService.getExecution(auth, executionId, datasetId, page, size, sort, direction);
+    }
+
+    /** #125: the execution's analysis run again with a changed period, branches or products (M15-D05). */
+    @PostMapping("/api/ai/executions/{executionId}/refinements")
+    public ResponseEntity<Map<String, Object>> refineExecution(
+            Authentication auth,
+            @PathVariable String executionId,
+            @RequestBody(required = false) Map<String, Object> body
+    ) {
+        var actor = userResolver.resolve(auth, null);
+        if (!playbackGateway.tryAcquireRateLimit(actor.employeeId())) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS);
+        }
+        try {
+            return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store")
+                    .body(workspaceService.refine(auth, executionId, body));
+        } finally {
+            playbackGateway.releaseRateLimit(actor.employeeId());
+        }
+    }
+
+    /** #125: the employee's own questions of the last 30 days, newest 20 (M15-D01). */
+    @GetMapping("/api/ai/recent-queries")
+    public ResponseEntity<Map<String, Object>> recentQueries(Authentication auth) {
+        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store").body(workspaceService.recentQueries(auth));
     }
 
     // =========================================================================

@@ -12,6 +12,10 @@ public interface AiExecutionRepository extends JpaRepository<AiExecutionEntity, 
     Optional<AiExecutionEntity> findByEmployeeIdAndClientRequestKey(long employeeId, String clientRequestKey);
     List<AiExecutionEntity> findByEmployeeIdOrderByCreatedAtDesc(long employeeId);
 
+    /** #125: recent questions (ix_ai_executions_emp covers employee and time). */
+    List<AiExecutionEntity> findTop20ByEmployeeIdAndOriginAndConversationIdIsNotNullAndCreatedAtGreaterThanEqualOrderByCreatedAtDescIdDesc(
+            long employeeId, String origin, java.time.Instant since);
+
     /** The saved questions of one conversation in the order they were asked. */
     List<AiExecutionEntity> findByConversationIdOrderByCreatedAtAscIdAsc(String conversationId);
 

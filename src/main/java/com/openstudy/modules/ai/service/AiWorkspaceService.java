@@ -232,6 +232,8 @@ public class AiWorkspaceService {
             Map<String, Object> turn = new LinkedHashMap<>();
             turn.put("question", execution.getQuestion());
             turn.put("askedAt", execution.getCreatedAt().toString());
+            turn.put("origin", execution.getOrigin());
+            turn.put("sourceExecutionId", execution.getSourceExecutionId());
             turn.put("response", rerun(actor, scope, conversation.getId(), execution));
             turns.add(turn);
         }
@@ -293,10 +295,24 @@ public class AiWorkspaceService {
                     AI_NOT_READY_MESSAGE, saved);
         }
         boolean sales = "sales".equals(saved.getIntentDomain());
-        var decision = userResolver.authorizeQuestion(actor, scope, saved.getQuestion(), sales);
-        if (!decision.allowed()) {
-            return reopenedWithoutData(requestId, conversationId, "REFUSED", decision.httpStatus(), decision.errorCode(),
-                    decision.resultCategory(), "지금 권한이나 지점 범위로는 다시 조회할 수 없어요. " + decision.message(), saved);
+        Set<Long> branches;
+        if ("REFINEMENT".equals(saved.getOrigin())) {
+            // #125: a refinement ran over the branches the employee chose, not the question's scope.
+            branches = parseBranchCsv(saved.getBranchIdsCsv());
+            try {
+                verifyBranchReaccess(actor, branches, sales);
+            } catch (ApiException denied) {
+                String code = denied.error(requestId).code();
+                return reopenedWithoutData(requestId, conversationId, "REFUSED", denied.status(), code, code,
+                        "지금 권한이나 지점 범위로는 다시 조회할 수 없어요. " + denied.getMessage(), saved);
+            }
+        } else {
+            var decision = userResolver.authorizeQuestion(actor, scope, saved.getQuestion(), sales);
+            if (!decision.allowed()) {
+                return reopenedWithoutData(requestId, conversationId, "REFUSED", decision.httpStatus(), decision.errorCode(),
+                        decision.resultCategory(), "지금 권한이나 지점 범위로는 다시 조회할 수 없어요. " + decision.message(), saved);
+            }
+            branches = decision.effectiveBranches();
         }
         if (!analyses.offers(saved.getAnalysisId())) {
             return reopenedWithoutData(requestId, conversationId, "REFUSED", 422, ANALYSIS_UNAVAILABLE,
@@ -305,8 +321,8 @@ public class AiWorkspaceService {
         long started = System.nanoTime();
         OpenStudyAnalyses.PocExecutionResult result;
         try {
-            result = executeWithOverrides(actor.employeeId(), saved.getAnalysisId(), decision.effectiveBranches(),
-                    saved.getRefundBasis(), saved.isZeroFillRequested());
+            result = executeWithOverrides(actor.employeeId(), saved.getAnalysisId(), branches,
+                    saved.getRefundBasis(), saved.isZeroFillRequested(), savedPeriod(saved), parseBranchCsv(saved.getProductIdsCsv()));
         } catch (AccessDeniedException | IllegalArgumentException | IllegalStateException e) {
             return reopenedWithoutData(requestId, conversationId, "REFUSED", 422, "REOPEN_NOT_EXECUTABLE",
                     "REOPEN_NOT_EXECUTABLE", "저장된 조회를 지금 다시 실행할 수 없어요. 다시 질문해 주세요.", saved);
@@ -314,7 +330,7 @@ public class AiWorkspaceService {
         long executedMs = Math.max(1L, Duration.ofNanos(System.nanoTime() - started).toMillis());
         List<StageSpan> stages = List.of(
                 new StageSpan("validating", "저장된 명세의 현재 권한·지점 범위 재검증", "COMPLETED", 1L,
-                        "허용 지점: " + decision.effectiveBranches()),
+                        "허용 지점: " + branches),
                 new StageSpan("executing", "데이터베이스 집계 재실행", "COMPLETED", executedMs,
                         "모델 호출 없이 저장된 분석(" + saved.getAnalysisId() + ")을 새 기준 시각으로 실행"));
         return new AiQueryResponse(
@@ -623,10 +639,18 @@ public class AiWorkspaceService {
      */
     @Transactional(readOnly = true)
     public Map<String, Object> getExecution(Authentication auth, String executionId) {
+        return getExecution(auth, executionId, null, null, null, null, null);
+    }
+
+    /** #125 (M15-D04): a table page of one dataset, sorted within the result, run again for every request. */
+    @Transactional(readOnly = true)
+    public Map<String, Object> getExecution(Authentication auth, String executionId, String datasetId, Integer page,
+            Integer size, String sort, String direction) {
         var actor = userResolver.resolve(auth, null);
         AiExecutionEntity entity = ownExecution(actor.employeeId(), executionId);
 
         var rerun = rerunSaved(actor, entity);
+        var envelope = AiReuse.page(rerun.envelope(), datasetId, page, size, sort, direction);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("status", entity.getStatus());
         // The saved question's condition (#168): processed (default) or original payment date.
@@ -639,7 +663,11 @@ public class AiWorkspaceService {
         result.put("analysisId", entity.getAnalysisId());
         result.put("intentDomain", entity.getIntentDomain());
         result.put("resultCategory", entity.getResultCategory());
-        result.put("envelope", rerun.envelope());
+        result.put("envelope", envelope);
+        result.put("conditions", conditionsOf(entity).toMap());
+        result.put("editableFilters", AiReuse.editable(entity.getAnalysisId()).toMap());
+        result.put("origin", entity.getOrigin());
+        result.put("sourceExecutionId", entity.getSourceExecutionId());
         if (entity.getQuerySpecJson() != null) {
             try {
                 result.put("querySpec", json.readValue(entity.getQuerySpecJson(), Object.class));
@@ -668,7 +696,142 @@ public class AiWorkspaceService {
         if (!analyses.offers(saved.getAnalysisId())) {
             throw ApiException.unprocessable(ANALYSIS_UNAVAILABLE, ANALYSIS_UNAVAILABLE_MESSAGE);
         }
-        return executeWithOverrides(actor.employeeId(), saved.getAnalysisId(), branches, saved.getRefundBasis(), saved.isZeroFillRequested());
+        return executeWithOverrides(actor.employeeId(), saved.getAnalysisId(), branches, saved.getRefundBasis(),
+                saved.isZeroFillRequested(), savedPeriod(saved), parseBranchCsv(saved.getProductIdsCsv()));
+    }
+
+    /**
+     * #125 POST /ai/executions/{id}/refinements (M15-D05): the source's analysis run again with a changed period, branches
+     * or products, saved in the same conversation as a new execution. The model is not called. The checks follow the
+     * contract order; every branch, changed or kept, is checked against the current permissions.
+     */
+    @Transactional
+    public Map<String, Object> refine(Authentication auth, String executionId, Map<String, Object> body) {
+        var actor = userResolver.resolve(auth, null);
+        var source = ownExecution(actor.employeeId(), executionId);
+        if (!"READY".equals(source.getStatus()) || source.getAnalysisId() == null) {
+            throw ApiException.unprocessable("NOT_EXECUTABLE", "실행된 조회가 아니어서 조건을 바꿀 수 없습니다. 다시 질문해 주세요.");
+        }
+        if (!readinessCheck.status().ready()) throw ApiException.unavailable(AI_NOT_READY, AI_NOT_READY_MESSAGE);
+        if (!analyses.offers(source.getAnalysisId())) throw ApiException.unprocessable(ANALYSIS_UNAVAILABLE, ANALYSIS_UNAVAILABLE_MESSAGE);
+        var editable = AiReuse.editable(source.getAnalysisId());
+        var refinement = AiReuse.parse(body, editable);
+        if (refinement.productIds() != null && !analyses.existingProducts(refinement.productIds()).containsAll(refinement.productIds())) {
+            throw ApiException.validation("productIds", "고를 수 없는 상품이 있습니다.");
+        }
+        AiReuse.checkLength(refinement, editable);
+        String key = refinement.clientRequestKey();
+        if (key != null) {
+            var saved = executionRepository.findByEmployeeIdAndClientRequestKey(actor.employeeId(), key);
+            if (saved.isPresent()) return replayedRefinement(actor, saved.get());
+        }
+        var before = conditionsOf(source);
+        var applied = before.with(refinement);
+        var changed = applied.changedFrom(before);
+        if (changed.isEmpty()) throw ApiException.unprocessable("NO_FILTER_CHANGE", "원래 조건과 같습니다. 바꿀 조건을 골라 주세요.");
+        verifyBranchReaccess(actor, applied.branchIds(), "sales".equals(source.getIntentDomain()));
+
+        long started = System.nanoTime();
+        var period = applied.periodEdited() ? clock.fromDates("EDITED", applied.from(), applied.to().plusDays(1)) : null;
+        var result = executeWithOverrides(actor.employeeId(), source.getAnalysisId(), applied.branchIds(), source.getRefundBasis(),
+                source.isZeroFillRequested(), period, applied.productIds());
+        long executedMs = Math.max(1L, Duration.ofNanos(System.nanoTime() - started).toMillis());
+        List<StageSpan> stages = List.of(
+                new StageSpan("validating", "바뀐 조건의 현재 권한·지점 범위 검증", "COMPLETED", 1L, "조건: " + changed),
+                new StageSpan("executing", "데이터베이스 집계 실행", "COMPLETED", executedMs,
+                        "모델 호출 없이 등록 분석(" + source.getAnalysisId() + ")을 바뀐 조건으로 실행"));
+        Instant now = clock.asOf();
+        String newId = "exec-" + UUID.randomUUID().toString().substring(0, 12);
+        String requestId = "req-" + UUID.randomUUID().toString().substring(0, 12);
+        String traceId = "trace-" + UUID.randomUUID().toString().substring(0, 12);
+        var saved = persistExecutionAndTrace(newId, requestId, traceId, source.getConversationId(), actor, source.getScopeKey(),
+                applied.branchIds(), source.getQuestion(), result.pocCode(), result.analysisId(), source.getIntentDomain(), "READY",
+                source.getResultCategory(), null, playbackGateway.buildQuerySpec(source.getAnalysisId()), result.envelope().view(),
+                executedMs, stages, List.of(), Map.of("refinement", true), now, source.getRefundBasis(),
+                source.isZeroFillRequested(), key);
+        saved.refines(source.getId(), applied.periodEdited() ? applied.from() : null, applied.periodEdited() ? applied.to() : null,
+                applied.productIds().isEmpty() ? null : OpenStudyUserContextResolver.toCsv(applied.productIds()));
+        if (source.getConversationId() != null) {
+            conversationRepository.findById(source.getConversationId()).ifPresent(c -> c.touch(null, now));
+        }
+        return refinementResponse(saved, traceId, "REFINEMENT", "조건을 바꿔 다시 조회했어요.", result, stages, applied,
+                AiReuse.refinementContext(source.getId(), applied, changed));
+    }
+
+    /** #125: the same client key again gets the saved refinement run again under the current permissions, like #96. */
+    private Map<String, Object> replayedRefinement(OpenStudyUserContextResolver.ResolvedActor actor, AiExecutionEntity saved) {
+        var result = rerunSaved(actor, saved);
+        var applied = conditionsOf(saved);
+        List<String> changed = saved.getSourceExecutionId() == null ? List.of()
+                : executionRepository.findById(saved.getSourceExecutionId()).map(source -> applied.changedFrom(conditionsOf(source)))
+                        .orElse(List.of());
+        return refinementResponse(saved, null, "REPLAY", "같은 요청을 현재 권한과 기준 시각으로 다시 조회했어요.", result, List.of(),
+                applied, AiReuse.refinementContext(saved.getSourceExecutionId(), applied, changed));
+    }
+
+    private Map<String, Object> refinementResponse(AiExecutionEntity saved, String traceId, String behavior, String message,
+            OpenStudyAnalyses.PocExecutionResult result, List<StageSpan> stages, AiReuse.Conditions applied,
+            Map<String, Object> context) {
+        var response = new AiQueryResponse(saved.getRequestRef(), saved.getId(), saved.getConversationId(), traceId, "COMPLETED",
+                200, null, saved.getResultCategory(), behavior, message, result.pocCode(), result.analysisId(),
+                saved.getIntentDomain(), result.semanticStatus(), playbackGateway.buildQuerySpec(saved.getAnalysisId()),
+                result.envelope().view(), result.envelope(), result.summary(),
+                OpenStudyPlaybackGateway.TruncationInfo.defaultUntruncated(), List.of(), stages, List.of(),
+                Map.of("refinement", true));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = new LinkedHashMap<>(json.convertValue(response, Map.class));
+        body.put("conditions", applied.toMap());
+        body.put("context", context);
+        body.put("editableFilters", AiReuse.editable(saved.getAnalysisId()).toMap());
+        return body;
+    }
+
+    /**
+     * #125 GET /ai/recent-queries (M15-D01): the employee's own questions of the last 30 days, newest 20, read from the
+     * saved conversations. Refinements are not questions, and deleting a conversation took its questions with it.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> recentQueries(Authentication auth) {
+        var actor = userResolver.resolve(auth, null);
+        var questions = executionRepository
+                .findTop20ByEmployeeIdAndOriginAndConversationIdIsNotNullAndCreatedAtGreaterThanEqualOrderByCreatedAtDescIdDesc(
+                        actor.employeeId(), "QUESTION", clock.asOf().minus(Duration.ofDays(30)));
+        Map<String, String> titles = new LinkedHashMap<>();
+        conversationRepository.findAllById(questions.stream().map(AiExecutionEntity::getConversationId).distinct().toList())
+                .forEach(c -> titles.put(c.getId(), c.getTitle()));
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (var question : questions) {
+            boolean rerunnable = "READY".equals(question.getStatus()) && question.getAnalysisId() != null;
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("requestId", question.getRequestRef());
+            item.put("executionId", rerunnable ? question.getId() : null);
+            item.put("conversationId", question.getConversationId());
+            item.put("conversationTitle", titles.getOrDefault(question.getConversationId(), ""));
+            item.put("question", question.getQuestion());
+            item.put("status", "READY".equals(question.getStatus()) ? "COMPLETED" : question.getStatus());
+            item.put("analysisId", question.getAnalysisId());
+            item.put("askedAt", question.getCreatedAt().toString());
+            item.put("rerunnable", rerunnable);
+            items.add(item);
+        }
+        return Map.of("items", items);
+    }
+
+    /** #125: the conditions an execution ran under; an unchanged period is the analysis default as of now. */
+    private AiReuse.Conditions conditionsOf(AiExecutionEntity execution) {
+        var edited = savedPeriod(execution);
+        String analysisId = execution.getAnalysisId();
+        String refundBasis = !"sales".equals(execution.getIntentDomain()) ? null
+                : "ORIGINAL_PAYMENT_DATE".equals(execution.getRefundBasis()) ? "original" : "processed";
+        var period = edited != null ? edited : analysisId == null ? null : analyses.defaultPeriod(analysisId);
+        return AiReuse.Conditions.of(analysisId, period, edited != null, parseBranchCsv(execution.getBranchIdsCsv()),
+                parseBranchCsv(execution.getProductIdsCsv()), refundBasis,
+                OpenStudyAnalyses.ID_POC_007.equals(analysisId) ? execution.isZeroFillRequested() : null);
+    }
+
+    private OpenStudyClock.KstPeriod savedPeriod(AiExecutionEntity execution) {
+        return execution.getPeriodFrom() == null ? null
+                : clock.fromDates("EDITED", execution.getPeriodFrom(), execution.getPeriodTo().plusDays(1));
     }
 
     // =========================================================================
@@ -986,15 +1149,28 @@ public class AiWorkspaceService {
             String refundBasisOverride,
             boolean zeroFillOverrideRequested
     ) {
+        return executeWithOverrides(requester, analysisId, targetBranches, refundBasisOverride, zeroFillOverrideRequested, null, Set.of());
+    }
+
+    /** #125: {@code periodOverride} and {@code products} are a refinement's conditions; null and empty keep the defaults. */
+    private OpenStudyAnalyses.PocExecutionResult executeWithOverrides(
+            long requester,
+            String analysisId,
+            Set<Long> targetBranches,
+            String refundBasisOverride,
+            boolean zeroFillOverrideRequested,
+            OpenStudyClock.KstPeriod periodOverride,
+            Set<Long> products
+    ) {
         if ("ORIGINAL_PAYMENT_DATE".equals(refundBasisOverride) && OpenStudyAnalyses.ID_POC_008.equals(analysisId)) {
-            var period = clock.lastMonth();
+            var period = periodOverride != null ? periodOverride : clock.lastMonth();
             var byPurpose = salesService.aggregateByPurpose(requester,
                     targetBranches,
                     period.startInclusive(),
                     period.endExclusive(),
                     RefundBasis.ORIGINAL_PAYMENT_DATE
             );
-            var base = analyses.executePoc008SalesByItemType(targetBranches, requester);
+            var base = analyses.executePoc008SalesByItemType(targetBranches, requester, periodOverride);
             Map<String, Object> updatedSummary = new LinkedHashMap<>(base.summary());
             updatedSummary.put("refund_basis", "ORIGINAL_PAYMENT_DATE");
             updatedSummary.put("purpose_rows", byPurpose.purposeRows());
@@ -1010,7 +1186,7 @@ public class AiWorkspaceService {
             );
         }
         if (zeroFillOverrideRequested && OpenStudyAnalyses.ID_POC_007.equals(analysisId)) {
-            var base = analyses.executePoc007DailySalesTrend(targetBranches, requester);
+            var base = analyses.executePoc007DailySalesTrend(targetBranches, requester, periodOverride);
             Map<String, Object> updatedSummary = new LinkedHashMap<>(base.summary());
             updatedSummary.put("zero_fill_policy_review", "M9/M10 공통 기준(ADR-M9-001 D05)에 따라 0원 일자 버킷을 유지하며 정책 검토 배지를 표시합니다.");
             return new OpenStudyAnalyses.PocExecutionResult(
@@ -1026,13 +1202,13 @@ public class AiWorkspaceService {
         if (OpenStudyAnalyses.ID_POC_002.equals(analysisId) || OpenStudyAnalyses.ID_POC_004.equals(analysisId)) {
             long branchId = OpenStudyAnalyses.singleBranch(targetBranches);
             return OpenStudyAnalyses.ID_POC_002.equals(analysisId)
-                    ? analyses.executePoc002HourlyCongestion(branchId)
+                    ? analyses.executePoc002HourlyCongestion(branchId, periodOverride)
                     : analyses.executePoc004RealtimeSeats(branchId);
         }
-        return analyses.executeCase(analysisId, targetBranches, requester);
+        return analyses.executeCase(analysisId, targetBranches, requester, periodOverride, products);
     }
 
-    private void persistExecutionAndTrace(
+    private AiExecutionEntity persistExecutionAndTrace(
             String executionId,
             String requestId,
             String traceId,
@@ -1105,6 +1281,7 @@ public class AiWorkspaceService {
                 now.plus(Duration.ofDays(30))
         );
         traceRepository.save(traceEntity);
+        return execEntity;
     }
 
     private void verifyBranchReaccess(
@@ -1112,15 +1289,16 @@ public class AiWorkspaceService {
             Set<Long> requiredBranches,
             boolean isSales
     ) {
+        // M15 (analysis-reuse-api.md): every reuse path refuses with the reason, never with a narrowed scope.
         if (actor.aiBranches().isEmpty()) {
-            throw new AccessDeniedException("AI 분석 조회(ai:read) 권한이 없습니다.");
+            throw ApiException.forbidden("AI_PERMISSION_DENIED", "AI 분석 조회(ai:read) 권한이 없습니다.");
         }
         for (Long bId : requiredBranches) {
             if (!actor.aiBranches().contains(bId)) {
-                throw new AccessDeniedException("해당 지점에 대한 접근 권한이 없습니다.");
+                throw ApiException.forbidden("BRANCH_SCOPE_DENIED", "해당 지점에 대한 접근 권한이 없습니다.");
             }
             if (isSales && !actor.salesBranches().contains(bId)) {
-                throw new AccessDeniedException("해당 지점의 매출 조회(sales:read) 권한이 없습니다.");
+                throw ApiException.forbidden("SALES_PERMISSION_DENIED", "해당 지점의 매출 조회(sales:read) 권한이 없습니다.");
             }
         }
     }
