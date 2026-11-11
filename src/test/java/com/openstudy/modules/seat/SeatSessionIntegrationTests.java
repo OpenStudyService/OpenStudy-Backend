@@ -823,6 +823,27 @@ class SeatSessionIntegrationTests {
         }
     }
 
+    /** #65: 60 lookups per employee and branch in 10 minutes; the next is a 429 that shows nothing and is audited once. */
+    @Test void lookupsBeyondTheLimitAreRefusedWithoutDataAndAuditedOnce() throws Exception {
+        long customer = customer(first, "제한 확인 고객", "01055554444");
+        String memberNo = "LIMIT-" + customer;
+        jdbc.update("UPDATE customers SET member_no=? WHERE id=?", memberNo, customer);
+        try (var s = login(staff)) {
+            for (int i = 0; i < 60; i++) assertThat(lookup(s, byMemberNo(first, memberNo)).statusCode()).as("lookup %d", i + 1).isEqualTo(200);
+            for (int i = 0; i < 2; i++) {
+                var over = lookup(s, byMemberNo(first, memberNo));
+                refused(over, 429, "RATE_LIMITED");
+                assertThat(over.body()).doesNotContain("제한 확인 고객", Long.toString(customer), memberNo);
+            }
+        }
+        // Only the lookups that ran left a trail; the refusal is one audit row however often it repeats.
+        assertThat(count("SELECT COUNT(*) FROM customer_service_interactions WHERE customer_id=?", customer)).isEqualTo(60);
+        var limited = jdbc.queryForList("SELECT * FROM audit_events WHERE actor_employee_id=? AND action='CHECK_IN_LOOKUP_RATE_LIMITED'", staff);
+        assertThat(limited).hasSize(1);
+        assertThat(limited.get(0).get("result")).isEqualTo("DENIED");
+        assertThat((String) limited.get(0).get("after_json")).contains(Long.toString(first)).doesNotContain(memberNo);
+    }
+
     @Test void lookupInputIsValidatedAndTheBranchMustBeTheRequestersOwn() throws Exception {
         long customer = customer(first, "입력 고객");
         try (var s = login(staff)) {

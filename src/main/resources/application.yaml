@@ -86,6 +86,10 @@ openstudy:
         max-attempts: 30
         window-minutes: 15
       capacity: 10000
+  # #65: exact-match check-in lookups per employee and branch (2026-11-11 user decision). Per-instance memory.
+  customer-lookup-limit:
+    max-attempts: 60
+    window-minutes: 10
   ai:
     # Empty = real current time (ADR-M10-003). Set it only to replay the PoC fixtures (2026-11-02T05:00:00Z).
     fixed-as-of: ${OPENSTUDY_AI_FIXED_AS_OF:}

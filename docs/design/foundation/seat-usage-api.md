@@ -88,6 +88,10 @@ Backend [#60](https://github.com/OpenStudyService/OpenStudy-Backend/issues/60)�
 - 이 표는 (`branch_id`, `employee_id`)가 `branch_memberships`를 참조한다. 그래서 조회 지점에 소속 행이 없는 OWNER는 이 표에 남길 수 없다. 이 경우 일치 고객 ID를 담아 `audit_events`(`CHECK_IN_LOOKUP`)에 남긴다.
 - 일치하는 고객이 없는 조회는 `audit_events`(`CHECK_IN_LOOKUP_NO_MATCH`)에 조회 방식(회원번호·연락처)과 함께 남긴다. 존재하지 않는 사람의 연락처를 저장하지 않도록 조회 값 원문은 남기지 않는다.
 - 조회 횟수 제한은 M5에 없다(M5-D08). 서버는 이 조회를 한 서비스 진입점으로만 처리해 후속 제한을 그 지점에 붙일 수 있게 한다.
+- 2026-11-11(#65): 횟수 제한을 붙였다.
+  - 기준: 직원·지점마다 10분에 60회(사용자 결정, 운영 사용량 자료가 생기면 다시 본다). 서버 인스턴스별 메모리라 재기동하면 처음부터 센다.
+  - 넘으면 429 `RATE_LIMITED`다. 조회를 하지 않으므로 결과·고객 존재 여부를 알리지 않고, 조회 기록도 남기지 않는다.
+  - 한 시간창의 첫 거절만 감사에 남긴다(`action=CHECK_IN_LOOKUP_RATE_LIMITED`, 결과 `DENIED`). 지점은 권한 확인 전이라 `after_json`에 담는다.
 
 ## 입실(직원 예외 배정)
 

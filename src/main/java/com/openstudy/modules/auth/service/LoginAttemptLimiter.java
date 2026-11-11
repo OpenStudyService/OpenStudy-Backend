@@ -3,14 +3,13 @@ package com.openstudy.modules.auth.service;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Comparator;
-import java.util.HashMap;
 import java.util.Locale;
-import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+
+import com.openstudy.common.limit.FixedWindowCounter;
 
 // Per-instance guard. A shared store is required when scaling to multiple application instances.
 // State is lost on restart, which resets every window.
@@ -30,8 +29,8 @@ public class LoginAttemptLimiter {
     static final Policy SOURCE_DEFAULT = new Policy(30, Duration.ofMinutes(15), 10_000);
 
     private final Clock clock;
-    private final Window accounts;
-    private final Window sources;
+    private final FixedWindowCounter accounts;
+    private final FixedWindowCounter sources;
 
     @Autowired
     public LoginAttemptLimiter(Clock clock,
@@ -46,8 +45,8 @@ public class LoginAttemptLimiter {
 
     LoginAttemptLimiter(Clock clock, Policy account, Policy source) {
         this.clock = clock;
-        this.accounts = new Window(account);
-        this.sources = new Window(source);
+        this.accounts = new FixedWindowCounter(account.maxAttempts(), account.window(), account.capacity());
+        this.sources = new FixedWindowCounter(source.maxAttempts(), source.window(), source.capacity());
     }
 
     /** Counts the attempt against both keys only when neither is exhausted; a rejected attempt counts against neither. */
@@ -103,50 +102,7 @@ public class LoginAttemptLimiter {
         sources.record(source, now);
     }
 
-    synchronized int size(Scope scope) { return (scope == Scope.ACCOUNT ? accounts : sources).attempts.size(); }
+    synchronized int size(Scope scope) { return (scope == Scope.ACCOUNT ? accounts : sources).size(); }
 
     private static String normalize(String email) { return email.trim().toLowerCase(Locale.ROOT); }
-
-    private static final class Window {
-        private record Attempts(int count, Instant expiresAt, boolean reported) {}
-        private final Map<String, Attempts> attempts = new HashMap<>();
-        private final Policy policy;
-
-        Window(Policy policy) { this.policy = policy; }
-
-        void purge(Instant now) { attempts.values().removeIf(value -> !now.isBefore(value.expiresAt())); }
-
-        boolean exhausted(String key) {
-            var current = attempts.get(key);
-            return current != null && current.count() >= policy.maxAttempts();
-        }
-
-        boolean markReported(String key) {
-            var current = attempts.get(key);
-            if (current.reported()) return false;
-            attempts.put(key, new Attempts(current.count(), current.expiresAt(), true));
-            return true;
-        }
-
-        void record(String key, Instant now) {
-            var current = attempts.get(key);
-            if (current == null && attempts.size() >= policy.capacity()) {
-                // Rejecting every new key here would let a flood of distinct keys lock out everyone,
-                // so the entry carrying the least evidence of attack makes room instead.
-                evictLeastAttempted();
-            }
-            attempts.put(key, current == null ? new Attempts(1, now.plus(policy.window()), false)
-                    : new Attempts(current.count() + 1, current.expiresAt(), false));
-        }
-
-        void remove(String key) { attempts.remove(key); }
-
-        private void evictLeastAttempted() {
-            attempts.entrySet().stream()
-                    .min(Comparator.comparingInt((Map.Entry<String, Attempts> entry) -> entry.getValue().count())
-                            .thenComparing(entry -> entry.getValue().expiresAt()))
-                    .map(Map.Entry::getKey)
-                    .ifPresent(attempts::remove);
-        }
-    }
 }

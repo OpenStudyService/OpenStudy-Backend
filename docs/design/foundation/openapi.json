@@ -5693,7 +5693,8 @@
         },
         "x-error-codes": [
           "FORBIDDEN",
-          "VALIDATION_FAILED"
+          "VALIDATION_FAILED",
+          "RATE_LIMITED"
         ],
         "x-adr-decisions": [
           "M5-D01",
