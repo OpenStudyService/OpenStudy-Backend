@@ -14,7 +14,7 @@
 - 모든 보호 응답·토큰·초대 응답은 `Cache-Control: no-store`, 모든 응답은 `X-Request-ID`. 오류 본문의 requestId와 서버 로그를 연결한다.
 - ID는 문자열, API version은 DB+1. 응답의 `createdAt/updatedAt/asOf`는 UTC ISO 8601. `snapshotVersion`은 캐시 비교용 불투명 값이며 쓰기 version이나 일관된 DB 전체 snapshot을 보장하는 토큰이 아니다.
 - 입력 DTO는 허용 필드만 받는다. `email/owner/createdBy/createdAt`처럼 해당 명령에서 허용하지 않은 필드를 보내면 422. 이름·검색 문자열 등은 trim 후 공백만 남으면 필수 검증을 거부한다. password·token 원문은 trim하지 않는다. PATCH는 누락 필드 유지, 명시적 null은 해당 schema에서 허용할 때만 사용한다.
-- 신규 비밀번호는 8자 이상·UTF-8 72바이트 이하(현재 BCrypt 제한), 공백을 자동 제거하지 않는다. 로그인에는 최소 길이를 강제해 기존 자격증명을 막지 않고 필수·72바이트 상한만 검증한다. DB·응답·로그·멱등 결과에 원문을 남기지 않는다.
+- 직원이 새로 설정하는 비밀번호는 영문, 숫자, ASCII 특수문자를 각각 하나 이상 포함하며 8자 이상·UTF-8 72바이트 이하(현재 BCrypt 제한), 공백을 자동 제거하지 않는다. 로그인에는 최소 길이를 강제해 기존 자격증명을 막지 않고 필수·72바이트 상한만 검증한다. DB·응답·로그·멱등 결과에 원문을 남기지 않는다.
 
 오류 예:
 

@@ -99,14 +99,13 @@ class AccountCredentialUnitTests {
 
     // ---- password rules ----------------------------------------------------------------------------------------------
 
-    @Test void newPasswordsNeedEightCharactersAndAtMost72Bytes() {
-        Passwords.acceptable("p", "12345678");
-        Passwords.acceptable("p", "비밀번호여덟글자");          // 8 code points, 24 bytes
-        Passwords.acceptable("p", " spaces ");                  // spaces are kept and count
-        assertThat(field(() -> Passwords.acceptable("p", "1234567"))).isEqualTo("p");
-        assertThat(field(() -> Passwords.acceptable("p", "가".repeat(25)))).as("75 bytes").isEqualTo("p");
-        Passwords.acceptable("p", "a".repeat(72));
-        assertThat(field(() -> Passwords.acceptable("p", "a".repeat(73)))).isEqualTo("p");
+    @Test void newPasswordsNeedEightCodePointsAllThreeCharacterClassesAndAtMost72Bytes() {
+        assertThat(Passwords.acceptable("p", " A1!가나다 ")).isEqualTo(" A1!가나다 ");
+        assertThat(Passwords.acceptable("p", "A1!" + "가".repeat(23))).hasSize(26);
+        for (String invalid : List.of("1234567!", "Letters!", "Letters1 ", "A1!😀😀😀😀",
+                "A1" + "😀".repeat(6), "A1!" + "가".repeat(24))) {
+            assertThat(field(() -> Passwords.acceptable("p", invalid))).isEqualTo("p");
+        }
     }
 
     @Test void bodiesTakeOnlyTheirStringFields() {
@@ -285,10 +284,10 @@ class AccountCredentialUnitTests {
         when(repository.account(5)).thenReturn(Optional.of(account(5, "ACTIVE", false)));
         when(repository.lockByHash(any())).thenReturn(Optional.of(row("SENDING", NOW.plusSeconds(60))));
         for (int i = 0; i < 3; i++) limiter.accountFailure("user5@example.com");
-        service.complete(body("token", token, "newPassword", "brand-new-pass"), "10.0.0.2", "req-3");
+        service.complete(body("token", token, "newPassword", "brand-new-pass1"), "10.0.0.2", "req-3");
         var hash = ArgumentCaptor.forClass(String.class);
         verify(repository).updatePassword(eq(5L), hash.capture());
-        assertThat(ENCODER.matches("brand-new-pass", hash.getValue())).isTrue();
+        assertThat(ENCODER.matches("brand-new-pass1", hash.getValue())).isTrue();
         verify(repository).used(7, NOW);
         assertThat(limiter.accountExhausted("user5@example.com")).isFalse();
     }
@@ -296,7 +295,7 @@ class AccountCredentialUnitTests {
     @Test void aLinkOfAnAccountThatIsNoLongerActiveIsInvalid() {
         when(repository.account(5)).thenReturn(Optional.of(account(5, "LEFT", false)));
         when(repository.lockByHash(any())).thenReturn(Optional.of(row("SENT", NOW.plusSeconds(60))));
-        assertThat(code(() -> service.complete(body("token", Passwords.newToken(), "newPassword", "brand-new-pass"), "s", "r")))
+        assertThat(code(() -> service.complete(body("token", Passwords.newToken(), "newPassword", "brand-new-pass1"), "s", "r")))
                 .isEqualTo("PASSWORD_RESET_LINK_INVALID");
         verify(repository, never()).updatePassword(anyLong(), any());
     }

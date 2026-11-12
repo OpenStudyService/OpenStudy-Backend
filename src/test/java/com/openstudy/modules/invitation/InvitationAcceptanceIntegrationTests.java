@@ -45,7 +45,7 @@ import static org.assertj.core.api.Assertions.*;
 @ExtendWith(OutputCaptureExtension.class)
 class InvitationAcceptanceIntegrationTests {
     private static final String PASSWORD = "acceptance-integration-password";
-    private static final String NEW_PASSWORD = "새 직원 비밀번호 1234";
+    private static final String NEW_PASSWORD = "새 직원 비밀번호 A1234!";
     private static final String API = "/api/invitations";
     private static final SecureRandom RANDOM = new SecureRandom();
     @Autowired JdbcTemplate jdbc;
@@ -316,7 +316,7 @@ class InvitationAcceptanceIntegrationTests {
             status(anonymous.call("POST", API + "/accept", Map.of("mode", "NEW_ACCOUNT", "token", valid.token(),
                     "email", valid.email(), "password", NEW_PASSWORD, "role", "admin")), 422);
             status(anonymous.call("POST", API + "/accept", Map.of("mode", "OWNER", "token", valid.token(), "email", valid.email())), 422);
-            for (String password : List.of("1234567", "가".repeat(25))) {
+            for (String password : List.of("A1!abc", "1234567!", "Letters!", "Letters1", "A1!" + "가".repeat(24))) {
                 var weak = anonymous.call("POST", API + "/accept", newAccount(valid, password));
                 status(weak, 422);
                 assertThat(body(weak).at("/fieldErrors/password").isMissingNode()).isFalse();
