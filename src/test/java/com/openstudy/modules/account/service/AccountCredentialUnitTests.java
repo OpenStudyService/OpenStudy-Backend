@@ -23,6 +23,7 @@ import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditResult;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
+import com.openstudy.common.web.PasswordPolicy;
 import com.openstudy.modules.account.repository.AccountCredentialRepository;
 import com.openstudy.modules.account.repository.AccountCredentialRepository.Account;
 import com.openstudy.modules.account.repository.AccountCredentialRepository.Membership;
@@ -100,11 +101,11 @@ class AccountCredentialUnitTests {
     // ---- password rules ----------------------------------------------------------------------------------------------
 
     @Test void newPasswordsNeedEightCodePointsAllThreeCharacterClassesAndAtMost72Bytes() {
-        assertThat(Passwords.acceptable("p", " A1!가나다 ")).isEqualTo(" A1!가나다 ");
-        assertThat(Passwords.acceptable("p", "A1!" + "가".repeat(23))).hasSize(26);
+        assertThat(PasswordPolicy.validateNew("p", " A1!가나다 ")).isEqualTo(" A1!가나다 ");
+        assertThat(PasswordPolicy.validateNew("p", "A1!" + "가".repeat(23))).hasSize(26);
         for (String invalid : List.of("1234567!", "Letters!", "Letters1 ", "A1!😀😀😀😀",
                 "A1" + "😀".repeat(6), "A1!" + "가".repeat(24))) {
-            assertThat(field(() -> Passwords.acceptable("p", invalid))).isEqualTo("p");
+            assertThat(field(() -> PasswordPolicy.validateNew("p", invalid))).isEqualTo("p");
         }
     }
 

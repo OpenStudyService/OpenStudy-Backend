@@ -15,8 +15,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import com.openstudy.common.exception.ApiException;
+import com.openstudy.common.web.PasswordPolicy;
 import com.openstudy.common.web.StrictInput;
-import com.openstudy.modules.account.service.Passwords;
 import com.openstudy.modules.auth.service.SessionBoundaryPolicy;
 import com.openstudy.modules.authorization.service.AuthorizationService;
 import com.openstudy.modules.authorization.service.AuthorizedCommands;
@@ -68,7 +68,7 @@ public class InvitationAcceptanceService {
         if (create) input.only("mode", "token", "email", "password"); else input.only("mode", "token", "email");
         byte[] hash = hash(token(input));
         String email = input.text("email", 254).toLowerCase(Locale.ROOT);
-        String password = create ? Passwords.acceptable("password", input.values().get("password")) : null;
+        String password = create ? PasswordPolicy.validateNew("password", input.values().get("password")) : null;
         // A new account never attaches to someone's existing session; an existing account proves itself
         // with its own business session instead of a password sent to this endpoint.
         if (create && sessionEmployee != null) throw AuthorizationService.forbidden();
