@@ -40,7 +40,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @MySqlIntegrationTest
 class AccountSecurityIntegrationTests {
     static final String PASSWORD = "account-check-password";
-    static final String NEW_PASSWORD = "account-check-new-password";
+    static final String NEW_PASSWORD = "account-check-new-password1";
     static final byte[] PNG = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0x0D, 'I', 'H', 'D', 'R'};
 
     @Autowired JdbcTemplate jdbc;

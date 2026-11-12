@@ -24,7 +24,7 @@ Backend [#15](https://github.com/OpenStudyService/OpenStudy-Backend/issues/15)�
 
 수락은 해시로 후보를 찾은 뒤 기존 잠금 순서(가드 → 직원 → 지점 → 초대 → 소속)로 잠그고 해시·상태·만료를 다시 확인한다. 동시에 같은 링크를 제출해도 하나만 성공하고 나머지는 422를 받는다.
 
-- **NEW_ACCOUNT**: 로그인한 세션에서는 403. 비밀번호는 8자 이상·UTF-8 72바이트 이하이며 공백을 제거하지 않는다. PENDING 계정(이름은 초대 이름)과 PENDING 소속을 만든다. 세션은 발급하지 않으며 응답의 `nextAction`은 `LOGIN_FOR_APPROVAL_STATUS`다. 같은 이메일 계정이 이미 있으면 409 `INVALID_STATE`다.
+- **NEW_ACCOUNT**: 로그인한 세션에서는 403. 비밀번호는 영문, 숫자, ASCII 특수문자를 각각 하나 이상 포함하며 8자 이상·UTF-8 72바이트 이하이며 공백을 제거하지 않는다. PENDING 계정(이름은 초대 이름)과 PENDING 소속을 만든다. 세션은 발급하지 않으며 응답의 `nextAction`은 `LOGIN_FOR_APPROVAL_STATUS`다. 같은 이메일 계정이 이미 있으면 409 `INVALID_STATE`다.
 - **EXISTING_ACCOUNT**: 미로그인 401, 다른 계정·제한 세션 403. 계정 비밀번호는 바꾸지 않는다. 회수된 소속은 같은 행을 PENDING으로 되돌리고(Q11) 이전 권한 행을 지운다. 해당 지점에 활성 소속이 있으면 409 `DUPLICATE_MEMBERSHIP`. 기존 지점 업무는 그대로 유지한다(Q1). `nextAction`은 `REFRESH_APPROVAL_STATUS`다.
 
 수락 시 초대는 ACCEPTED·수락 계정·시각을 기록하고 해시를 지우며, 남은 발송 작업은 생략 처리한다. 발송 중이던 worker의 늦은 완료는 해시 불일치로 상태를 덮어쓰지 못한다. 감사(작업자는 수락한 본인)와 관리 화면 무효화 이벤트를 같은 트랜잭션에 남긴다.

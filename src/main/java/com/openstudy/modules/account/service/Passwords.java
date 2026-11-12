@@ -11,14 +11,8 @@ import java.util.regex.Pattern;
 
 import com.openstudy.common.exception.ApiException;
 
-/**
- * Password and reset-token rules of account-collab-api.md. Passwords are never trimmed, logged or echoed; a new one has at
- * least 8 code points and at most 72 UTF-8 bytes (the BCrypt limit). Tokens are 32 random bytes in URL-safe Base64 and are
- * stored only as their SHA-256 hash.
- */
+/** Account credential inputs and reset tokens. Tokens are stored only as their SHA-256 hash. */
 public final class Passwords {
-    static final int MAX_BYTES = 72;
-    static final int MIN_CODE_POINTS = 8;
     private static final Pattern TOKEN = Pattern.compile("[A-Za-z0-9_-]{43}");
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -36,19 +30,6 @@ public final class Passwords {
             values.put(name, text);
         }
         return values;
-    }
-
-    /** Any password field: at most 72 UTF-8 bytes. */
-    static void bounded(String field, String password) {
-        if (password.getBytes(StandardCharsets.UTF_8).length > MAX_BYTES)
-            throw ApiException.validation(field, "비밀번호는 UTF-8 72바이트 이하여야 합니다.");
-    }
-
-    /** A new password: 8 characters or more and at most 72 UTF-8 bytes, spaces kept. */
-    static void acceptable(String field, String password) {
-        bounded(field, password);
-        if (password.codePointCount(0, password.length()) < MIN_CODE_POINTS)
-            throw ApiException.validation(field, "비밀번호는 8자 이상이어야 합니다.");
     }
 
     static boolean wellFormedToken(String token) { return token != null && TOKEN.matcher(token).matches(); }

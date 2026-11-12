@@ -20,6 +20,7 @@ import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditResult;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
+import com.openstudy.common.web.PasswordPolicy;
 import com.openstudy.modules.account.dto.AccountResponses;
 import com.openstudy.modules.account.repository.AccountCredentialRepository;
 import com.openstudy.modules.account.repository.AccountCredentialRepository.Account;
@@ -64,8 +65,8 @@ public class AccountCredentialService {
             var input = Passwords.fields(body, Set.of("currentPassword", "newPassword"));
             String current = input.get("currentPassword");
             String next = input.get("newPassword");
-            Passwords.bounded("currentPassword", current);
-            Passwords.acceptable("newPassword", next);
+            PasswordPolicy.validateByteLength("currentPassword", current);
+            PasswordPolicy.validateNew("newPassword", next);
             if (!encoder.matches(current, account.passwordHash())) {
                 limiter.accountFailure(account.email());
                 audit.record(AuditEvent.attempt(actor, ENTITY, actor, "PASSWORD_CHANGED", "CURRENT_PASSWORD_MISMATCH", requestId,
@@ -139,7 +140,7 @@ public class AccountCredentialService {
         limiter.checkSource(source);
         var input = Passwords.fields(body, Set.of("token", "newPassword"));
         String next = input.get("newPassword");
-        Passwords.acceptable("newPassword", next);
+        PasswordPolicy.validateNew("newPassword", next);
         String token = input.get("token");
         if (!Passwords.wellFormedToken(token)) throw linkInvalid();
         String email = commands.publicCommand(() -> {}, () -> {

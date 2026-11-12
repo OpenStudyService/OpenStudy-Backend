@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import com.openstudy.common.exception.ApiException;
+import com.openstudy.common.web.PasswordPolicy;
 import com.openstudy.common.web.StrictInput;
 import com.openstudy.modules.auth.service.SessionBoundaryPolicy;
 import com.openstudy.modules.authorization.service.AuthorizationService;
@@ -67,7 +68,7 @@ public class InvitationAcceptanceService {
         if (create) input.only("mode", "token", "email", "password"); else input.only("mode", "token", "email");
         byte[] hash = hash(token(input));
         String email = input.text("email", 254).toLowerCase(Locale.ROOT);
-        String password = create ? password(input) : null;
+        String password = create ? PasswordPolicy.validateNew("password", input.values().get("password")) : null;
         // A new account never attaches to someone's existing session; an existing account proves itself
         // with its own business session instead of a password sent to this endpoint.
         if (create && sessionEmployee != null) throw AuthorizationService.forbidden();
@@ -119,16 +120,6 @@ public class InvitationAcceptanceService {
     private static String token(StrictInput input) {
         if (!(input.values().get("token") instanceof String token) || !TOKEN.matcher(token).matches()) throw linkInvalid();
         return token;
-    }
-
-    private static String password(StrictInput input) {
-        // Passwords are never trimmed. 72 bytes is the BCrypt input limit.
-        if (!(input.values().get("password") instanceof String password)
-                || password.codePointCount(0, password.length()) < 8
-                || password.getBytes(StandardCharsets.UTF_8).length > 72) {
-            throw ApiException.validation("password", "비밀번호는 8자 이상, UTF-8 72바이트 이하여야 합니다.");
-        }
-        return password;
     }
 
     private static byte[] hash(String token) {

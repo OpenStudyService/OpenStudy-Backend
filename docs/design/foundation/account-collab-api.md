@@ -62,7 +62,7 @@ Frontend는 같은 [OpenAPI](openapi.json)(`0.1.15-m14-account`)로 연동한다
   - 비밀번호, 비밀번호 해시, 재설정 토큰과 그 해시, 세션 ID, CSRF 토큰은 어떤 응답·감사 기록·로그·멱등 결과에도 남기지 않는다.
   - 요청 DTO에만 비밀번호와 토큰 필드가 있다. 응답 schema에는 이런 필드가 없다(`additionalProperties: false`).
   - 프로필 사진의 저장소 키(S3 객체 키)도 응답에 넣지 않는다.
-- **새 비밀번호 규칙**: 기존 규칙과 같다. 8자 이상, UTF-8 72바이트 이하이고 공백을 자동으로 제거하지 않는다. 어기면 422 `VALIDATION_FAILED`와 `fieldErrors.newPassword`다.
+- **새 비밀번호 규칙**: 영문, 숫자, ASCII 특수문자를 각각 하나 이상 포함한다. 8자 이상, UTF-8 72바이트 이하이고 공백을 자동으로 제거하지 않는다. 어기면 422 `VALIDATION_FAILED`와 `fieldErrors.newPassword`다.
 - **관리 대상의 범위**
   - 요청자가 볼 수 없는 직원은 404다. 볼 수 있지만 처리 권한이 없으면 403이다.
   - 볼 수 있는 직원의 범위는 직원 상세(`GET /employees/{id}`)와 같다.
@@ -98,7 +98,7 @@ Frontend는 같은 [OpenAPI](openapi.json)(`0.1.15-m14-account`)로 연동한다
 | 순서 | 조건 | 결과 |
 | --- | --- | --- |
 | 1 | 로그인 계정 기준 제한(`LoginAttemptLimiter`)이 소진됨 | 429 `RATE_LIMITED` |
-| 2 | 형식 오류(필수 누락, 72바이트 초과, 새 비밀번호 8자 미만) | 422 `VALIDATION_FAILED` |
+| 2 | 형식 오류(필수 누락, 72바이트 초과, 새 비밀번호 조합·최소 길이 미달) | 422 `VALIDATION_FAILED` |
 | 3 | 기존 비밀번호가 틀림 | 422 `CURRENT_PASSWORD_MISMATCH`. 계정 기준 제한에 한 번 집계한다 |
 | 4 | 새 비밀번호가 기존과 같음 | 422 `PASSWORD_SAME_AS_CURRENT` |
 | 5 | 통과 | 비밀번호 해시 교체, 다른 세션 삭제, 감사 기록 |
