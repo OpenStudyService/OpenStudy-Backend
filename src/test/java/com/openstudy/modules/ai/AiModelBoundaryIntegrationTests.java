@@ -108,6 +108,21 @@ class AiModelBoundaryIntegrationTests extends AiTestSupport {
                 .contains(OpenStudyAnalyses.ID_POC_001, OpenStudyAnalyses.ID_POC_010);
     }
 
+    /**
+     * #233: a general-metric question ("결제 금액") skips the registered-analysis picker, which would fit it onto net
+     * sales, and goes straight to the generation path. Only the generation request reaches the model.
+     */
+    @Test void aGeneralMetricQuestionSkipsTheRegisteredAnalysisPicker() throws Exception {
+        REPLY.set("{\"choices\":[{\"message\":{\"content\":\"not json\"}}]}");
+        try (var s = login(owner)) {
+            var answered = ask(s, "이번 달 결제 금액을 지점별로 보여줘", "all");
+            assertThat(answered.statusCode()).as(answered.body()).isLessThan(500);
+            assertThat(body(answered).get("analysisId").isNull()).as(answered.body()).isTrue();
+        }
+        assertThat(REQUESTS).isNotEmpty();
+        assertThat(REQUESTS).noneMatch(request -> request.contains("retrievedCandidates="));
+    }
+
     @Test void aModelFailureEndsAsAnOrdinaryAnswerAndChangesNoData() throws Exception {
         long payments = count("SELECT COUNT(*) FROM payments");
         STATUS.set(500);
@@ -122,7 +137,9 @@ class AiModelBoundaryIntegrationTests extends AiTestSupport {
             assertThat(garbled.statusCode()).as(garbled.body()).isLessThan(500);
             assertThat(body(garbled).get("envelope").isNull() || body(garbled).get("status").asString().equals("COMPLETED")).isTrue();
         }
-        assertThat(REQUESTS).hasSize(2);
+        // The garbled question found no registered analysis, so the generation path (#233) asked the model once more;
+        // its garbled plan also ended as an ordinary answer.
+        assertThat(REQUESTS).hasSize(3);
         assertThat(count("SELECT COUNT(*) FROM payments")).isEqualTo(payments);
     }
 }

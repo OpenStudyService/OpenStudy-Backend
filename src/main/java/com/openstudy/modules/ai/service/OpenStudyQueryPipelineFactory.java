@@ -20,7 +20,16 @@ import com.openstudy.domainlens.query.Retriever;
 import com.openstudy.domainlens.query.ViewBinder;
 import com.openstudy.domainlens.security.PolicyEngine;
 import jakarta.persistence.EntityManagerFactory;
+import com.openstudy.domainlens.api.ir.QuerySpec;
+import com.openstudy.domainlens.api.ir.ResultEnvelope;
+import com.openstudy.domainlens.api.ir.TypedDataset;
+import com.openstudy.domainlens.api.ir.ViewSpec;
+import com.openstudy.domainlens.api.spi.UserContext;
+import com.openstudy.domainlens.api.work.Cancellation;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -51,6 +60,28 @@ public class OpenStudyQueryPipelineFactory {
         return new QueryPipeline(gateway, validator, planner, executor, binder, clock, registry,
                 OpenStudyPolicies.POLICY_VERSION, activate(binder), PromptExamples.empty(), PromptLimits.defaults())
                 .grounding(intents);
+    }
+
+    /**
+     * #233: saved generated queries run again without the model. Each query is validated and planned under the
+     * requester's current policies (branch scope, sales grant) before JPA runs it, and the saved view is bound again.
+     */
+    public ResultEnvelope execute(List<QuerySpec> queries, ViewSpec view, UserContext user) {
+        var validator = new IrValidator(registry, policies, clock.normalizer(), analyses);
+        var planner = new JoinPlanner(registry, policies, analyses);
+        var executor = new JpaQueryExecutor(entityManagerFactory, registry, policies, validator);
+        var binder = new ViewBinder(ComponentCatalog.openStudyDefault());
+        var datasets = new ArrayList<TypedDataset>();
+        var cancellation = new Cancellation();
+        Instant asOf = clock.asOf();
+        Instant snapshot = Instant.now();
+        for (var query : queries) {
+            validator.query(query, user);
+            datasets.addAll(executor.executeAll(planner.plan(query, user, asOf, snapshot), user, cancellation));
+        }
+        var binding = binder.bind(view, datasets);
+        return new ResultEnvelope(UUID.randomUUID().toString(), UUID.randomUUID().toString(), "COMPLETED", datasets,
+                binding.view(), binding.warnings(), null, asOf, registry.version(), OpenStudyPolicies.POLICY_VERSION);
     }
 
     /** Permission-first semantic retrieval feeding the pipeline's prompt context. */
