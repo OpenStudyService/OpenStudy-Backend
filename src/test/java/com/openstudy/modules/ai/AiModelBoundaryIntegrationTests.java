@@ -122,7 +122,9 @@ class AiModelBoundaryIntegrationTests extends AiTestSupport {
             assertThat(garbled.statusCode()).as(garbled.body()).isLessThan(500);
             assertThat(body(garbled).get("envelope").isNull() || body(garbled).get("status").asString().equals("COMPLETED")).isTrue();
         }
-        assertThat(REQUESTS).hasSize(2);
+        // The garbled question found no registered analysis, so the generation path (#233) asked the model once more;
+        // its garbled plan also ended as an ordinary answer.
+        assertThat(REQUESTS).hasSize(3);
         assertThat(count("SELECT COUNT(*) FROM payments")).isEqualTo(payments);
     }
 }

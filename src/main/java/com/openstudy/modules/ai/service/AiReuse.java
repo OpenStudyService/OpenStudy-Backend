@@ -58,6 +58,8 @@ final class AiReuse {
             ID_POC_010, new Editable(92, false, false));
 
     static Editable editable(String analysisId) {
+        // #233: a generated result has no analysis and nothing editable (refinement stays with registered analyses).
+        if (analysisId == null) return new Editable(null, false, false);
         return EDITABLE.getOrDefault(analysisId, new Editable(null, false, false));
     }
 

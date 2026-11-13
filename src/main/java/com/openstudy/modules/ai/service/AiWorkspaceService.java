@@ -5,6 +5,7 @@ import com.openstudy.config.OpenStudyCatalogConfiguration;
 import com.openstudy.domainlens.api.ir.OutcomeNotice;
 import com.openstudy.domainlens.api.ir.ResultEnvelope;
 import com.openstudy.domainlens.api.ir.TypedDataset;
+import com.openstudy.domainlens.api.ir.QuerySpec;
 import com.openstudy.domainlens.api.ir.ViewSpec;
 import com.openstudy.domainlens.catalog.SemanticRegistry;
 import com.openstudy.modules.ai.entity.AiConversationEntity;
@@ -138,6 +139,7 @@ public class AiWorkspaceService {
     private final ObjectMapper json;
     private final AiReadiness readinessCheck;
     private final com.openstudy.common.audit.AuditTrail audit;
+    private final AiGenerationService generation;
 
     public AiWorkspaceService(
             OpenStudyUserContextResolver userResolver,
@@ -153,8 +155,10 @@ public class AiWorkspaceService {
             AiTraceRepository traceRepository,
             ObjectMapper json,
             AiReadiness readinessCheck,
-            com.openstudy.common.audit.AuditTrail audit
+            com.openstudy.common.audit.AuditTrail audit,
+            AiGenerationService generation
     ) {
+        this.generation = generation;
         this.audit = audit;
         this.readinessCheck = readinessCheck;
         this.userResolver = userResolver;
@@ -292,7 +296,7 @@ public class AiWorkspaceService {
             AiExecutionEntity saved
     ) {
         String requestId = "req-" + UUID.randomUUID().toString().substring(0, 12);
-        if (!"READY".equals(saved.getStatus()) || saved.getAnalysisId() == null) {
+        if (!"READY".equals(saved.getStatus()) || saved.getAnalysisId() == null && !AiGenerationService.generated(saved)) {
             String status = "CLARIFICATION".equals(saved.getStatus()) ? "CLARIFICATION" : "REFUSED";
             String message = "CLARIFICATION".equals(saved.getStatus())
                     ? "확인이 필요했던 질문이에요. 다시 질문해 주세요."
@@ -323,6 +327,28 @@ public class AiWorkspaceService {
                         decision.resultCategory(), "지금 권한이나 지점 범위로는 다시 조회할 수 없어요. " + decision.message(), saved);
             }
             branches = decision.effectiveBranches();
+        }
+        if (AiGenerationService.generated(saved)) {
+            long started = System.nanoTime();
+            ResultEnvelope envelope;
+            try {
+                envelope = generation.rerun(savedQueries(saved), savedView(saved), saved.getQuestion(),
+                        actor.toUserContext(scope, branches));
+            } catch (com.openstudy.domainlens.api.error.EngineException e) {
+                return reopenedWithoutData(requestId, conversationId, "REFUSED", 422, "REOPEN_NOT_EXECUTABLE",
+                        "REOPEN_NOT_EXECUTABLE", "저장된 조회를 지금 다시 실행할 수 없어요. 다시 질문해 주세요.", saved);
+            }
+            long executedMs = Math.max(1L, Duration.ofNanos(System.nanoTime() - started).toMillis());
+            List<StageSpan> stages = List.of(
+                    new StageSpan("validating", "저장된 명세의 현재 권한·지점 범위 재검증", "COMPLETED", 1L, "허용 지점: " + branches),
+                    new StageSpan("executing", "데이터베이스 집계 재실행", "COMPLETED", executedMs,
+                            "모델 호출 없이 저장된 생성 조회를 새 기준 시각으로 실행"));
+            var queries = savedQueries(saved);
+            return new AiQueryResponse(requestId, null, conversationId, null, "COMPLETED", 200, null, "REOPENED", "REOPEN",
+                    "저장된 질문을 현재 권한과 기준 시각으로 다시 조회했어요.", null, null, saved.getIntentDomain(), "GENERATED",
+                    queries.size() == 1 ? queries.getFirst() : queries, envelope.view(), envelope, Map.of(),
+                    OpenStudyPlaybackGateway.TruncationInfo.defaultUntruncated(), List.of(), stages, List.of(),
+                    Map.of("reopened", true));
         }
         if (!analyses.offers(saved.getAnalysisId())) {
             return reopenedWithoutData(requestId, conversationId, "REFUSED", 422, ANALYSIS_UNAVAILABLE,
@@ -488,6 +514,13 @@ public class AiWorkspaceService {
         if (plan.llmDurationMs() > 0) {
             securityGate.put("llmDurationMs", plan.llmDurationMs());
             securityGate.put("llmTotalTokens", plan.totalTokens());
+        }
+
+        // #233: a question no registered analysis answers goes to the DomainLens generation path (registered first).
+        if (OpenStudyPlaybackGateway.noRegisteredAnalysis(plan, clarificationChoice) && generation.available()) {
+            var generated = generated(rawQuestion, actor, scope, convId, requestId, executionId, traceId, now, startNanos,
+                    stages, plan, securityGate, clientKey);
+            if (generated.isPresent()) return generated.get();
         }
 
         if (!"EXECUTE".equals(plan.outcome())) {
@@ -682,6 +715,108 @@ public class AiWorkspaceService {
                 AiReuse.editable(plan.analysisId()).toMap());
     }
 
+    /**
+     * #233: the DomainLens generation path for a question no registered analysis answers. The permission the question
+     * needs (sales:read for payments) is checked before the model is called, and the generated queries run only after
+     * the server compiled and validated them under the requester's policies. Empty when the generation path cannot
+     * answer either: the caller then returns the registered planner's "unsupported" response, with this attempt in its
+     * stages.
+     */
+    private Optional<AiQueryResponse> generated(
+            String question, OpenStudyUserContextResolver.ResolvedActor actor, String scope, String convId,
+            String requestId, String executionId, String traceId, Instant now, long startNanos, List<StageSpan> stages,
+            OpenStudyPlaybackGateway.PlanDecision plan, Map<String, Object> securityGate, String clientKey
+    ) {
+        boolean sales = generation.metric(question).map(AiGenerationService::sales).orElse(false);
+        var decision = userResolver.authorizeQuestion(actor, scope, question, sales);
+        if (!decision.allowed()) {
+            stages.add(new StageSpan("validating", "권한·스코프·예산 가드레일 검증", "REJECTED", 1L, decision.message()));
+            long totalMs = Math.max(1L, Duration.ofNanos(System.nanoTime() - startNanos).toMillis());
+            persistExecutionAndTrace(executionId, requestId, traceId, convId, actor, scope, Set.of(), question, null, null,
+                    sales ? "sales" : null, "DENIED", decision.resultCategory(), decision.errorCode(), null, null, totalMs, stages,
+                    plan.retrievedCandidates(), securityGate, now, null, false, clientKey);
+            return Optional.of(new AiQueryResponse(requestId, executionId, convId, traceId, "DENIED", decision.httpStatus(),
+                    decision.errorCode(), decision.resultCategory(), decision.behavior(), decision.message(), null, null,
+                    sales ? "sales" : null, null, null, null, null, Map.of(), plan.truncation(), List.of(), stages,
+                    plan.retrievedCandidates(), securityGate));
+        }
+        Set<Long> branches = decision.effectiveBranches();
+        securityGate.put("authorizedBranches", branches);
+        securityGate.put("path", "GENERATED");
+        String model = playbackGateway.activeModelName();
+        var result = generation.generate(question, actor.toUserContext(scope, branches));
+        if (result instanceof AiGenerationService.Declined declined) {
+            securityGate.put("generation", declined.reason());
+            stages.add(new StageSpan("generating", "DomainLens 조회 계획 생성 (" + model + ")", "UNSUPPORTED",
+                    declined.durationMs(), "생성 경로도 답하지 못함: " + declined.reason()));
+            return Optional.empty();
+        }
+        if (result instanceof AiGenerationService.Failed failed) {
+            securityGate.put("generation", failed.code());
+            stages.add(new StageSpan("generating", "DomainLens 조회 계획 생성 (" + model + ")", "REJECTED",
+                    failed.durationMs(), failed.message()));
+            long totalMs = Math.max(1L, Duration.ofNanos(System.nanoTime() - startNanos).toMillis());
+            persistExecutionAndTrace(executionId, requestId, traceId, convId, actor, scope, branches, question, null, null,
+                    sales ? "sales" : null, "FAILED", "GENERATION_FAILED", failed.code(), null, null, totalMs, stages,
+                    plan.retrievedCandidates(), securityGate, now, null, false, clientKey);
+            return Optional.of(new AiQueryResponse(requestId, executionId, convId, traceId, "FAILED", failed.httpStatus(),
+                    failed.code(), "GENERATION_FAILED", "ERROR", failed.message(), null, null, sales ? "sales" : null, null,
+                    null, null, null, Map.of(), plan.truncation(), List.of(), stages, plan.retrievedCandidates(), securityGate));
+        }
+        var completed = (AiGenerationService.Completed) result;
+        int tokens = completed.usage().stream().mapToInt(u -> u.inputTokens() + u.outputTokens()).sum();
+        securityGate.put("llmDurationMs", completed.durationMs());
+        securityGate.put("llmTotalTokens", tokens);
+        stages.add(new StageSpan("generating", "DomainLens 조회 계획 생성·서버 컴파일 (" + model + ")", "COMPLETED",
+                completed.durationMs(), "지표: " + completed.queries().stream().flatMap(q -> q.metrics().stream())
+                        .map(QuerySpec.Selection::field).toList() + " · " + tokens + " tokens"));
+        stages.add(new StageSpan("validating", "권한·스코프·예산 가드레일 검증", "COMPLETED", 1L, "허용 지점: " + branches));
+        stages.add(new StageSpan("executing", "데이터베이스 집계 실행", "COMPLETED", 1L,
+                "데이터셋 " + completed.envelope().datasets().size() + "종 조회 완료"));
+        stages.add(new StageSpan("completed", "ViewSpec 바인딩 및 결과 검증", "COMPLETED", 1L, "생성된 화면 구성"));
+        long totalMs = Math.max(1L, Duration.ofNanos(System.nanoTime() - startNanos).toMillis());
+        var saved = persistExecutionAndTrace(executionId, requestId, traceId, convId, actor, scope, branches, question, null,
+                null, completed.domain(), "READY", AiGenerationService.RESULT_CATEGORY, null, completed.queries(),
+                completed.view(), totalMs, stages, plan.retrievedCandidates(), securityGate, now, null, false, clientKey);
+        messageRepository.save(new AiMessageEntity(convId, "USER", question, executionId, now));
+        messageRepository.save(new AiMessageEntity(convId, "ASSISTANT", question, executionId, now));
+        return Optional.of(new AiQueryResponse(requestId, executionId, convId, traceId, "COMPLETED", 200, null,
+                AiGenerationService.RESULT_CATEGORY, "OK", null, null, null, completed.domain(), "GENERATED",
+                completed.queries().size() == 1 ? completed.queries().getFirst() : completed.queries(),
+                completed.envelope().view(), completed.envelope(), Map.of(),
+                OpenStudyPlaybackGateway.TruncationInfo.defaultUntruncated(), List.of(), stages, plan.retrievedCandidates(),
+                securityGate, conditionsOf(saved).toMap(), Map.of(), AiReuse.editable(null).toMap()));
+    }
+
+    /** #233: the queries a generated result saved, to run again without the model. */
+    private List<QuerySpec> savedQueries(AiExecutionEntity execution) {
+        String text = execution.getQuerySpecJson().trim();
+        return text.startsWith("[")
+                ? List.of(com.openstudy.domainlens.api.ir.ContractJson.read(text, QuerySpec[].class))
+                : List.of(com.openstudy.domainlens.api.ir.ContractJson.read(text, QuerySpec.class));
+    }
+
+    private ViewSpec savedView(AiExecutionEntity execution) {
+        return com.openstudy.domainlens.api.ir.ContractJson.read(execution.getViewSpecJson(), ViewSpec.class);
+    }
+
+    /**
+     * #233: a saved result run again, registered or generated, after its branches are checked against the current
+     * permissions. A generated one runs its saved queries without the model; a relative period follows the clock.
+     */
+    private ResultEnvelope savedEnvelope(OpenStudyUserContextResolver.ResolvedActor actor, AiExecutionEntity saved) {
+        if (!AiGenerationService.generated(saved)) return rerunSaved(actor, saved).envelope();
+        if (!readinessCheck.status().ready()) throw ApiException.unavailable(AI_NOT_READY, AI_NOT_READY_MESSAGE);
+        Set<Long> branches = parseBranchCsv(saved.getBranchIdsCsv());
+        verifyBranchReaccess(actor, branches, "sales".equals(saved.getIntentDomain()));
+        try {
+            return generation.rerun(savedQueries(saved), savedView(saved), saved.getQuestion(),
+                    actor.toUserContext(saved.getScopeKey(), branches));
+        } catch (com.openstudy.domainlens.api.error.EngineException e) {
+            throw ApiException.unprocessable("REOPEN_NOT_EXECUTABLE", "저장된 조회를 지금 다시 실행할 수 없어요. 다시 질문해 주세요.");
+        }
+    }
+
     /** #126: whether the previous result's branches are all still allowed; a follow-up never relies on old permissions. */
     private boolean permitted(OpenStudyUserContextResolver.ResolvedActor actor, AiExecutionEntity execution, boolean sales) {
         try {
@@ -737,8 +872,7 @@ public class AiWorkspaceService {
         var actor = userResolver.resolve(auth, null);
         AiExecutionEntity entity = ownExecution(actor.employeeId(), executionId);
 
-        var rerun = rerunSaved(actor, entity);
-        var envelope = AiReuse.page(rerun.envelope(), datasetId, page, size, sort, direction);
+        var envelope = AiReuse.page(savedEnvelope(actor, entity), datasetId, page, size, sort, direction);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("status", entity.getStatus());
         // The saved question's condition (#168): processed (default) or original payment date.
@@ -889,7 +1023,8 @@ public class AiWorkspaceService {
                 .forEach(c -> titles.put(c.getId(), c.getTitle()));
         List<Map<String, Object>> items = new ArrayList<>();
         for (var question : questions) {
-            boolean rerunnable = "READY".equals(question.getStatus()) && question.getAnalysisId() != null;
+            boolean rerunnable = "READY".equals(question.getStatus()) && question.getAnalysisId() != null
+                    || AiGenerationService.generated(question);
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("requestId", question.getRequestRef());
             item.put("executionId", rerunnable ? question.getId() : null);
@@ -917,7 +1052,7 @@ public class AiWorkspaceService {
     public Export exportExecution(Authentication auth, String executionId, String datasetId, String requestId) {
         var actor = userResolver.resolve(auth, null);
         var execution = ownExecution(actor.employeeId(), executionId);
-        var envelope = rerunSaved(actor, execution).envelope();
+        var envelope = savedEnvelope(actor, execution);
         var dataset = datasetId == null ? envelope.datasets().stream().findFirst()
                 .orElseThrow(() -> ApiException.validation("datasetId", "결과에 데이터셋이 없습니다."))
                 : envelope.datasets().stream().filter(d -> d.id().equals(datasetId)).findFirst()
@@ -950,9 +1085,10 @@ public class AiWorkspaceService {
     /** #127: the conditions as one sentence; branch names are the ones the requester can see (they were just checked). */
     private String exportConditions(AiReuse.Conditions conditions, String datasetId) {
         var parts = new ArrayList<String>();
-        parts.add("분석 " + conditions.analysisId());
+        parts.add(conditions.analysisId() == null ? "AI 생성 조회" : "분석 " + conditions.analysisId());
         parts.add("데이터셋 " + datasetId);
-        parts.add("기간 " + (conditions.from() == null ? "지금 기준" : conditions.from() + "~" + conditions.to() + " (Asia/Seoul)"));
+        parts.add("기간 " + (conditions.from() != null ? conditions.from() + "~" + conditions.to() + " (Asia/Seoul)"
+                : conditions.analysisId() == null ? "질문 기준, 지금 시각으로 다시 계산 (Asia/Seoul)" : "지금 기준"));
         parts.add("지점 " + String.join(", ", conditions.branchIds().stream().sorted().map(userResolver::branchName).toList()));
         if (!conditions.productIds().isEmpty()) {
             parts.add("상품 ID " + String.join(", ", conditions.productIds().stream().sorted().map(String::valueOf).toList()));

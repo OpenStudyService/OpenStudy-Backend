@@ -45,6 +45,17 @@ public class OpenStudyPlaybackGateway {
     public static final int MAX_RESULT_ROWS = 1000;
     public static final int DEFAULT_PAGE_SIZE = 50;
     public static final int MAX_CHART_CATEGORIES = 20;
+    /** The refusal for questions plainly outside OpenStudy (weather, stocks, …); the generation path never sees them. */
+    public static final String OUT_OF_DOMAIN_MESSAGE = "OpenStudy 업무 도메인(매출·좌석·이용권·스터디룸·사물함·업무·근태) 외의 질문은 지원하지 않습니다.";
+
+    /**
+     * #233: whether a decision only means "no registered analysis answers this", so the DomainLens generation path may
+     * try. Refusals for permission, modification, personal data, clarifications and plainly off-domain topics never go.
+     */
+    public static boolean noRegisteredAnalysis(PlanDecision plan, String clarificationChoice) {
+        return clarificationChoice == null && "UNSUPPORTED".equals(plan.outcome()) && plan.analysisId() == null
+                && "OUT_OF_DOMAIN".equals(plan.errorCode()) && !OUT_OF_DOMAIN_MESSAGE.equals(plan.message());
+    }
 
     public record ClarificationOption(String id, String label, String targetAnalysisId, String targetScope) {}
 
@@ -516,7 +527,7 @@ public class OpenStudyPlaybackGateway {
                     "OUT_OF_DOMAIN",
                     "UNSUPPORTED_DOMAIN",
                     "UNSUPPORTED",
-                    "OpenStudy 업무 도메인(매출·좌석·이용권·스터디룸·사물함·업무·근태) 외의 질문은 지원하지 않습니다.",
+                    OUT_OF_DOMAIN_MESSAGE,
                     null,
                     "unsupported",
                     null,
