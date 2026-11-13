@@ -156,6 +156,7 @@ public class OpenStudyPlaybackGateway {
     private final OpenStudyAnalyses analyses;
     private final DomainLensProperties properties;
     private final String modelMode;
+    private final OpenStudyIntentAnalyzer intents;
     private final int maxConcurrentPerUser;
     private final int maxRequestsPerMinute;
     private final HttpClient httpClient;
@@ -173,6 +174,7 @@ public class OpenStudyPlaybackGateway {
             OpenStudyAnalyses analyses,
             OpenStudyUserContextResolver userResolver,
             DomainLensProperties properties,
+            OpenStudyIntentAnalyzer intents,
             @Value("${openstudy.ai.model-mode:playback}") String modelMode,
             @Value("${openstudy.ai.rate-limit.max-concurrent:10}") int maxConcurrentPerUser,
             @Value("${openstudy.ai.rate-limit.max-per-minute:120}") int maxRequestsPerMinute
@@ -183,6 +185,7 @@ public class OpenStudyPlaybackGateway {
         this.analyses = analyses;
         this.userResolver = userResolver;
         this.properties = properties;
+        this.intents = intents;
         this.modelMode = modelMode == null ? "playback" : modelMode.trim().toLowerCase(Locale.ROOT);
         this.maxConcurrentPerUser = maxConcurrentPerUser;
         this.maxRequestsPerMinute = maxRequestsPerMinute;
@@ -713,7 +716,12 @@ public class OpenStudyPlaybackGateway {
         int totalTokens = 0;
         LiveLlmPlanResult llmResult = null;
 
-        if ("live".equals(activeMode())) {
+        // #233 (2026-11-13 decision): registered analyses come first by the keyword rules. A question whose metric the
+        // server reads as a general metric ("결제 금액", "결제 건수") skips the live registered-analysis picker, which
+        // would fit it onto the nearest registered analysis (net sales), and goes to the generation path.
+        boolean generalMetric = followUpAnalysisId == null && resolveAnalysisId(q) == null
+                && !intents.analyze(q, null).metrics().isEmpty();
+        if ("live".equals(activeMode()) && !generalMetric) {
             llmResult = callLiveQwenPlanner(q, requestedScope, candidates, previousConditions);
             if (llmResult != null) {
                 llmDurationMs = llmResult.durationMs();
