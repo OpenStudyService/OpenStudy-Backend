@@ -2,7 +2,6 @@ package com.openstudy.modules.customer.controller;
 
 import java.net.URI;
 import java.util.Map;
-import java.util.Set;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +20,7 @@ import com.openstudy.common.web.ListQuery;
 import com.openstudy.common.web.PageResponse;
 import com.openstudy.modules.customer.dto.response.CustomerDetail;
 import com.openstudy.modules.customer.dto.response.CustomerListItem;
+import com.openstudy.modules.customer.repository.CustomerSearchRepository.Sort;
 import com.openstudy.modules.customer.service.CustomerService;
 
 /** There is deliberately no DELETE mapping: customers are deactivated, never removed (FR-MEM-06). */
@@ -36,7 +36,7 @@ public class CustomerController {
             @RequestParam(required = false) String q, @RequestParam(required = false) String sort,
             @RequestParam(required = false) String direction, @RequestParam(required = false) String status) {
         return service.list(actor(actor), scope, ListQuery.parse(page, pageSize, q, sort, direction,
-                Set.of("registeredAt", "name"), "registeredAt"), status);
+                Sort.keys(), "registeredAt"), status);
     }
 
     @GetMapping("/{id}")

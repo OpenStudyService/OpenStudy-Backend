@@ -1,8 +1,10 @@
 package com.openstudy.modules.customer.repository;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
@@ -24,9 +26,27 @@ public class CustomerSearchRepository {
     private final EntityManager entityManager;
 
     public enum Sort {
-        REGISTERED_AT("c.registered_at"), NAME("c.name");
+        REGISTERED_AT("registeredAt", "c.registered_at"),
+        NAME("name", "c.name"),
+        MEMBER_NO("memberNo", "c.member_no"),
+        PHONE("phone", "c.phone"),
+        STATUS("status", "c.status"),
+        REGISTERED_BRANCH("registeredBranch", "b.name");
+
+        private final String key;
         final String column;
-        Sort(String column) { this.column = column; }
+        Sort(String key, String column) {
+            this.key = key;
+            this.column = column;
+        }
+
+        public static Set<String> keys() {
+            return Arrays.stream(values()).map(sort -> sort.key).collect(Collectors.toUnmodifiableSet());
+        }
+
+        public static Sort fromKey(String key) {
+            return Arrays.stream(values()).filter(sort -> sort.key.equals(key)).findFirst().orElseThrow();
+        }
     }
 
     /** {@code phone} is the digits-only form of q, or null when q is not a phone fragment. */
@@ -50,7 +70,8 @@ public class CustomerSearchRepository {
             where.append(")");
         }
         String order = descending ? " DESC" : " ASC";
-        Query rows = entityManager.createNativeQuery("SELECT c.* FROM customers c WHERE " + where
+        String branchJoin = sort == Sort.REGISTERED_BRANCH ? " LEFT JOIN branches b ON b.id = c.registered_branch_id" : "";
+        Query rows = entityManager.createNativeQuery("SELECT c.* FROM customers c" + branchJoin + " WHERE " + where
                 + " ORDER BY " + sort.column + order + ", c.id" + order + " LIMIT ? OFFSET ?", Customer.class);
         Query count = entityManager.createNativeQuery("SELECT COUNT(*) FROM customers c WHERE " + where);
         bind(rows, binds);

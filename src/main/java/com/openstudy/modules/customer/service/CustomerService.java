@@ -78,7 +78,7 @@ public class CustomerService {
         CustomerStatus filter = status == null ? null : CustomerInputs.status(status, "status");
         var state = policy.current(actor);
         Set<Long> selected = policy.scope(state, scope, BranchAction.READ);
-        var sort = "name".equals(query.sort()) ? CustomerSearchRepository.Sort.NAME : CustomerSearchRepository.Sort.REGISTERED_AT;
+        var sort = CustomerSearchRepository.Sort.fromKey(query.sort());
         var page = search.find(new CustomerSearchRepository.Filter(selected, unassigned(state, scope), filter, query.q(),
                 CustomerInputs.phoneFragment(query.q())), sort, query.direction() == ListQuery.Direction.DESC,
                 query.offset(), query.pageSize());
