@@ -106,6 +106,9 @@ public final class JpaQueryExecutor implements QueryExecutor, ExportExecutor {
         Path<?> path=from.get(f.source());String[] parts=f.path().split("\\.");String source=f.source();
         for(String part:parts){String id=source;var rel=registry.relations().values().stream().filter(r->r.source().equals(id)&&r.path().equals(part)).findFirst();
             if(rel.isPresent() && from.containsKey(rel.get().target())){source=rel.get().target();path=from.get(source);}else path=path.get(part);}
+        // A foreign-key field (payment.branch_id) whose relation is joined ends on the joined entity; the field's value
+        // is that entity's key, so filters, grouping and selections compare the id, not the entity.
+        if(path instanceof From<?,?> joined && joined!=from.get(f.source()))path=attribute(joined,registry.sources().get(source).keys().getFirst());
         return path;
     }
     private static Path<?> attribute(Path<?> root,String path){for(String part:path.split("\\."))root=root.get(part);return root;}

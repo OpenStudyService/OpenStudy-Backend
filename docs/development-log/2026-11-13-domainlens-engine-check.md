@@ -1,0 +1,63 @@
+# 2026-11-13 DomainLens 엔진 동작 확인 (#232 0단계)
+
+## 1. 배경 / 문제
+
+- AI 채팅은 등록된 분석 10개 중 하나를 키워드 규칙(또는 Qwen)으로 고르는 방식이다. QuerySpec·ViewSpec은 분석마다 고정이고, 등록되지 않은 질문은 모두 "지원하는 업무 지표로 질문해 주세요."로 끝난다.
+- 생성 엔진(`com.openstudy.domainlens`: `QueryPipeline`, `IrValidator`, `JoinPlanner`, `JpaQueryExecutor`, `ViewBinder`)은 소스에 이식돼 있지만 어디에서도 호출되지 않는다. 받아온 `OpenStudy-DomainLenz-Receive`도 같은 구조였다.
+- 엔진 테스트는 이식되지 않았다(`domainlens` 테스트 3개). 엔진이 OpenStudy 스키마에서 실제로 동작하는지 검증된 적이 없다.
+- #97을 하위 이슈로 나눴고(#232, #233, OpenStudy-Frontend#122), 이 기록은 #232의 첫 단계(엔진 동작 확인)다.
+
+## 2. 검토한 선택지
+
+사용자에게 물어 정했다(2026-11-13).
+
+- **두 경로 공존 방식**
+  - 등록 분석을 먼저 쓰고, 못 고른 질문만 생성 경로로 보낸다(선택). 이미 검증된 10개 분석의 수치를 유지한다.
+  - 생성 경로로 전부 바꾼다.
+- **1차 카탈로그 범위**
+  - 매출·이용권부터(선택)
+  - 등록 분석 7개 도메인 전부
+- **생성 결과의 조건 바꿔 재실행**
+  - 1차는 다시 실행·CSV까지(선택)
+  - 1차에 포함
+- **엔진 동작 확인 방법**: 실제 모델 대신 녹화 응답(고정 IR을 돌려주는 `ModelGateway`)으로 검증·계획·실행·화면 연결을 확인한다. 모델 출력과 무관하게 서버 쪽 경계를 먼저 확인할 수 있다.
+
+## 3. 결정 및 이유
+
+- 파이프라인 조립은 `OpenStudyQueryPipelineFactory` 한 곳에서 한다. 모델 게이트웨이만 인자로 받아, 테스트(녹화 응답)와 이후 채팅(live 모델)이 같은 검증·계획·실행 경로를 쓴다.
+- 카탈로그 스냅샷은 `CatalogActivation`으로 활성화한 뒤에만 파이프라인을 만든다. 활성화에 실패하면 예외로 끝나고, 일부만 동작하는 상태를 만들지 않는다.
+- 엔진 결함은 OpenStudy 쪽에서 우회하지 않고 엔진 코드에서 고쳤다. 소스에 이식된 엔진은 OpenStudy가 소유하는 코드이기 때문이다.
+
+## 4. 구현 내용
+
+- `OpenStudyQueryPipelineFactory`(신규)
+  - `create(ModelGateway)`: `IrValidator`(등록 분석 포함), `JoinPlanner`, `JpaQueryExecutor`, `ViewBinder`(`ComponentCatalog.openStudyDefault()`), 시계, 정책 버전, 활성화된 카탈로그로 `QueryPipeline`을 만든다.
+  - `retrieval()`: 권한 우선 의미 검색(`RetrievalService`)
+  - AI 채팅에는 아직 연결하지 않았다(#233).
+- 발견해 고친 엔진 결함 2건
+  - **화면 컴포넌트 계약 위반**: `components-1.0.schema.json`의 `maxRows` 최대값이 100인데, OpenStudy 컴포넌트 카탈로그는 일별 366행·표 1,000행을 쓴다. 프롬프트를 만들 때 카탈로그를 이 스키마로 검사하므로, **모든 생성 요청이 모델 호출 전에 "JSON does not match contract schema"로 실패했다.** 스키마 최대값을 1,000(`MAX_RESULT_ROWS`)으로 올렸다.
+  - **외래 키 필드가 엔티티로 해석됨**: `JpaQueryExecutor.path()`가 `payment.branch_id`처럼 관계와 같은 경로를 가진 필드를, 그 관계가 조인돼 있으면 `Branch` 엔티티 자체로 바꿨다. 지점 범위 행 필터(`payment.branch_id IN (...)`)가 Long을 엔티티와 비교해 **실행이 항상 실패했다.** 조인된 엔티티로 끝나면 그 키(`id`)를 쓰도록 고쳤다.
+- `DomainLensPipelineIntegrationTests`(신규, 7개)
+  - 녹화 응답의 지점별 집계가 검증 → 계획 → JPA → 화면 연결까지 통과하고, 수치가 DB 합계와 같다.
+  - 요청자의 지점 범위 밖 행은 읽지 않는다.
+  - UNSUPPORTED 응답은 실행 없이 끝난다.
+  - 등록되지 않은 필드(`customer.phone`)를 쓴 IR은 거절된다.
+  - 매출 권한 없는 직원은 결제 원천이 모델 문맥에 들어가지 않아 실행되지 않는다.
+  - 실제 의미 검색(ONNX)이 순매출 지표의 의존 문맥을 모두 모델에 넘긴다(모델 설치 시에만).
+  - 실제 Qwen 왕복(직접 IR 생성·계획 생성 두 방식). `OPENSTUDY_AI_LIVE_TESTS=true`일 때만 실행한다.
+
+## 5. 검증 결과
+
+- `./gradlew test --tests "com.openstudy.modules.ai.*" --tests "com.openstudy.domainlens.*"`: 87개 중 실패 0, 건너뜀 24(로컬 픽스처 전용 기존 테스트 23개와 live Qwen 테스트 1개).
+- 녹화 응답 기반 통합 테스트는 Testcontainers MySQL에서 실행했다.
+- **실제 Qwen 호출은 실행하지 않았다.** `.env.qwen.local`의 활성 키가 다른 사람 키로 표시돼 있어 사용자 확인 뒤에 실행한다.
+- 전체 테스트(`./gradlew test`)는 실행하지 않았다(PR 전 실행 예정).
+
+## 6. 남은 작업 / 보류 사항
+
+- **실제 Qwen 구조화 출력 확인**: 위 live 테스트를 실행하고 결과(IR, 지연, 토큰)를 기록한다. 모델 출력 방식(직접 IR / 계획 생성 후 서버 컴파일)은 그 결과로 정한다.
+- **카탈로그(1단계)**
+  - `sales.net_sales_krw`에 기본 필터가 없어 실패한 결제까지 더한다. 정형 매출 API와 같은 수치를 내도록 승인 상태·환불 차감 기준을 지표에 반영해야 한다. 현재 테스트는 이 원시 합계를 명시적으로 확인한다.
+  - 지금 카탈로그 지표 10개는 모두 등록 분석에 1:1로 묶여 있고, `AiReadiness`는 등록 분석에 연결되지 않은 지표를 "준비 안 됨"으로 본다. 일반 지표를 추가하려면 준비 상태 규칙도 함께 바꿔야 한다.
+  - 엔진 계약상 집계 쿼리 `limit`은 50 이하다(`ContractRules`). 화면 상한(1,000행)과 다르므로 1단계에서 의도된 값인지 확인한다.
+- 매출 권한 없는 직원은 예외가 아니라 "지원 불가" 응답으로 끝난다. 채팅 연결(#233)에서 이 경우를 권한 거절 문구로 바꿀지 정한다.
