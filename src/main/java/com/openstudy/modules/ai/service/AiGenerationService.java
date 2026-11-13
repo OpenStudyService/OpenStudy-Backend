@@ -80,7 +80,54 @@ public class AiGenerationService {
 
     /** Saved generated queries run again without the model; a relative period ("이번 달") follows the clock as of now. */
     public ResultEnvelope rerun(List<QuerySpec> saved, ViewSpec view, String question, UserContext user) {
-        return pipelines.execute(saved.stream().map(query -> rebase(query, question)).toList(), view, user);
+        return pipelines.execute(current(saved, question), view, user);
+    }
+
+    /** The saved queries as they run now: the same, with a relative period read again from the clock. */
+    public List<QuerySpec> current(List<QuerySpec> saved, String question) {
+        return saved.stream().map(query -> rebase(query, question)).toList();
+    }
+
+    /** Display names of the general metrics; catalog fields carry their own name. */
+    static final java.util.Map<String, String> METRIC_NAMES = java.util.Map.of(
+            "sales.approved_amount_krw", "결제 승인액",
+            "sales.approved_count", "결제 건수",
+            "passes.issued_count", "이용권 발급 수");
+
+    /** A catalog metric or field ID as people read it ("결제 승인액", "지점명"), or the ID when it has no name. */
+    public String displayName(String id) {
+        if (METRIC_NAMES.containsKey(id)) return METRIC_NAMES.get(id);
+        var field = registry.fields().get(id);
+        return field != null && field.metadata().name() != null && !field.metadata().name().isBlank() ? field.metadata().name() : id;
+    }
+
+    /** Column names of generated results: the compiler's aliases (d0, m0) mapped to what each column selects. */
+    public java.util.Map<String, String> columnNames(List<QuerySpec> queries) {
+        var names = new java.util.LinkedHashMap<String, String>();
+        for (var query : queries) {
+            query.dimensions().forEach(selection -> names.putIfAbsent(selection.alias(), displayName(selection.field())));
+            query.metrics().forEach(selection -> names.putIfAbsent(selection.alias(), displayName(selection.field())));
+        }
+        return names;
+    }
+
+    /** The [from, to) instant range on one field of the first query, as Asia/Seoul dates with both ends inclusive. */
+    public static java.util.Optional<String> periodText(List<QuerySpec> queries) {
+        if (queries.isEmpty() || queries.getFirst().filter() == null) return java.util.Optional.empty();
+        var leaves = new ArrayList<Filter.Leaf>();
+        if (!conjunction(queries.getFirst().filter(), leaves)) return java.util.Optional.empty();
+        var start = leaves.stream().filter(leaf -> leaf.operator() == Filter.Operator.GTE).findFirst();
+        if (start.isEmpty()) return java.util.Optional.empty();
+        var end = leaves.stream().filter(leaf -> leaf.operator() == Filter.Operator.LT && leaf.field().equals(start.get().field())).findFirst();
+        if (end.isEmpty()) return java.util.Optional.empty();
+        try {
+            var from = java.time.OffsetDateTime.parse(start.get().values().getFirst().toString()).atZoneSameInstant(OpenStudyClock.KST).toLocalDate();
+            var to = java.time.OffsetDateTime.parse(end.get().values().getFirst().toString()).atZoneSameInstant(OpenStudyClock.KST)
+                    .minusNanos(1).toLocalDate();
+            return java.util.Optional.of(from + "~" + to + " (Asia/Seoul)");
+        } catch (java.time.DateTimeException | IndexOutOfBoundsException notAnInstant) {
+            return java.util.Optional.empty();
+        }
     }
 
     /** The query with its period on the metric's time field replaced by the server's current reading of the question. */
