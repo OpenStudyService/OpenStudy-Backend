@@ -110,7 +110,11 @@ class DomainLensPipelineIntegrationTests extends AiTestSupport {
             long started = System.nanoTime();
             report.append("== planning=").append(planning).append(System.lineSeparator());
             try {
-                var outcome = pipelines.create(gateway).run("이번 달 지점별 매출 합계 보여줘", user(owner, Set.of(first, second)), new Cancellation(), pipelines.retrieval());
+                var outcome = pipelines.create(recordingPlans(gateway, report)).planningObservations(
+                        prompt -> report.append("promptBytes=").append(com.openstudy.domainlens.api.ir.ContractJson.write(prompt)
+                                .getBytes(java.nio.charset.StandardCharsets.UTF_8).length).append(System.lineSeparator()),
+                        compiled -> report.append("compiled=").append(com.openstudy.domainlens.api.ir.ContractJson.write(compiled)).append(System.lineSeparator())
+                ).run("이번 달 지점별 매출 합계 보여줘", user(owner, Set.of(first, second)), new Cancellation(), pipelines.retrieval());
                 report.append("ir=").append(com.openstudy.domainlens.api.ir.ContractJson.write(outcome.ir())).append(System.lineSeparator())
                         .append("status=").append(outcome.result().status()).append(System.lineSeparator())
                         .append("rows=").append(outcome.result().datasets().stream().map(d -> d.rows().toString()).toList()).append(System.lineSeparator())
@@ -122,6 +126,30 @@ class DomainLensPipelineIntegrationTests extends AiTestSupport {
         }
         java.nio.file.Files.writeString(java.nio.file.Path.of("build/live-qwen.txt"), report.toString());
         assertThat(report).contains("planning=true");
+    }
+
+    /** Delegates to the live gateway and writes each raw semantic plan the model returns, before the server compiles it. */
+    static ModelGateway recordingPlans(ModelGateway live, StringBuilder report) {
+        return new ModelGateway() {
+            @Override public boolean supportsPlanning() { return live.supportsPlanning(); }
+            @Override public boolean supportsRepair() { return live.supportsRepair(); }
+            @Override public java.time.Duration requestTimeout() { return live.requestTimeout(); }
+            @Override public com.openstudy.domainlens.api.planning.SemanticPlan plan(
+                    com.openstudy.domainlens.api.planning.PlanningPrompt prompt, com.openstudy.domainlens.api.prompt.GenerationBudget budget,
+                    com.openstudy.domainlens.api.planning.SemanticPlan previous, String failure) {
+                var plan = live.plan(prompt, budget, previous, failure);
+                report.append("plan=").append(com.openstudy.domainlens.api.ir.ContractJson.write(plan)).append(System.lineSeparator());
+                return plan;
+            }
+            @Override public IrDocument generate(com.openstudy.domainlens.api.prompt.PromptPackage prompt, com.openstudy.domainlens.api.prompt.GenerationBudget budget) {
+                return live.generate(prompt, budget);
+            }
+            @Override public IrDocument repair(com.openstudy.domainlens.api.prompt.PromptPackage prompt, IrDocument previous, String failure,
+                    com.openstudy.domainlens.api.prompt.GenerationBudget budget) {
+                return live.repair(prompt, previous, failure, budget);
+            }
+            @Override public IrDocument generate(String ask, List<String> contextRefs) { return live.generate(ask, contextRefs); }
+        };
     }
 
     @Test void unsupportedAnswerStopsWithoutExecuting() {
