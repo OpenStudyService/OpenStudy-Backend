@@ -86,6 +86,10 @@ class AiGenerationPathIntegrationTests extends AiTestSupport {
             assertThat(body.at("/querySpec/metrics/0/field").asString()).isEqualTo(METRIC);
             assertThat(body.at("/querySpec/mode").asString()).isEqualTo("AGGREGATE");
             assertThat(body.at("/viewSpec/components/0/componentRef/id").asString()).isNotBlank();
+            // AiContext contract: a generated answer builds on no earlier result, so its lists are present and empty.
+            assertThat(body.at("/context/inherited").isArray()).as(body.toString()).isTrue();
+            assertThat(body.at("/context/changed").isArray()).isTrue();
+            assertThat(body.at("/context/reset").asBoolean()).isFalse();
             var sums = sums(body.at("/envelope/datasets/0/rows"));
             assertThat(sums).containsEntry(name(first), approvedThisMonth(first)).containsEntry(name(second), approvedThisMonth(second));
             assertThat(modelCalls).hasValue(1);
@@ -115,6 +119,13 @@ class AiGenerationPathIntegrationTests extends AiTestSupport {
             var export = send(s, "GET", "/api/ai/executions/" + executionId + "/export", null);
             assertThat(export.statusCode()).as(export.body()).isEqualTo(200);
             assertThat(export.body()).contains(name(first)).contains("42000").contains("AI 생성 조회");
+            // Columns are named after what they select, not the compiler's aliases; no registered-analysis terms.
+            var month = YearMonth.now(KST);
+            assertThat(export.body()).contains("지점명,결제 승인액(KRW)").doesNotContain("d0,m0")
+                    .contains("지표 결제 승인액").contains("묶음 지점명")
+                    .contains("기간 " + month.atDay(1) + "~" + month.atEndOfMonth())
+                    .doesNotContain("환불 기준").doesNotContain("데이터셋 q0");
+            assertThat(body(execution).at("/conditions/refundBasis").isNull()).isTrue();
 
             var recent = body(send(s, "GET", "/api/ai/recent-queries", null)).get("items");
             JsonNode item = null;

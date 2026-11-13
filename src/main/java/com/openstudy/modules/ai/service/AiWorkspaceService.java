@@ -816,7 +816,8 @@ public class AiWorkspaceService {
                 completed.queries().size() == 1 ? completed.queries().getFirst() : completed.queries(),
                 completed.envelope().view(), completed.envelope(), Map.of(),
                 OpenStudyPlaybackGateway.TruncationInfo.defaultUntruncated(), List.of(), stages, plan.retrievedCandidates(),
-                securityGate, conditionsOf(saved).toMap(), Map.of(), AiReuse.editable(null).toMap()));
+                securityGate, conditionsOf(saved).toMap(), AiReuse.resetContext("NO_PRIOR_RESULT"),
+                AiReuse.editable(null).toMap()));
     }
 
     /** #233: the queries a generated result saved, to run again without the model. */
@@ -1118,8 +1119,12 @@ public class AiWorkspaceService {
                 : envelope.datasets().stream().filter(d -> d.id().equals(datasetId)).findFirst()
                         .orElseThrow(() -> ApiException.validation("datasetId", "결과에 없는 데이터셋입니다."));
         var conditions = conditionsOf(execution);
+        boolean generated = AiGenerationService.generated(execution);
+        // A generated result's columns carry the compiler's aliases (d0, m0); the CSV names them after what they select.
+        var queries = generated ? generation.current(savedQueries(execution), execution.getQuestion()) : List.<QuerySpec>of();
+        Map<String, String> names = generated ? generation.columnNames(queries) : Map.of();
         var columns = dataset.columns().stream().map(column -> new com.openstudy.common.export.CsvFile.Column(
-                column.unit() == null ? column.alias() : column.alias() + "(" + column.unit() + ")",
+                names.getOrDefault(column.alias(), column.alias()) + (column.unit() == null ? "" : "(" + column.unit() + ")"),
                 column.type() == com.openstudy.domainlens.api.ir.ValueType.INTEGER
                         || column.type() == com.openstudy.domainlens.api.ir.ValueType.DECIMAL)).toList();
         List<List<Object>> rows = dataset.rows().stream()
@@ -1127,12 +1132,14 @@ public class AiWorkspaceService {
         boolean money = dataset.columns().stream().anyMatch(column -> "KRW".equals(column.unit()));
         var asOf = dataset.asOf() != null ? dataset.asOf() : envelope.asOf();
         var table = new com.openstudy.common.export.CsvFile.Table("AI 분석 결과 · " + execution.getQuestion(),
-                exportConditions(conditions, dataset.id()), money, asOf, columns, rows, dataset.totalElements());
+                generated ? generatedConditions(conditions, queries) : exportConditions(conditions, dataset.id()),
+                money, asOf, columns, rows, dataset.totalElements());
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("executionId", execution.getId());
         summary.put("analysisId", conditions.analysisId());
         summary.put("datasetId", dataset.id());
-        summary.put("period", conditions.from() == null ? null : conditions.from() + "~" + conditions.to());
+        summary.put("period", conditions.from() != null ? conditions.from() + "~" + conditions.to()
+                : AiGenerationService.periodText(queries).orElse(null));
         summary.put("branchIds", conditions.branchIds().stream().sorted().toList());
         summary.put("productIds", conditions.productIds().stream().sorted().toList());
         summary.put("rows", table.written());
@@ -1140,6 +1147,22 @@ public class AiWorkspaceService {
         audit.record(com.openstudy.common.audit.AuditEvent.change(actor.employeeId(), null, "ai-execution", null, "EXPORTED", null,
                 toJson(summary), requestId));
         return new Export("AI 분석 결과", table);
+    }
+
+    /**
+     * A generated result's CSV conditions: what it measured, grouped and over which period it ran now (a relative
+     * period is read again from the clock), and the branches. No registered-analysis terms (dataset ID, refund basis).
+     */
+    private String generatedConditions(AiReuse.Conditions conditions, List<QuerySpec> queries) {
+        var parts = new ArrayList<String>();
+        parts.add("AI 생성 조회");
+        var metrics = queries.stream().flatMap(q -> q.metrics().stream()).map(m -> generation.displayName(m.field())).distinct().toList();
+        var groups = queries.stream().flatMap(q -> q.dimensions().stream()).map(d -> generation.displayName(d.field())).distinct().toList();
+        if (!metrics.isEmpty()) parts.add("지표 " + String.join(", ", metrics));
+        if (!groups.isEmpty()) parts.add("묶음 " + String.join(", ", groups));
+        parts.add("기간 " + AiGenerationService.periodText(queries).orElse("조건 없음"));
+        parts.add("지점 " + String.join(", ", conditions.branchIds().stream().sorted().map(userResolver::branchName).toList()));
+        return String.join(" · ", parts);
     }
 
     /** #127: the conditions as one sentence; branch names are the ones the requester can see (they were just checked). */
@@ -1162,7 +1185,8 @@ public class AiWorkspaceService {
     private AiReuse.Conditions conditionsOf(AiExecutionEntity execution) {
         var edited = savedPeriod(execution);
         String analysisId = execution.getAnalysisId();
-        String refundBasis = !"sales".equals(execution.getIntentDomain()) ? null
+        // The refund basis is a condition of the registered sales analyses; a generated query has none.
+        String refundBasis = !"sales".equals(execution.getIntentDomain()) || analysisId == null ? null
                 : "ORIGINAL_PAYMENT_DATE".equals(execution.getRefundBasis()) ? "original" : "processed";
         var period = edited != null ? edited : analysisId == null ? null : analyses.defaultPeriod(analysisId);
         return AiReuse.Conditions.of(analysisId, period, edited != null, parseBranchCsv(execution.getBranchIdsCsv()),
