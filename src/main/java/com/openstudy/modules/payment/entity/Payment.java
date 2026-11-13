@@ -74,13 +74,14 @@ public class Payment {
     @Column(name = "issued_pass_quantity", nullable = false, updatable = false, columnDefinition = "smallint unsigned")
     private int issuedPassQuantity;
     @Column(name = "approved_at", updatable = false)
+    // #232: sales periods follow the approval time (created_at is when the attempt was recorded).
+    @SemanticField(id = "payment.paid_at", name = "결제 시각", role = "TIME", aliases = {"결제일", "매출일"}, allowedOps = {"EQ", "NE", "GT", "GTE", "LT", "LTE", "BETWEEN"})
     private Instant approvedAt;
     @Column(name = "failed_at", updatable = false)
     private Instant failedAt;
     @Column(name = "created_by", nullable = false, updatable = false)
     private long createdBy;
     @Generated(event = EventType.INSERT) @Column(name = "created_at", insertable = false, updatable = false)
-    @SemanticField(id = "payment.paid_at", name = "결제 시각", role = "TIME", aliases = {"결제일", "매출일"}, allowedOps = {"EQ", "NE", "GT", "GTE", "LT", "LTE", "BETWEEN"})
     private Instant createdAt;
     @Generated(event = {EventType.INSERT, EventType.UPDATE}) @Column(name = "updated_at", insertable = false, updatable = false)
     private Instant updatedAt;

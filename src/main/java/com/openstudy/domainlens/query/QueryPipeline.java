@@ -242,7 +242,8 @@ public final class QueryPipeline {
         try(var onCancel=cancellation.register(tokens::close)) {
             cancellation.check();var result=retrieval.prepareContext(ask,user,tokens,promptLimits,text->{
                 var intent=intentAnalyzer.analyze(text,previous);
-                if(formulas==null)return validator.analysisDiscoverySources(intent.analyses());var ids=new HashSet<String>(intent.metrics());ids.addAll(intent.dimensions());PromptService.filterReferences(intent.period(),ids);
+                // Server-resolved metrics, groupings and period fields are mandatory seeds; similarity alone may rank them out.
+                var ids=new HashSet<String>(intent.metrics());ids.addAll(intent.dimensions());PromptService.filterReferences(intent.period(),ids);
                 ids.addAll(validator.analysisDiscoverySources(intent.analyses()));
                 ids.retainAll(registry.publicNodeIds());return Set.copyOf(ids);
             });cancellation.check();return result;

@@ -113,7 +113,10 @@ public final class IrValidator {
         require(q.mode()!=QuerySpec.Mode.DETAIL || (!q.dimensions().isEmpty() && q.metrics().isEmpty()),"Invalid DETAIL selection");
         require(q.mode()!=QuerySpec.Mode.AGGREGATE || !q.metrics().isEmpty(),"Missing aggregate");
         for(var s:q.dimensions())require(registry.fields().containsKey(s.field()),"Unregistered field");
-        for(var m:q.metrics()) {var metric=registry.metrics().get(m.field());require(metric!=null && metric.grain().equals(q.grain()),"Unregistered metric/grain");filter(metric.defaultFilter());}
+        for(var m:q.metrics()) {var metric=registry.metrics().get(m.field());require(metric!=null && metric.grain().equals(q.grain()),"Unregistered metric/grain");
+            // A metric owned by a registered analysis has its own definition there (e.g. refund-adjusted net sales);
+            // a raw aggregate of its measure would silently mean something else.
+            require(analyses==null || analyses.definition(metric.implementationRef()).isEmpty(),"Registered analysis metric must run through its analysis");filter(metric.defaultFilter());}
         filter(q.filter());policies.query(q,user);
     }
     public void filter(Filter filter) {
@@ -140,7 +143,7 @@ public final class IrValidator {
             case DECIMAL -> {if(!(value instanceof Number))throw new IllegalArgumentException();yield new BigDecimal(value.toString());}
             case BOOLEAN -> {if(!(value instanceof Boolean))throw new IllegalArgumentException();yield value;}
             case DATE -> LocalDate.parse(value.toString());
-            case TIMESTAMP -> {String s=value.toString();yield s.endsWith("Z")?LocalDateTime.ofInstant(Instant.parse(s),ZoneOffset.UTC):LocalDateTime.parse(s);}
+            case TIMESTAMP -> {String s=value.toString();yield s.endsWith("Z")?LocalDateTime.ofInstant(Instant.parse(s),ZoneOffset.UTC):s.matches(".*[+-][0-9]{2}:[0-9]{2}$")?LocalDateTime.ofInstant(java.time.OffsetDateTime.parse(s).toInstant(),ZoneOffset.UTC):LocalDateTime.parse(s);}
         };}catch(RuntimeException ex){throw new EngineException(EngineErrorCode.IR_INVALID,"Filter type mismatch");}
     }
     private static void require(boolean condition,String message){ContractRules.require(condition,message);}

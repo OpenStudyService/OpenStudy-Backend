@@ -102,10 +102,14 @@ public final class JpaQueryExecutor implements QueryExecutor, ExportExecutor {
         }
     }
     private static void bind(Query query,Map<String,Object> bindings){bindings.forEach(query::setParameter);}
+    @SuppressWarnings({"unchecked","rawtypes"}) private static Object enumConstant(Class<?> type,String name){try{return Enum.valueOf((Class<? extends Enum>)type,name);}catch(IllegalArgumentException unknown){throw new EngineException(EngineErrorCode.IR_INVALID,"Filter value outside allowlist");}}
     private Path<?> path(SemanticRegistry.Field f,Map<String,From<?,?>> from) {
         Path<?> path=from.get(f.source());String[] parts=f.path().split("\\.");String source=f.source();
         for(String part:parts){String id=source;var rel=registry.relations().values().stream().filter(r->r.source().equals(id)&&r.path().equals(part)).findFirst();
             if(rel.isPresent() && from.containsKey(rel.get().target())){source=rel.get().target();path=from.get(source);}else path=path.get(part);}
+        // A foreign-key field (payment.branch_id) whose relation is joined ends on the joined entity; the field's value
+        // is that entity's key, so filters, grouping and selections compare the id, not the entity.
+        if(path instanceof From<?,?> joined && joined!=from.get(f.source()))path=attribute(joined,registry.sources().get(source).keys().getFirst());
         return path;
     }
     private static Path<?> attribute(Path<?> root,String path){for(String part:path.split("\\."))root=root.get(part);return root;}
@@ -117,6 +121,10 @@ public final class JpaQueryExecutor implements QueryExecutor, ExportExecutor {
         if(leaf.operator()==Filter.Operator.IS_NULL)return cb.isNull(path);
         var parameters=new ArrayList<ParameterExpression<?>>();for(Object value:leaf.values()) {
             Object typed=IrValidator.value(field.type(),value);if(path.getJavaType()==Integer.class && typed instanceof Long number)typed=Math.toIntExact(number);
+            // TIMESTAMP values are UTC wall times; an entity mapped to Instant binds the instant itself.
+            if(path.getJavaType()==java.time.Instant.class && typed instanceof java.time.LocalDateTime utc)typed=utc.toInstant(java.time.ZoneOffset.UTC);
+            // STRING values of an enum-mapped attribute (payment.status) bind as that enum constant.
+            if(path.getJavaType()!=null && path.getJavaType().isEnum() && typed instanceof String name)typed=enumConstant(path.getJavaType(),name);
             if(path.getJavaType()==Short.class && typed instanceof Long number){if(number<Short.MIN_VALUE || number>Short.MAX_VALUE)throw new EngineException(EngineErrorCode.IR_INVALID,"Integer overflow");typed=number.shortValue();}
             String name="p"+bindings.size();bindings.put(name,typed);parameters.add(cb.parameter(path.getJavaType(),name));
         }
