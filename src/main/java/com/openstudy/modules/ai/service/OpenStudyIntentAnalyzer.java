@@ -96,6 +96,40 @@ public class OpenStudyIntentAnalyzer implements QueryIntent.Analyzer {
     /** Exactly one period phrase, resolved in KST by the server clock; ranges ("부터 … 까지") stay with the engine. */
     Optional<Range> period(String key) {
         if (key.contains("부터") || key.contains("까지")) return Optional.empty();
+        var found = periods(key);
+        if (found == null || found.size() != 1) return Optional.empty();
+        var zone = OpenStudyClock.KST;
+        return Optional.of(new Range(found.getFirst()[0].atStartOfDay(zone).toInstant(), found.getFirst()[1].atStartOfDay(zone).toInstant()));
+    }
+
+    /**
+     * The period a question names, as KST dates {@code [from, toExclusive)}: none, one, or more than one (ambiguous).
+     * Registered analyses use it in place of their default period (2026-11-13 decision, replacing M10-D14's reading
+     * that a registered analysis never reads a period from the question). "YYYY년 M월부터 … 까지" uses the engine's
+     * calendar reading.
+     */
+    public record QuestionPeriod(LocalDate from, LocalDate toExclusive, boolean ambiguous) {
+        public static final QuestionPeriod NONE = new QuestionPeriod(null, null, false);
+        public boolean resolved() { return from != null; }
+    }
+
+    public QuestionPeriod questionPeriod(String question) {
+        if (question == null || question.isBlank()) return QuestionPeriod.NONE;
+        String key = QuestionNormalizer.key(question);
+        if (key.contains("부터") || key.contains("까지")) {
+            var range = com.openstudy.domainlens.query.CalendarPeriod.months(question, OpenStudyClock.KST);
+            return range == null ? QuestionPeriod.NONE : new QuestionPeriod(
+                    range.startInclusive().atZone(OpenStudyClock.KST).toLocalDate(),
+                    range.endExclusive().atZone(OpenStudyClock.KST).toLocalDate(), false);
+        }
+        var found = periods(key);
+        if (found == null || found.isEmpty()) return QuestionPeriod.NONE;
+        if (found.size() > 1) return new QuestionPeriod(null, null, true);
+        return new QuestionPeriod(found.getFirst()[0], found.getFirst()[1], false);
+    }
+
+    /** Every period phrase in the question, or null when one is out of range ("최근 900일"). */
+    private List<LocalDate[]> periods(String key) {
         LocalDate today = clock.todayDateKst();
         var found = new ArrayList<LocalDate[]>();
         if (key.contains("오늘")) found.add(days(today, today.plusDays(1)));
@@ -111,7 +145,7 @@ public class OpenStudyIntentAnalyzer implements QueryIntent.Analyzer {
         var recent = RECENT_DAYS.matcher(key);
         while (recent.find()) {
             int n = Integer.parseInt(recent.group(1));
-            if (n < 1 || n > OpenStudyPlaybackGateway.MAX_DATE_RANGE_DAYS) return Optional.empty();
+            if (n < 1 || n > OpenStudyPlaybackGateway.MAX_DATE_RANGE_DAYS) return null;
             found.add(days(today.minusDays(n - 1L), today.plusDays(1)));
         }
         var named = NAMED_MONTH.matcher(key);
@@ -119,9 +153,7 @@ public class OpenStudyIntentAnalyzer implements QueryIntent.Analyzer {
             var ym = YearMonth.of(Integer.parseInt(named.group(1)), Integer.parseInt(named.group(2)));
             found.add(days(ym.atDay(1), ym.plusMonths(1).atDay(1)));
         }
-        if (found.size() != 1) return Optional.empty();
-        var zone = OpenStudyClock.KST;
-        return Optional.of(new Range(found.getFirst()[0].atStartOfDay(zone).toInstant(), found.getFirst()[1].atStartOfDay(zone).toInstant()));
+        return found;
     }
 
     private static LocalDate[] days(LocalDate startInclusive, LocalDate endExclusive) {

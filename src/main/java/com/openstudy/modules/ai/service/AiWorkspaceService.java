@@ -140,6 +140,7 @@ public class AiWorkspaceService {
     private final AiReadiness readinessCheck;
     private final com.openstudy.common.audit.AuditTrail audit;
     private final AiGenerationService generation;
+    private final OpenStudyIntentAnalyzer intents;
 
     public AiWorkspaceService(
             OpenStudyUserContextResolver userResolver,
@@ -156,8 +157,10 @@ public class AiWorkspaceService {
             ObjectMapper json,
             AiReadiness readinessCheck,
             com.openstudy.common.audit.AuditTrail audit,
-            AiGenerationService generation
+            AiGenerationService generation,
+            OpenStudyIntentAnalyzer intents
     ) {
+        this.intents = intents;
         this.generation = generation;
         this.audit = audit;
         this.readinessCheck = readinessCheck;
@@ -615,6 +618,33 @@ public class AiWorkspaceService {
         }
         securityGate.put("authorizedBranches", targetBranches);
 
+        // 2026-11-13: a period the question names replaces the analysis default and an inherited period.
+        var asked = askedPeriod(plan.analysisId(), rawQuestion);
+        if (asked != null && asked.period() == null) {
+            stages.add(new StageSpan("validating", "권한·스코프·예산 가드레일 검증", "CLARIFICATION", 1L, asked.message()));
+            long totalMs = Math.max(1L, Duration.ofNanos(System.nanoTime() - startNanos).toMillis());
+            persistExecutionAndTrace(
+                    executionId, requestId, traceId, convId, actor, scope, Set.of(),
+                    rawQuestion == null ? "" : rawQuestion,
+                    null, plan.analysisId(), plan.intentDomain(),
+                    "CLARIFICATION", "CLARIFICATION", asked.code(),
+                    null, null,
+                    totalMs, stages, plan.retrievedCandidates(), securityGate, now,
+                    plan.refundBasisOverride(), plan.zeroFillOverrideRequested(), clientKey
+            );
+            return new AiQueryResponse(requestId, executionId, convId, traceId, "CLARIFICATION", 200, asked.code(),
+                    "CLARIFICATION", "QUESTION", asked.message(), null, plan.analysisId(), plan.intentDomain(), null, null, null,
+                    null, Map.of(), plan.truncation(), List.of(), stages, plan.retrievedCandidates(), securityGate);
+        }
+        OpenStudyClock.KstPeriod period = asked != null ? asked.period() : inheritedPeriod;
+        if (asked != null && basis != null) {
+            @SuppressWarnings("unchecked") var inherited = (List<String>) context.get("inherited");
+            @SuppressWarnings("unchecked") var changed = (List<String>) context.get("changed");
+            inherited.remove("PERIOD");
+            if (!changed.contains("PERIOD")) changed.add("PERIOD");
+        }
+        if (period != null) securityGate.put("period", period.startDateKst() + "~" + period.endDateExclusiveKst().minusDays(1));
+
         // A one-branch analysis over several branches asks which branch, offering only branches already in scope.
         if (OpenStudyAnalyses.SINGLE_BRANCH.contains(plan.analysisId()) && targetBranches.size() > 1) {
             var options = targetBranches.stream().sorted()
@@ -658,7 +688,7 @@ public class AiWorkspaceService {
                 targetBranches,
                 refundBasis,
                 zeroFill,
-                inheritedPeriod,
+                period,
                 inheritedProducts
         );
         long execMs = Math.max(2L, Duration.ofNanos(System.nanoTime() - execStart).toMillis());
@@ -678,8 +708,9 @@ public class AiWorkspaceService {
                 totalMs, stages, plan.retrievedCandidates(), securityGate, now,
                 refundBasis, zeroFill, clientKey
         );
-        if (inheritedPeriod != null || !inheritedProducts.isEmpty()) {
-            saved.keeps(basis.getPeriodFrom(), basis.getPeriodTo(),
+        if (period != null || !inheritedProducts.isEmpty()) {
+            saved.keeps(period == null ? null : period.startDateKst(),
+                    period == null ? null : period.endDateExclusiveKst().minusDays(1),
                     inheritedProducts.isEmpty() ? null : OpenStudyUserContextResolver.toCsv(inheritedProducts));
         }
 
@@ -815,6 +846,35 @@ public class AiWorkspaceService {
         } catch (com.openstudy.domainlens.api.error.EngineException e) {
             throw ApiException.unprocessable("REOPEN_NOT_EXECUTABLE", "저장된 조회를 지금 다시 실행할 수 없어요. 다시 질문해 주세요.");
         }
+    }
+
+    /** A period the question names for a registered analysis, or why it needs asking again (period null). */
+    private record AskedPeriod(OpenStudyClock.KstPeriod period, String code, String message) {}
+
+    /**
+     * 2026-11-13 (replaces M10-D14's reading that a registered analysis never reads a period from the question):
+     * "지난달 지점별 매출" runs the analysis over last month. Null when the question names no period, the analysis has
+     * no period ("지금 빈자리"), or the words mean the analysis default ("이번 달" for this month to date). The limit is
+     * the analysis's own refinement limit (AiReuse.editable).
+     */
+    private AskedPeriod askedPeriod(String analysisId, String question) {
+        var editable = AiReuse.editable(analysisId);
+        var defaultPeriod = analysisId == null ? null : analyses.defaultPeriod(analysisId);
+        if (editable.maxDays() == null || defaultPeriod == null) return null;
+        var asked = intents.questionPeriod(question);
+        if (asked.ambiguous()) {
+            return new AskedPeriod(null, "PERIOD_AMBIGUOUS", "기간을 하나로 정해 다시 질문해 주세요. 예: 이번 달, 지난달, 2026년 10월");
+        }
+        if (!asked.resolved()) return null;
+        long days = java.time.temporal.ChronoUnit.DAYS.between(asked.from(), asked.toExclusive());
+        if (days > editable.maxDays()) {
+            return new AskedPeriod(null, "PERIOD_TOO_LONG",
+                    "이 분석은 기간을 최대 " + editable.maxDays() + "일까지 볼 수 있어요. 기간을 좁혀 다시 질문해 주세요.");
+        }
+        if (asked.from().equals(defaultPeriod.startDateKst()) && !defaultPeriod.endDateExclusiveKst().isAfter(asked.toExclusive())) {
+            return null;
+        }
+        return new AskedPeriod(clock.fromDates("QUESTION", asked.from(), asked.toExclusive()), null, null);
     }
 
     /** #126: whether the previous result's branches are all still allowed; a follow-up never relies on old permissions. */
@@ -1333,6 +1393,20 @@ public class AiWorkspaceService {
 
     /** #125: {@code periodOverride} and {@code products} are a refinement's conditions; null and empty keep the defaults. */
     private OpenStudyAnalyses.PocExecutionResult executeWithOverrides(
+            long requester,
+            String analysisId,
+            Set<Long> targetBranches,
+            String refundBasisOverride,
+            boolean zeroFillOverrideRequested,
+            OpenStudyClock.KstPeriod periodOverride,
+            Set<Long> products
+    ) {
+        var result = executeAnalysis(requester, analysisId, targetBranches, refundBasisOverride, zeroFillOverrideRequested,
+                periodOverride, products);
+        return periodOverride == null ? result : AiPeriodTitles.retitle(result, periodOverride);
+    }
+
+    private OpenStudyAnalyses.PocExecutionResult executeAnalysis(
             long requester,
             String analysisId,
             Set<Long> targetBranches,
