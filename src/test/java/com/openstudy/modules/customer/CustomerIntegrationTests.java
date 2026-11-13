@@ -320,11 +320,38 @@ class CustomerIntegrationTests {
             assertThat(fields).containsExactlyInAnyOrder("id", "memberNo", "name", "phone", "status", "registeredBranchId", "registeredAt");
 
             assertThat(call(r, "GET", "/api/customers?pageSize=101", null).statusCode()).isEqualTo(422);
-            assertThat(call(r, "GET", "/api/customers?sort=phone", null).statusCode()).isEqualTo(422);
+            assertThat(call(r, "GET", "/api/customers?sort=email", null).statusCode()).isEqualTo(422);
             assertThat(call(r, "GET", "/api/customers?status=VIP", null).statusCode()).isEqualTo(422);
             var paged = node(call(r, "GET", "/api/customers?pageSize=1&sort=name&direction=asc", null));
             assertThat(paged.get("items")).hasSize(1);
             assertThat(paged.at("/meta/total").asLong()).isEqualTo(2);
+        }
+    }
+
+    @Test void sortsAdditionalColumnsBeforePaginationInBothDirections() throws Exception {
+        long a = register(first, "정렬 가", "01090001111");
+        long b = register(second, "정렬 나", "01010001111");
+        long c = legacy("정렬 다");
+        jdbc.update("UPDATE branches SET name='Z 지점' WHERE id=?", first);
+        jdbc.update("UPDATE branches SET name='A 지점' WHERE id=?", second);
+        jdbc.update("UPDATE customers SET member_no='SORT-B', status='INACTIVE' WHERE id=?", a);
+        jdbc.update("UPDATE customers SET member_no='SORT-A', status='RESTRICTED' WHERE id=?", b);
+        jdbc.update("UPDATE customers SET member_no='SORT-C' WHERE id=?", c);
+        Map<String, List<Long>> ascending = Map.of(
+                "memberNo", List.of(b, a, c), "phone", List.of(c, b, a),
+                "status", List.of(c, b, a), "registeredBranch", List.of(c, b, a));
+        try (var reader = login(owner)) {
+            for (var entry : ascending.entrySet()) {
+                String path = "/api/customers?q=" + enc("정렬") + "&pageSize=1&sort=" + entry.getKey();
+                for (int index = 0; index < 3; index++) {
+                    String page = "&page=" + (index + 1);
+                    var asc = node(call(reader, "GET", path + page + "&direction=asc", null));
+                    var desc = node(call(reader, "GET", path + page + "&direction=desc", null));
+                    assertThat(asc.at("/meta/total").asLong()).isEqualTo(3);
+                    assertThat(asc.at("/items/0/id").asString()).isEqualTo(entry.getValue().get(index).toString());
+                    assertThat(desc.at("/items/0/id").asString()).isEqualTo(entry.getValue().get(2 - index).toString());
+                }
+            }
         }
     }
 

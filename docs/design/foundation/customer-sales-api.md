@@ -8,7 +8,7 @@ Backend [#55](https://github.com/OpenStudyService/OpenStudy-Backend/issues/55)�
 
 | API | 권한 | 동작 |
 | --- | --- | --- |
-| `GET /customers` | 대상 지점의 유효 소속 | 고객 목록·검색(q·status, 정렬 registeredAt/name) |
+| `GET /customers` | 대상 지점의 유효 소속 | 고객 목록·검색(q·status), 등록일·이름·회원번호·연락처·상태·등록 지점 이름 정렬 |
 | `POST /customers` | `registeredBranchId` 지점의 `members:write` | 고객 등록. `Idempotency-Key` 필수 |
 | `GET /customers/{id}` | 대상 지점의 유효 소속 | 고객 상세 |
 | `PATCH /customers/{id}` | 조회 범위를 만드는 지점 중 하나의 `members:write` | 이름·연락처·이메일·메모 수정 |
