@@ -86,6 +86,10 @@ class AiGenerationPathIntegrationTests extends AiTestSupport {
             assertThat(body.at("/querySpec/metrics/0/field").asString()).isEqualTo(METRIC);
             assertThat(body.at("/querySpec/mode").asString()).isEqualTo("AGGREGATE");
             assertThat(body.at("/viewSpec/components/0/componentRef/id").asString()).isNotBlank();
+            // AiContext contract: a generated answer builds on no earlier result, so its lists are present and empty.
+            assertThat(body.at("/context/inherited").isArray()).as(body.toString()).isTrue();
+            assertThat(body.at("/context/changed").isArray()).isTrue();
+            assertThat(body.at("/context/reset").asBoolean()).isFalse();
             var sums = sums(body.at("/envelope/datasets/0/rows"));
             assertThat(sums).containsEntry(name(first), approvedThisMonth(first)).containsEntry(name(second), approvedThisMonth(second));
             assertThat(modelCalls).hasValue(1);

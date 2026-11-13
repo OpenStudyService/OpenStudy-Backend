@@ -785,7 +785,8 @@ public class AiWorkspaceService {
                 completed.queries().size() == 1 ? completed.queries().getFirst() : completed.queries(),
                 completed.envelope().view(), completed.envelope(), Map.of(),
                 OpenStudyPlaybackGateway.TruncationInfo.defaultUntruncated(), List.of(), stages, plan.retrievedCandidates(),
-                securityGate, conditionsOf(saved).toMap(), Map.of(), AiReuse.editable(null).toMap()));
+                securityGate, conditionsOf(saved).toMap(), AiReuse.resetContext("NO_PRIOR_RESULT"),
+                AiReuse.editable(null).toMap()));
     }
 
     /** #233: the queries a generated result saved, to run again without the model. */
