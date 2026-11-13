@@ -45,7 +45,7 @@ public class Branch {
     @SemanticField(id = "branch.code", name = "지점 코드", role = "CODE", aliases = {"OSDEMO-GN", "OSDEMO-SS", "OSDEMO-NW"}, allowedOps = {"EQ", "NE", "IN"})
     private String code;
     @Column(nullable = false, length = 120)
-    @SemanticField(id = "branch.name", name = "지점명", role = "LABEL", aliases = {"지점 이름", "매장명", "강남점", "성수점", "신규점"}, allowedOps = {"EQ", "NE", "IN"})
+    @SemanticField(id = "branch.name", name = "지점명", role = "LABEL", aliases = {"지점", "지점별", "지점 이름", "매장명", "강남점", "성수점", "신규점"}, allowedOps = {"EQ", "NE", "IN"})
     private String name;
     @Column(nullable = false, length = 300)
     private String address;

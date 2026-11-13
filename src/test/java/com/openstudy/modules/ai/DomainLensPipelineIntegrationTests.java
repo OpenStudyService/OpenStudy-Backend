@@ -94,6 +94,68 @@ class DomainLensPipelineIntegrationTests extends AiTestSupport {
     }
 
     /**
+     * Replays the semantic plan qwen3.8-flash returned on 2026-11-13 for "이번 달 지점별 매출 합계 보여줘": net sales by
+     * branch.name with the model's own this-month range. The server does not accept a relative period the model
+     * computed; only an explicit "YYYY년 M월부터 …까지" or a period resolved by a consumer intent analyzer grounds it,
+     * and OpenStudy has no analyzer yet (#232 stage 1). So the request stops at the period check.
+     */
+    @Test
+    @EnabledIf("com.openstudy.domainlens.LocalAiFixtures#modelInstalled")
+    void recordedLivePlanStopsAtTheRelativePeriodUntilAnIntentAnalyzerResolvesIt() throws Exception {
+        var outcome = pipelines.create(replay(livePlan())).run("이번 달 지점별 매출 합계 보여줘", user(owner, Set.of(first, second)), new Cancellation(), pipelines.retrieval());
+
+        assertThat(outcome.ir().status()).isEqualTo(IrStatus.UNSUPPORTED);
+        assertThat(outcome.ir().unsupportedReason()).isEqualTo("요청한 필터 조건과 기간의 근거를 검증하지 못했습니다.");
+        assertThat(outcome.plans()).isEmpty();
+    }
+
+    /** The same model plan without the period: metric and dimension are grounded by catalog labels and it executes. */
+    @Test
+    @EnabledIf("com.openstudy.domainlens.LocalAiFixtures#modelInstalled")
+    void recordedLivePlanWithoutAPeriodRunsAndMatchesTheDatabase() throws Exception {
+        var live = livePlan();
+        var request = live.requests().getFirst();
+        var unfiltered = new com.openstudy.domainlens.api.planning.SemanticPlan.Request(request.kind(), request.source(), request.analysisId(),
+                request.metrics(), request.dimensions(), null, request.order(), request.page(), request.size(), request.limit(), request.total(),
+                request.presentations(), request.evidence().stream().filter(e -> !e.slot().equals("filter")).map(e ->
+                        new com.openstudy.domainlens.api.planning.SemanticPlan.Evidence(e.slot(), e.origin(), "지점별 매출 합계 보여줘")).toList(),
+                request.formulas());
+        var plan = new com.openstudy.domainlens.api.planning.SemanticPlan(live.version(), live.status(), live.reason(), live.options(),
+                List.of(unfiltered), live.unresolved(), live.reasonCode());
+
+        var outcome = pipelines.create(replay(plan)).run("지점별 매출 합계 보여줘", user(owner, Set.of(first, second)), new Cancellation(), pipelines.retrieval());
+
+        assertThat(outcome.ir().status()).as(com.openstudy.domainlens.api.ir.ContractJson.write(outcome.ir())).isEqualTo(IrStatus.READY);
+        var rows = outcome.result().datasets().getFirst().rows();
+        var byName = new java.util.HashMap<String, Long>();
+        for (var row : rows) {
+            var values = new ArrayList<>(row.values());
+            byName.put(values.get(0).toString(), ((Number) values.get(1)).longValue());
+        }
+        assertThat(byName).containsEntry(branchName(first), rawAmountSum(first)).containsEntry(branchName(second), rawAmountSum(second));
+    }
+
+    com.openstudy.domainlens.api.planning.SemanticPlan livePlan() throws java.io.IOException {
+        var json = new String(getClass().getResourceAsStream("/domainlens/live-plan-branch-sales.json").readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        return com.openstudy.domainlens.api.ir.ContractJson.read(json, com.openstudy.domainlens.api.planning.SemanticPlan.class);
+    }
+
+    static ModelGateway replay(com.openstudy.domainlens.api.planning.SemanticPlan plan) {
+        return new ModelGateway() {
+            @Override public boolean supportsPlanning() { return true; }
+            @Override public com.openstudy.domainlens.api.planning.SemanticPlan plan(com.openstudy.domainlens.api.planning.PlanningPrompt prompt,
+                    com.openstudy.domainlens.api.prompt.GenerationBudget budget, com.openstudy.domainlens.api.planning.SemanticPlan previous, String failure) {
+                return plan;
+            }
+            @Override public IrDocument generate(String ask, List<String> refs) { throw new AssertionError("planning only"); }
+        };
+    }
+
+    String branchName(long branch) {
+        return jdbc.queryForObject("SELECT name FROM branches WHERE id=?", String.class, branch);
+    }
+
+    /**
      * One live Qwen round trip through the same pipeline, opt-in only (OPENSTUDY_AI_LIVE_TESTS=true with QWEN_API_KEY,
      * QWEN_BASE_URL and QWEN_MODEL set): it spends tokens on the configured account. Both model output styles run
      * (direct IR and a semantic plan compiled by the server); the generated IR and outcome are written to
