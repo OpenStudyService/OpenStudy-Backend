@@ -288,8 +288,68 @@ public class OpenStudyCatalogConfiguration {
                         "분",
                         0,
                         Set.of("attendance_record.clock_in_at", "attendance_record.clock_out_at", "attendance_record.status", "employee.name", "branch.name")
+                ),
+                // #232: general metrics for the generation path. They are not tied to a registered analysis, so the
+                // model may combine them with dimensions and periods; the server runs them as a JPA aggregate.
+                new SemanticRegistry.Metric(
+                        "sales.approved_amount_krw",
+                        GENERAL_METRIC_PREFIX + "sales.approvedAmount",
+                        "payment",
+                        "payment",
+                        SemanticRegistry.Aggregate.SUM,
+                        "payment.amount_krw",
+                        List.of(),
+                        APPROVED_PAYMENT,
+                        METRIC_VERSION,
+                        "KRW",
+                        0,
+                        Set.of("payment.status", "payment.paid_at")
+                ),
+                new SemanticRegistry.Metric(
+                        "sales.approved_count",
+                        GENERAL_METRIC_PREFIX + "sales.approvedCount",
+                        "payment",
+                        "payment",
+                        SemanticRegistry.Aggregate.COUNT,
+                        "payment.id",
+                        List.of(),
+                        APPROVED_PAYMENT,
+                        METRIC_VERSION,
+                        "건",
+                        0,
+                        Set.of("payment.status", "payment.paid_at")
+                ),
+                new SemanticRegistry.Metric(
+                        "passes.issued_count",
+                        GENERAL_METRIC_PREFIX + "passes.issuedCount",
+                        "pass",
+                        "pass",
+                        SemanticRegistry.Aggregate.COUNT,
+                        "pass.id",
+                        List.of(),
+                        null,
+                        METRIC_VERSION,
+                        "건",
+                        0,
+                        Set.of("pass.issued_at")
                 )
         );
+    }
+
+    /** Implementation ids of general metrics; every other metric belongs to a registered analysis. */
+    public static final String GENERAL_METRIC_PREFIX = "openstudy.metric.";
+    /** A payment counts as sales once it is approved; pending and failed payments never do. */
+    static final com.openstudy.domainlens.api.ir.Filter APPROVED_PAYMENT =
+            new com.openstudy.domainlens.api.ir.Filter.Leaf("payment.status", com.openstudy.domainlens.api.ir.Filter.Operator.EQ, List.of("APPROVED"));
+    /** The time field a resolved period ("이번 달") constrains for each general metric. */
+    public static final Map<String, String> PERIOD_FIELDS = Map.of(
+            "sales.approved_amount_krw", "payment.paid_at",
+            "sales.approved_count", "payment.paid_at",
+            "passes.issued_count", "pass.issued_at"
+    );
+
+    public static boolean general(SemanticRegistry.Metric metric) {
+        return metric.implementationRef().startsWith(GENERAL_METRIC_PREFIX);
     }
 
     public static List<MetricImpl> metricImplementations() {
@@ -353,6 +413,23 @@ public class OpenStudyCatalogConfiguration {
                         "openstudy.term.weeklyAttendance",
                         "attendance.weekly_work_minutes",
                         List.of("직원별 근무시간", "지난주 근무시간", "출퇴근 시간 비교", "지난주 직원별 근무시간을 비교해줘")
+                ),
+                // #232: general metrics. "매출" alone stays with the registered net sales analysis, so these names
+                // say what they count: approved payment amounts, not refund-adjusted sales.
+                new SemanticRegistry.Term(
+                        "openstudy.term.approvedAmount",
+                        "sales.approved_amount_krw",
+                        List.of("결제 금액", "결제액", "결제 승인액", "승인 금액", "승인된 결제 금액")
+                ),
+                new SemanticRegistry.Term(
+                        "openstudy.term.approvedCount",
+                        "sales.approved_count",
+                        List.of("결제 건수", "결제 수", "승인 건수", "승인된 결제 건수")
+                ),
+                new SemanticRegistry.Term(
+                        "openstudy.term.issuedPasses",
+                        "passes.issued_count",
+                        List.of("이용권 발급 수", "이용권 발급 건수", "발급된 이용권 수", "발급 건수")
                 )
         );
     }

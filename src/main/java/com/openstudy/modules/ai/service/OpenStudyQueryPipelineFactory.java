@@ -40,6 +40,7 @@ public class OpenStudyQueryPipelineFactory {
     private final OpenStudyAnalyses analyses;
     private final Retriever retriever;
     private final EmbeddingIndex embeddingIndex;
+    private final OpenStudyIntentAnalyzer intents;
 
     /** The pipeline over a fresh, activated catalog snapshot. */
     public QueryPipeline create(ModelGateway gateway) {
@@ -48,7 +49,8 @@ public class OpenStudyQueryPipelineFactory {
         var executor = new JpaQueryExecutor(entityManagerFactory, registry, policies, validator);
         var binder = new ViewBinder(ComponentCatalog.openStudyDefault());
         return new QueryPipeline(gateway, validator, planner, executor, binder, clock, registry,
-                OpenStudyPolicies.POLICY_VERSION, activate(binder), PromptExamples.empty(), PromptLimits.defaults());
+                OpenStudyPolicies.POLICY_VERSION, activate(binder), PromptExamples.empty(), PromptLimits.defaults())
+                .grounding(intents);
     }
 
     /** Permission-first semantic retrieval feeding the pipeline's prompt context. */

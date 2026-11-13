@@ -404,13 +404,15 @@ public final class PlanCompiler {
         }
         return !leaves.isEmpty() && leaves.stream().allMatch(l->operatorProof(l,proof.get().quote()) && labels(l.field(),prompt).stream().anyMatch(label->contains(proof.get().quote(),label)) && l.values().stream().allMatch(v->proof.get().quote().contains(v.toString())));
     }
+    /** The same instant written with an offset (+09:00) or in UTC (Z) is the same bound. */
+    private static Object instant(Object value){if(!(value instanceof String text))return value;try{return java.time.OffsetDateTime.parse(text).toInstant().toString();}catch(java.time.DateTimeException notTimestamp){return value;}}
     private static boolean sameConjunction(Filter actual,Filter expected) {
         var left=new ArrayList<String>();var right=new ArrayList<String>();
         if(!conjunction(actual,left) || !conjunction(expected,right))return false;
         Collections.sort(left);Collections.sort(right);return left.equals(right);
     }
     private static boolean conjunction(Filter filter,List<String> leaves) {
-        if(filter instanceof Filter.Leaf leaf){leaves.add(ContractJson.canonical(leaf));return true;}
+        if(filter instanceof Filter.Leaf leaf){leaves.add(ContractJson.canonical(new Filter.Leaf(leaf.field(),leaf.operator(),leaf.values().stream().map(PlanCompiler::instant).toList())));return true;}
         return filter instanceof Filter.Group group && group.junction()==Filter.Junction.AND && !group.children().isEmpty() && group.children().stream().allMatch(child->conjunction(child,leaves));
     }
     private static boolean operatorProof(Filter.Leaf leaf,String quote){return matches(quote,switch(leaf.operator()) {

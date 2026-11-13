@@ -30,8 +30,8 @@ public class OpenStudyClock implements ClockPort {
     public static final ZoneId KST = ZoneId.of("Asia/Seoul");
     public static final Instant DEFAULT_AS_OF = Instant.parse("2026-11-02T05:00:00Z");
     public static final DateNormalizer.Range VALID_DATA_RANGE = new DateNormalizer.Range(
-            Instant.parse("2026-01-01T00:00:00Z"),
-            Instant.parse("2027-01-01T00:00:00Z")
+            Instant.parse("2020-01-01T00:00:00Z"), // #232: was the PoC fixture year 2026
+            Instant.parse("2100-01-01T00:00:00Z")
     );
 
     private final Instant fixedAsOf;

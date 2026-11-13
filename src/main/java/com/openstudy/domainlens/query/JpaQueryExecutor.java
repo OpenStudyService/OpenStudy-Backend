@@ -102,6 +102,7 @@ public final class JpaQueryExecutor implements QueryExecutor, ExportExecutor {
         }
     }
     private static void bind(Query query,Map<String,Object> bindings){bindings.forEach(query::setParameter);}
+    @SuppressWarnings({"unchecked","rawtypes"}) private static Object enumConstant(Class<?> type,String name){try{return Enum.valueOf((Class<? extends Enum>)type,name);}catch(IllegalArgumentException unknown){throw new EngineException(EngineErrorCode.IR_INVALID,"Filter value outside allowlist");}}
     private Path<?> path(SemanticRegistry.Field f,Map<String,From<?,?>> from) {
         Path<?> path=from.get(f.source());String[] parts=f.path().split("\\.");String source=f.source();
         for(String part:parts){String id=source;var rel=registry.relations().values().stream().filter(r->r.source().equals(id)&&r.path().equals(part)).findFirst();
@@ -120,6 +121,10 @@ public final class JpaQueryExecutor implements QueryExecutor, ExportExecutor {
         if(leaf.operator()==Filter.Operator.IS_NULL)return cb.isNull(path);
         var parameters=new ArrayList<ParameterExpression<?>>();for(Object value:leaf.values()) {
             Object typed=IrValidator.value(field.type(),value);if(path.getJavaType()==Integer.class && typed instanceof Long number)typed=Math.toIntExact(number);
+            // TIMESTAMP values are UTC wall times; an entity mapped to Instant binds the instant itself.
+            if(path.getJavaType()==java.time.Instant.class && typed instanceof java.time.LocalDateTime utc)typed=utc.toInstant(java.time.ZoneOffset.UTC);
+            // STRING values of an enum-mapped attribute (payment.status) bind as that enum constant.
+            if(path.getJavaType()!=null && path.getJavaType().isEnum() && typed instanceof String name)typed=enumConstant(path.getJavaType(),name);
             if(path.getJavaType()==Short.class && typed instanceof Long number){if(number<Short.MIN_VALUE || number>Short.MAX_VALUE)throw new EngineException(EngineErrorCode.IR_INVALID,"Integer overflow");typed=number.shortValue();}
             String name="p"+bindings.size();bindings.put(name,typed);parameters.add(cb.parameter(path.getJavaType(),name));
         }

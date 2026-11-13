@@ -45,7 +45,12 @@ public class AiReadiness {
         var reasons = new ArrayList<String>();
         var linked = new HashSet<String>();
         registry.metrics().values().forEach(metric -> {
-            if (!offered.test(metric.implementationRef())) {
+            // #232: a general metric runs as a validated JPA aggregate (generation path), not through an analysis.
+            if (OpenStudyCatalogConfiguration.general(metric)) {
+                if (!OpenStudyCatalogConfiguration.PERIOD_FIELDS.containsKey(metric.id())) {
+                    reasons.add("일반 지표 " + metric.id() + "의 기간 기준 항목이 없습니다.");
+                }
+            } else if (!offered.test(metric.implementationRef())) {
                 reasons.add("지표 " + metric.id() + "가 등록 분석과 연결되지 않았습니다.");
             } else {
                 linked.add(metric.implementationRef());
