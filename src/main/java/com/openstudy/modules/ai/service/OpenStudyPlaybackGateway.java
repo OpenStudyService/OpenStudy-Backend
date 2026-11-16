@@ -113,8 +113,32 @@ public class OpenStudyPlaybackGateway {
             List<ClarificationOption> clarificationOptions,
             List<RetrievalCandidate> retrievedCandidates,
             long llmDurationMs,
-            int totalTokens
+            int totalTokens,
+            boolean planCached
     ) {
+        /** A decision whose analysis was not taken from the plan cache. */
+        public PlanDecision(
+                String outcome,
+                int httpStatus,
+                String errorCode,
+                String resultCategory,
+                String behavior,
+                String message,
+                String analysisId,
+                String intentDomain,
+                String refundBasisOverride,
+                boolean zeroFillOverrideRequested,
+                TruncationInfo truncation,
+                List<ClarificationOption> clarificationOptions,
+                List<RetrievalCandidate> retrievedCandidates,
+                long llmDurationMs,
+                int totalTokens
+        ) {
+            this(outcome, httpStatus, errorCode, resultCategory, behavior, message, analysisId, intentDomain,
+                    refundBasisOverride, zeroFillOverrideRequested, truncation, clarificationOptions, retrievedCandidates,
+                    llmDurationMs, totalTokens, false);
+        }
+
         public PlanDecision(
                 String outcome,
                 int httpStatus,
@@ -166,6 +190,7 @@ public class OpenStudyPlaybackGateway {
     private final ConcurrentHashMap<Long, Deque<Long>> requestTimestampsByUser = new ConcurrentHashMap<>();
     private volatile ModelGateway liveGateway;
     private final OpenStudyUserContextResolver userResolver;
+    private final AiPlanCache planCache;
 
     public OpenStudyPlaybackGateway(
             SemanticRegistry registry,
@@ -175,6 +200,7 @@ public class OpenStudyPlaybackGateway {
             OpenStudyUserContextResolver userResolver,
             DomainLensProperties properties,
             OpenStudyIntentAnalyzer intents,
+            AiPlanCache planCache,
             @Value("${openstudy.ai.model-mode:playback}") String modelMode,
             @Value("${openstudy.ai.rate-limit.max-concurrent:10}") int maxConcurrentPerUser,
             @Value("${openstudy.ai.rate-limit.max-per-minute:120}") int maxRequestsPerMinute
@@ -186,6 +212,7 @@ public class OpenStudyPlaybackGateway {
         this.userResolver = userResolver;
         this.properties = properties;
         this.intents = intents;
+        this.planCache = planCache;
         this.modelMode = modelMode == null ? "playback" : modelMode.trim().toLowerCase(Locale.ROOT);
         this.maxConcurrentPerUser = maxConcurrentPerUser;
         this.maxRequestsPerMinute = maxRequestsPerMinute;
@@ -739,11 +766,34 @@ public class OpenStudyPlaybackGateway {
         String keywordAnalysisId = generationFirst ? null : resolveAnalysisId(q);
         boolean generalMetric = generationFirst || followUpAnalysisId == null && keywordAnalysisId == null
                 && !intents.analyze(q, null).metrics().isEmpty();
+        boolean planCached = false;
         if ("live".equals(activeMode()) && !generalMetric) {
-            llmResult = callLiveQwenPlanner(q, requestedScope, candidates, previousConditions);
-            if (llmResult != null) {
-                llmDurationMs = llmResult.durationMs();
-                totalTokens = llmResult.totalTokens();
+            // 2026-11-16: a first question (no follow-up, no choice) the model already mapped is answered from the plan
+            // cache; the model's pick is all that is kept, the server reads the rest of the question again below.
+            boolean cacheable = previousConditions == null && clarificationChoice == null && followUpAnalysisId == null;
+            String cacheQuestion = userResolver.withoutBranchNames(q);
+            String cacheVersion = planCache.versionKey(AiPlanCache.Kind.REGISTERED_PICK, activeModelName(),
+                    Integer.toHexString(LIVE_QWEN_SYSTEM_PROMPT.hashCode()));
+            var cached = cacheable
+                    ? planCache.find(AiPlanCache.Kind.REGISTERED_PICK, cacheVersion, cacheQuestion)
+                            .filter(hit -> hit.analysisId() != null && analyses.definition(hit.analysisId()).isPresent())
+                    : Optional.<AiPlanCache.Hit>empty();
+            if (cached.isPresent()) {
+                var hit = cached.get();
+                llmResult = new LiveLlmPlanResult("EXECUTE", hit.analysisId(), hit.intentDomain(), hit.refundBasisOverride(),
+                        hit.zeroFillOverride(), null, 0L, 0);
+                planCached = true;
+            } else {
+                llmResult = callLiveQwenPlanner(q, requestedScope, candidates, previousConditions);
+                if (llmResult != null) {
+                    llmDurationMs = llmResult.durationMs();
+                    totalTokens = llmResult.totalTokens();
+                    if (cacheable && "EXECUTE".equalsIgnoreCase(llmResult.outcome()) && llmResult.analysisId() != null
+                            && analyses.definition(llmResult.analysisId()).isPresent()) {
+                        planCache.storePick(cacheVersion, cacheQuestion, llmResult.analysisId(), llmResult.intentDomain(),
+                                llmResult.refundBasisOverride(), llmResult.zeroFillOverrideRequested());
+                    }
+                }
             }
         }
 
@@ -884,7 +934,8 @@ public class OpenStudyPlaybackGateway {
                 List.of(),
                 candidates,
                 llmDurationMs,
-                totalTokens
+                totalTokens,
+                planCached && resolvedAnalysisId.equals(llmResult.analysisId())
         );
     }
 

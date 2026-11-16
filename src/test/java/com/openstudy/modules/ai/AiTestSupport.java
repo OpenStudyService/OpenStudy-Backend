@@ -41,6 +41,8 @@ abstract class AiTestSupport {
     final List<Long> people = new ArrayList<>(), branches = new ArrayList<>(), customers = new ArrayList<>();
 
     @AfterEach void cleanAi() {
+        // The plan cache is shared by everyone: each test starts without plans another test left (2026-11-16).
+        jdbc.update("DELETE FROM ai_plan_cache");
         for (long id : customers) {
             jdbc.update("DELETE FROM customer_status_events WHERE customer_id=?", id);
             jdbc.update("DELETE FROM customers WHERE id=?", id);
