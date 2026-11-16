@@ -36,6 +36,22 @@ class AiQuestionPeriodUnitTests {
         assertThat(range.toExclusive()).isEqualTo(LocalDate.of(2026, 11, 1));
     }
 
+    @Test void aMonthWithoutAYearIsTheLatestSuchMonth() {
+        // #97: "11월에" was read as no period, so the analysis silently used its default (this month).
+        var november = analyzer.questionPeriod("11월에 지점마다 순매출이 얼마였는지 정리해줘");
+        assertThat(november.from()).isEqualTo(LocalDate.of(2026, 11, 1));
+        assertThat(november.toExclusive()).isEqualTo(LocalDate.of(2026, 12, 1));
+        var october = analyzer.questionPeriod("10월 지점별 매출");
+        assertThat(october.from()).isEqualTo(LocalDate.of(2026, 10, 1));
+        // A month after the current one is last year's.
+        assertThat(analyzer.questionPeriod("12월 지점별 매출").from()).isEqualTo(LocalDate.of(2025, 12, 1));
+        // Read once with its year; not a day, not a span.
+        assertThat(analyzer.questionPeriod("2026년 9월 지점별 매출").from()).isEqualTo(LocalDate.of(2026, 9, 1));
+        assertThat(analyzer.questionPeriod("2026년 9월 지점별 매출").ambiguous()).isFalse();
+        assertThat(analyzer.questionPeriod("11월 3일 매출").resolved()).isFalse();
+        assertThat(analyzer.questionPeriod("최근 3개월 매출").resolved()).isFalse();
+    }
+
     @Test void noneOrSeveralPeriods() {
         assertThat(analyzer.questionPeriod("지점별 매출을 비교해줘").resolved()).isFalse();
         assertThat(analyzer.questionPeriod("지점별 매출을 비교해줘").ambiguous()).isFalse();

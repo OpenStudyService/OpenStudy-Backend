@@ -67,6 +67,8 @@ class DomainLensPipelineIntegrationTests extends AiTestSupport {
         pay(customer, first, 12_000, "APPROVED", now);
         pay(customer, second, 50_000, "APPROVED", now);
         pay(customer, second, 99_000, "FAILED", now);
+        // #97: approved, then refunded: still an approved payment for the M9 sales API (its refund is a separate item).
+        pay(customer, first, 8_000, "REFUNDED", now);
         // Approved long before this month: inside "all time", outside "이번 달".
         pay(customer, second, 7_000, "APPROVED", now.minus(Duration.ofDays(100)));
     }
@@ -319,7 +321,7 @@ class DomainLensPipelineIntegrationTests extends AiTestSupport {
         jdbc.update("INSERT INTO payments(customer_id,branch_id,purpose,method,amount_krw,status,idempotency_key,issued_pass_quantity,approved_at,failed_at,created_by) "
                         + "VALUES(?,?,'LOCKER','CASH',?,?,?,0,?,?,?)",
                 customer, branch, amount, status, "ENG-" + UUID.randomUUID(),
-                "APPROVED".equals(status) ? Timestamp.from(at) : null, "FAILED".equals(status) ? Timestamp.from(at) : null, owner);
+                "FAILED".equals(status) ? null : Timestamp.from(at), "FAILED".equals(status) ? Timestamp.from(at) : null, owner);
     }
 
     /** Approved payment amounts of the branch, in this KST calendar month only or in all time. */
@@ -327,7 +329,7 @@ class DomainLensPipelineIntegrationTests extends AiTestSupport {
         var month = java.time.YearMonth.now(java.time.ZoneId.of("Asia/Seoul"));
         var from = thisMonth ? month.atDay(1).atStartOfDay(java.time.ZoneId.of("Asia/Seoul")).toInstant() : Instant.EPOCH;
         var to = thisMonth ? month.plusMonths(1).atDay(1).atStartOfDay(java.time.ZoneId.of("Asia/Seoul")).toInstant() : Instant.parse("2100-01-01T00:00:00Z");
-        return count("SELECT COALESCE(SUM(amount_krw),0) FROM payments WHERE branch_id=? AND status='APPROVED' AND approved_at>=? AND approved_at<?",
+        return count("SELECT COALESCE(SUM(amount_krw),0) FROM payments WHERE branch_id=? AND approved_at>=? AND approved_at<?",
                 branch, Timestamp.from(from), Timestamp.from(to));
     }
 

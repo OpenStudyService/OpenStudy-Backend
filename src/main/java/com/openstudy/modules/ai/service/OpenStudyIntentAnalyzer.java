@@ -44,6 +44,11 @@ public class OpenStudyIntentAnalyzer implements QueryIntent.Analyzer {
     );
     static final Pattern RECENT_DAYS = Pattern.compile("(?:최근|지난)([0-9]{1,3})일");
     static final Pattern NAMED_MONTH = Pattern.compile("([0-9]{4})년(0?[1-9]|1[0-2])월");
+    /**
+     * #97: a month without a year ("11월에"). Not one already read with its year ("2026년11월"), nor a day ("11월3일"),
+     * nor a span ("3개월", which has no digit right before 월).
+     */
+    static final Pattern MONTH_ONLY = Pattern.compile("(?<![0-9년])(0?[1-9]|1[0-2])월(?![0-9])");
 
     private final SemanticRegistry registry;
     private final OpenStudyClock clock;
@@ -151,6 +156,13 @@ public class OpenStudyIntentAnalyzer implements QueryIntent.Analyzer {
         var named = NAMED_MONTH.matcher(key);
         while (named.find()) {
             var ym = YearMonth.of(Integer.parseInt(named.group(1)), Integer.parseInt(named.group(2)));
+            found.add(days(ym.atDay(1), ym.plusMonths(1).atDay(1)));
+        }
+        var monthOnly = MONTH_ONLY.matcher(key);
+        while (monthOnly.find()) {
+            // The latest such month up to now: "11월" asked in December is this year's, asked in February last year's.
+            var ym = YearMonth.of(today.getYear(), Integer.parseInt(monthOnly.group(1)));
+            if (ym.isAfter(month)) ym = ym.minusYears(1);
             found.add(days(ym.atDay(1), ym.plusMonths(1).atDay(1)));
         }
         return found;
