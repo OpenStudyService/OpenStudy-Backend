@@ -301,6 +301,24 @@ public class OpenStudyUserContextResolver {
         return Set.copyOf(found);
     }
 
+    /**
+     * The question as the generation model reads it: every branch name {@link #mentionedBranches} recognises is replaced
+     * by "선택 지점". The server applies those branches as the row scope (M10: the model never decides scope); left in
+     * the text, the model looks for a branch filter it has no field for and abstains ("강남점은 언제 가장 붐벼?").
+     */
+    public String withoutBranchNames(String question) {
+        if (question == null || question.isBlank()) return question;
+        String result = question;
+        var names = branches.allNames().values().stream().filter(java.util.Objects::nonNull).map(String::trim)
+                .filter(name -> !name.isEmpty()).sorted(java.util.Comparator.comparingInt(String::length).reversed()).toList();
+        for (String name : names) result = result.replace(name, "선택 지점");
+        for (String name : names) {
+            String stem = name.endsWith("점") && name.length() >= 3 ? name.substring(0, name.length() - 1) : null;
+            if (stem != null && !"선택 지".equals(stem)) result = result.replace(stem, "선택 지점");
+        }
+        return result;
+    }
+
     /** The branch's real name, for result titles and choices the requester may already see. */
     public String branchName(long branchId) {
         return branches.names(List.of(branchId)).getOrDefault(branchId, "지점 " + branchId);

@@ -297,6 +297,23 @@ public class OpenStudyPlaybackGateway {
             String followUpAnalysisId,
             String previousConditions
     ) {
+        return planQuestion(rawQuestion, clarificationChoice, actor, requestedScope, followUpAnalysisId, previousConditions, false);
+    }
+
+    /**
+     * {@code generationFirst}: the caller found a live generation model and a question the generation path answers before
+     * any registered analysis (seat congestion). Neither the keyword rules nor the live picker choose an analysis, so
+     * the decision ends as "no registered analysis" and the generation path plans the query.
+     */
+    public PlanDecision planQuestion(
+            String rawQuestion,
+            String clarificationChoice,
+            OpenStudyUserContextResolver.ResolvedActor actor,
+            String requestedScope,
+            String followUpAnalysisId,
+            String previousConditions,
+            boolean generationFirst
+    ) {
         // 0. Basic ai:read permission check (ADR-M10-001 D06: 9200004 osdemo.ss.noai has no ai:read)
         if (actor != null && actor.aiBranches().isEmpty()) {
             return new PlanDecision(
@@ -719,7 +736,8 @@ public class OpenStudyPlaybackGateway {
         // #233 (2026-11-13 decision): registered analyses come first by the keyword rules. A question whose metric the
         // server reads as a general metric ("결제 금액", "결제 건수") skips the live registered-analysis picker, which
         // would fit it onto the nearest registered analysis (net sales), and goes to the generation path.
-        boolean generalMetric = followUpAnalysisId == null && resolveAnalysisId(q) == null
+        String keywordAnalysisId = generationFirst ? null : resolveAnalysisId(q);
+        boolean generalMetric = generationFirst || followUpAnalysisId == null && keywordAnalysisId == null
                 && !intents.analyze(q, null).metrics().isEmpty();
         if ("live".equals(activeMode()) && !generalMetric) {
             llmResult = callLiveQwenPlanner(q, requestedScope, candidates, previousConditions);
@@ -730,7 +748,7 @@ public class OpenStudyPlaybackGateway {
         }
 
         // 9. Determine target analysis ID & domain (preserving IR/playback fallback)
-        String resolvedAnalysisId = resolveAnalysisId(q);
+        String resolvedAnalysisId = keywordAnalysisId;
         if (resolvedAnalysisId == null && followUpAnalysisId != null) {
             resolvedAnalysisId = followUpAnalysisId;
         }

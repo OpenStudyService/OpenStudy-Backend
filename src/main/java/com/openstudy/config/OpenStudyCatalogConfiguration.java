@@ -67,6 +67,7 @@ public class OpenStudyCatalogConfiguration {
             "pass",
             "seat",
             "seat_session",
+            "seat_occupancy_sample",
             "room",
             "room_reservation",
             "locker",
@@ -332,6 +333,22 @@ public class OpenStudyCatalogConfiguration {
                         "건",
                         0,
                         Set.of("pass.issued_at")
+                ),
+                // Seat congestion as an ordinary aggregate over the V20 samples: the average share of seats in use at
+                // the sampled hours. With one branch it equals POC-002's occupied samples / (seats x samples).
+                new SemanticRegistry.Metric(
+                        "seats.occupancy_pct",
+                        GENERAL_METRIC_PREFIX + "seats.occupancyPct",
+                        "seat_occupancy_sample",
+                        "seat_occupancy_sample",
+                        SemanticRegistry.Aggregate.AVG,
+                        "seat_occupancy_sample.occupancy_pct",
+                        List.of(),
+                        null,
+                        METRIC_VERSION,
+                        "%",
+                        1,
+                        Set.of("seat_occupancy_sample.sampled_at", "seat_occupancy_sample.weekday_kst", "seat_occupancy_sample.hour_kst")
                 )
         );
     }
@@ -350,8 +367,16 @@ public class OpenStudyCatalogConfiguration {
     public static final Map<String, String> PERIOD_FIELDS = Map.of(
             "sales.approved_amount_krw", "payment.paid_at",
             "sales.approved_count", "payment.paid_at",
-            "passes.issued_count", "pass.issued_at"
+            "passes.issued_count", "pass.issued_at",
+            "seats.occupancy_pct", "seat_occupancy_sample.sampled_at"
     );
+
+    /**
+     * General metrics the live chat answers through the generation path even when a registered analysis's keyword rule
+     * matches the question: "언제 가장 붐벼" goes to the model-planned query, not POC-002. Without a live model
+     * (playback) the registered analysis still answers.
+     */
+    public static final Set<String> GENERATION_FIRST_METRICS = Set.of("seats.occupancy_pct");
 
     public static boolean general(SemanticRegistry.Metric metric) {
         return metric.implementationRef().startsWith(GENERAL_METRIC_PREFIX);
@@ -430,6 +455,11 @@ public class OpenStudyCatalogConfiguration {
                         "openstudy.term.approvedCount",
                         "sales.approved_count",
                         List.of("결제 건수", "결제 수", "승인 건수", "승인된 결제 건수")
+                ),
+                new SemanticRegistry.Term(
+                        "openstudy.term.seatOccupancy",
+                        "seats.occupancy_pct",
+                        List.of("붐벼", "붐비", "혼잡", "좌석 점유율", "점유율", "피크")
                 ),
                 new SemanticRegistry.Term(
                         "openstudy.term.issuedPasses",

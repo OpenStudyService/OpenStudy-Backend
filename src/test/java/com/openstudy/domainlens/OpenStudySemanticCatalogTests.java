@@ -68,7 +68,7 @@ class OpenStudySemanticCatalogTests {
     }
 
     @Test
-    void semanticRegistryExposesAllSeventeenOpenStudyEntitiesAndHidesPiiAndCredentials() {
+    void semanticRegistryExposesAllEighteenOpenStudySourcesAndHidesPiiAndCredentials() {
         Set<String> expectedSources = Set.of(
                 "branch",
                 "payment",
@@ -78,6 +78,7 @@ class OpenStudySemanticCatalogTests {
                 "pass",
                 "seat",
                 "seat_session",
+                "seat_occupancy_sample", // V20 view: seat congestion for the generation path
                 "room",
                 "room_reservation",
                 "locker",
