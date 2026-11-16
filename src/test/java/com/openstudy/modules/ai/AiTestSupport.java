@@ -15,6 +15,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -39,6 +40,11 @@ abstract class AiTestSupport {
     @LocalServerPort int port;
 
     final List<Long> people = new ArrayList<>(), branches = new ArrayList<>(), customers = new ArrayList<>();
+
+    /** Plans another test class left (live mode outside this base) must not answer this test's questions. */
+    @BeforeEach void emptyPlanCache() {
+        jdbc.update("DELETE FROM ai_plan_cache");
+    }
 
     @AfterEach void cleanAi() {
         // The plan cache is shared by everyone: each test starts without plans another test left (2026-11-16).

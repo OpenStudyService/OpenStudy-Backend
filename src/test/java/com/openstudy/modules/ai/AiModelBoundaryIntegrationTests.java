@@ -109,6 +109,51 @@ class AiModelBoundaryIntegrationTests extends AiTestSupport {
     }
 
     /**
+     * 2026-11-16 plan cache: the decision the server executed is kept, even when the keyword rules chose the analysis
+     * and the model named none, so the very same question in a new conversation does not reach the model again.
+     */
+    @Test void theSameQuestionInANewConversationSkipsTheModelEvenWhenTheRulesChoseTheAnalysis() throws Exception {
+        String noPick = "{\"outcome\":\"CLARIFICATION\",\"analysisId\":null,\"intentDomain\":\"sales\","
+                + "\"refundBasisOverride\":null,\"zeroFillOverrideRequested\":false,\"message\":null}";
+        REPLY.set("{\"choices\":[{\"message\":{\"content\":" + quote(noPick) + "}}],\"usage\":{\"total_tokens\":9}}");
+        try (var s = login(owner)) {
+            var first = body(ask(s, "지난 달 지점별 매출을 비교해줘", "all"));
+            assertThat(first.get("analysisId").asString()).as(first.toString()).isEqualTo(OpenStudyAnalyses.ID_POC_001);
+            assertThat(REQUESTS).hasSize(1);
+
+            var again = body(ask(s, "지난 달 지점별 매출을 비교해줘", "all"));
+            assertThat(again.get("status").asString()).as(again.toString()).isEqualTo("COMPLETED");
+            assertThat(again.get("analysisId").asString()).isEqualTo(OpenStudyAnalyses.ID_POC_001);
+            assertThat(again.get("conversationId").asString()).isNotEqualTo(first.get("conversationId").asString());
+            assertThat(again.at("/securityGate/planCache").asString()).isEqualTo("HIT");
+            assertThat(again.at("/securityGate/llmDurationMs").isMissingNode()).isTrue();
+        }
+        assertThat(REQUESTS).hasSize(1);
+    }
+
+    /** A question later in a conversation that is not a follow-up uses the plan cache too. */
+    @Test void aQuestionLaterInAConversationThatIsNoFollowUpUsesThePlanCache() throws Exception {
+        REPLY.set(plan(OpenStudyAnalyses.ID_POC_003));
+        try (var s = login(owner)) {
+            var first = body(ask(s, "이번 달 가장 많이 판매된 이용권을 보여줘", "all"));
+            assertThat(first.get("analysisId").asString()).as(first.toString()).isEqualTo(OpenStudyAnalyses.ID_POC_003);
+            assertThat(REQUESTS).hasSize(1);
+
+            var body = new HashMap<String, Object>();
+            body.put("question", "이번 달 제일 많이 팔린 이용권 보여줘");
+            body.put("scope", "all");
+            body.put("conversationId", first.get("conversationId").asString());
+            var later = body(send(s, "POST", "/api/ai/queries", body));
+            assertThat(later.get("conversationId").asString()).isEqualTo(first.get("conversationId").asString());
+            assertThat(later.get("analysisId").asString()).as(later.toString()).isEqualTo(OpenStudyAnalyses.ID_POC_003);
+            assertThat(later.at("/securityGate/planCache").asString()).isEqualTo("HIT");
+        }
+        assertThat(REQUESTS).hasSize(1);
+        // Only the conversation's first question was stored; the later one was read with the earlier result beside it.
+        assertThat(count("SELECT COUNT(*) FROM ai_plan_cache")).isEqualTo(1L);
+    }
+
+    /**
      * #233: a general-metric question ("결제 금액") skips the registered-analysis picker, which would fit it onto net
      * sales, and goes straight to the generation path. Only the generation request reaches the model.
      */
