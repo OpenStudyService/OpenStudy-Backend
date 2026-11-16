@@ -1501,11 +1501,11 @@ public class AiWorkspaceService {
                     updatedSummary
             );
         }
-        if (OpenStudyAnalyses.ID_POC_002.equals(analysisId) || OpenStudyAnalyses.ID_POC_004.equals(analysisId)) {
-            long branchId = OpenStudyAnalyses.singleBranch(targetBranches);
-            return OpenStudyAnalyses.ID_POC_002.equals(analysisId)
-                    ? analyses.executePoc002HourlyCongestion(branchId, periodOverride)
-                    : analyses.executePoc004RealtimeSeats(branchId);
+        if (OpenStudyAnalyses.ID_POC_002.equals(analysisId)) {
+            return analyses.executePoc002HourlyCongestion(OpenStudyAnalyses.singleBranch(targetBranches), periodOverride);
+        }
+        if (OpenStudyAnalyses.ID_POC_004.equals(analysisId)) {
+            return analyses.executePoc004RealtimeSeats(targetBranches);
         }
         return analyses.executeCase(analysisId, targetBranches, requester, periodOverride, products);
     }

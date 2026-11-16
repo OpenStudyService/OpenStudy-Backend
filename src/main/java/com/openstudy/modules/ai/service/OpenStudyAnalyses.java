@@ -52,9 +52,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class OpenStudyAnalyses implements AnalysisExecutor {
     public static final String CATALOG_VERSION = "openstudy-ui-1.0.0";
     public static final String COMPONENT_VERSION = "1.0.0";
-    /** Analyses that look at one branch only; a wider scope asks which branch (2026-11-08 decision, ADR-M10-003). */
-    public static final java.util.Set<String> SINGLE_BRANCH = java.util.Set.of("openstudy.seats.hourlyCongestion",
-            "openstudy.seats.realtimeAvailability");
+    /**
+     * Analyses that look at one branch only; a wider scope asks which branch (2026-11-08 decision, ADR-M10-003).
+     * Realtime seats left the list on 2026-11-16: over several branches it compares them instead of asking.
+     */
+    public static final java.util.Set<String> SINGLE_BRANCH = java.util.Set.of("openstudy.seats.hourlyCongestion");
 
     /** The result arranged as the DomainLens mock-up assembles it: KPI row, then each chart beside its table. */
     static ViewSpec arranged(ViewSpec view) {
@@ -315,6 +317,15 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                                 integer("blocked", "석"),
                                 decimal("occupied_pct", "%", 1)
                         ),
+                        "branchSeats", List.of(
+                                integer("branch_id", null),
+                                string("branch_name"),
+                                integer("available", "석"),
+                                integer("occupied", "석"),
+                                integer("free", "석"),
+                                integer("blocked", "석"),
+                                decimal("occupied_pct", "%", 1)
+                        ),
                         "seatMap", List.of(
                                 integer("seat_id", null),
                                 string("seat_no"),
@@ -568,7 +579,9 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         if (has(k, "TOP 5") || has(k, "잘 팔린 이용권") || has(k, "인기 이용권")) {
             return Optional.of(ID_POC_003);
         }
-        if (has(k, "빈자리") || has(k, "남은 좌석") || (has(k, "지금") && has(k, "좌석"))) {
+        // "현재 지점별 사용 중인 좌석이 몇 개야?" (planning document, 2026-11-16) reads as realtime seats too.
+        if (has(k, "빈자리") || has(k, "남은 좌석") || has(k, "사용 중인 좌석") || has(k, "이용 중인 좌석")
+                || ((has(k, "지금") || has(k, "현재") || has(k, "실시간")) && has(k, "좌석"))) {
             return Optional.of(ID_POC_004);
         }
         if (has(k, "스터디룸 예약") || (has(k, "이번 주") && has(k, "스터디룸"))) {
@@ -610,7 +623,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             case ID_POC_001 -> executePoc001BranchSales(branchScope, requester);
             case ID_POC_002 -> executePoc002HourlyCongestion(singleBranch(branchScope));
             case ID_POC_003 -> executePoc003Top5Passes(branchScope, requester);
-            case ID_POC_004 -> executePoc004RealtimeSeats(singleBranch(branchScope));
+            case ID_POC_004 -> executePoc004RealtimeSeats(branchScope);
             case ID_POC_005 -> executePoc005WeeklyRoomReservations(branchScope);
             case ID_POC_006 -> executePoc006ExpiringPasses(branchScope);
             case ID_POC_007 -> executePoc007DailySalesTrend(branchScope, requester);
@@ -1028,9 +1041,19 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
     /**
      * {@code POC-004}: "지금 ○○점에 빈자리가 얼마나 있어?" ({@code asOf = 2026-11-02T14:00:00+09:00}).
      */
-    public PocExecutionResult executePoc004RealtimeSeats(long branchId) {
-        Instant now = clock.asOf();
-        var def = definitions.get(ID_POC_004);
+    /** One branch's seats right now: each seat's state and the counts. Blocked seats are not operating seats. */
+    private record SeatCounts(List<Map<String, Object>> seatMapRows, long total, long available, long occupied,
+            long blocked) {
+        long free() {
+            return available - occupied;
+        }
+
+        double occupiedPct() {
+            return available > 0 ? Math.round((occupied * 1000.0) / available) / 10.0 : 0.0;
+        }
+    }
+
+    private SeatCounts seatCounts(long branchId, Instant now) {
 
         List<Object[]> seatTuples = entityManager.createQuery(
                         "SELECT s.id, s.seatNo, s.status FROM Seat s WHERE s.branchId = :branchId ORDER BY s.seatNo ASC",
@@ -1078,6 +1101,109 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             row.put("occupancy_state", occupancyState);
             seatMapRows.add(row);
         }
+
+        return new SeatCounts(seatMapRows, total, available, occupied, blocked);
+    }
+
+    /**
+     * {@code POC-004} over a scope: one branch shows its seat map; several branches are compared side by side, as the
+     * planning document's "현재 지점별 사용 중인 좌석이 몇 개야?" asks (2026-11-16).
+     */
+    public PocExecutionResult executePoc004RealtimeSeats(Collection<Long> branchScope) {
+        if (branchScope == null || branchScope.isEmpty()) {
+            throw new IllegalArgumentException("Realtime seats need at least one branch");
+        }
+        if (branchScope.size() == 1) return executePoc004RealtimeSeats(branchScope.iterator().next().longValue());
+        return executePoc004BranchSeats(branchScope);
+    }
+
+    private PocExecutionResult executePoc004BranchSeats(Collection<Long> branchScope) {
+        Instant now = clock.asOf();
+        var def = definitions.get(ID_POC_004);
+        var ids = branchScope.stream().sorted().toList();
+        var names = branchNames.names(ids);
+        var rows = new ArrayList<Map<String, Object>>();
+        long available = 0L;
+        long occupied = 0L;
+        long blocked = 0L;
+        String busiest = null;
+        double busiestPct = -1.0;
+        for (long branchId : ids) {
+            var counts = seatCounts(branchId, now);
+            String name = names.getOrDefault(branchId, "지점 " + branchId);
+            var row = new LinkedHashMap<String, Object>();
+            row.put("branch_id", branchId);
+            row.put("branch_name", name);
+            row.put("available", counts.available());
+            row.put("occupied", counts.occupied());
+            row.put("free", counts.free());
+            row.put("blocked", counts.blocked());
+            row.put("occupied_pct", counts.occupiedPct());
+            rows.add(row);
+            available += counts.available();
+            occupied += counts.occupied();
+            blocked += counts.blocked();
+            if (counts.available() > 0 && counts.occupiedPct() > busiestPct) {
+                busiestPct = counts.occupiedPct();
+                busiest = name;
+            }
+        }
+        double occupiedPct = available > 0 ? Math.round((occupied * 1000.0) / available) / 10.0 : 0.0;
+
+        var dsBranches = new TypedDataset("branchSeats", def.outputs().get("branchSeats"), rows, rows.size(), 0,
+                Math.max(10, rows.size()), now, now);
+        String blockedNote = blocked > 0 ? " · 차단 " + ResultCards.count(blocked, "석") + " 제외" : "";
+        var cards = ResultCards.dataset(List.of(
+                new ResultCards.Card("운영 좌석", ResultCards.count(available, "석"),
+                        ResultCards.count(rows.size(), "개 지점") + blockedNote),
+                new ResultCards.Card("이용 중", ResultCards.count(occupied, "석"), "현재 입실 세션"),
+                new ResultCards.Card("빈자리", ResultCards.count(available - occupied, "석"), "바로 배정 가능"),
+                new ResultCards.Card("점유율", ResultCards.pct(occupiedPct),
+                        busiest == null ? "운영 좌석 기준" : "가장 높은 곳 " + busiest + " " + ResultCards.pct(busiestPct))), now);
+        var datasets = List.of(dsBranches, cards);
+
+        var view = arranged(new ViewSpec(
+                CATALOG_VERSION,
+                List.of(
+                        ResultCards.component(),
+                        ResultCards.panel("chart", "BAR_CHART", "branchSeats",
+                                Map.of("category", "branch_name", "value", "occupied_pct"), "지점별 좌석 점유율", "실시간 · 운영 좌석 기준"),
+                        ResultCards.panel("table", "DATA_TABLE", "branchSeats",
+                                Map.of("columns", List.of("branch_name", "occupied", "available", "free", "occupied_pct")),
+                                "지점별 좌석 이용 현황", "이용 중 / 운영 좌석")
+                ),
+                null // arranged() lays the components out
+        ));
+
+        var envelope = buildEnvelope("POC-004", datasets, view, null);
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("branch_rows", rows);
+        summary.put("available", available);
+        summary.put("occupied", occupied);
+        summary.put("free", available - occupied);
+        summary.put("blocked", blocked);
+        summary.put("occupied_pct", occupiedPct);
+
+        return new PocExecutionResult(
+                "POC-004",
+                ID_POC_004,
+                "지금 지점별로 사용 중인 좌석이 몇 개야?",
+                "CONFIRMED_ADR",
+                List.of("KPI", "BAR_CHART", "DATA_TABLE"),
+                envelope,
+                summary
+        );
+    }
+
+    public PocExecutionResult executePoc004RealtimeSeats(long branchId) {
+        Instant now = clock.asOf();
+        var def = definitions.get(ID_POC_004);
+        var counts = seatCounts(branchId, now);
+        var seatMapRows = counts.seatMapRows();
+        long total = counts.total();
+        long available = counts.available();
+        long occupied = counts.occupied();
+        long blocked = counts.blocked();
 
         long free = available - occupied;
         double occupiedPct = available > 0 ? Math.round((occupied * 1000.0) / available) / 10.0 : 0.0;
