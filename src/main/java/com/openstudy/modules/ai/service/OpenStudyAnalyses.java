@@ -233,6 +233,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         defs.put(ID_POC_001, new Definition(
                 ID_POC_001, "1", "payment", "payment",
                 Map.of(
+                        ResultCards.DATASET, ResultCards.COLUMNS,
                         "branchSales", List.of(
                                 integer("branch_id", null),
                                 string("branch_name"),
@@ -262,6 +263,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         defs.put(ID_POC_002, new Definition(
                 ID_POC_002, "1", "seat_session", "seat_session",
                 Map.of(
+                        ResultCards.DATASET, ResultCards.COLUMNS,
                         "heatmapRows", List.of(
                                 integer("weekday", null),
                                 integer("hour_kst", "시"),
@@ -275,6 +277,11 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                                 integer("occupied_seat_samples", "석"),
                                 integer("seat_sample_capacity", "석"),
                                 decimal("sampled_occupancy_pct", "%", 1)
+                        ),
+                        "peakTop5", List.of(
+                                string("weekday_label"),
+                                string("hour_label"),
+                                decimal("sampled_occupancy_pct", "%", 1)
                         )
                 ),
                 true
@@ -283,6 +290,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         defs.put(ID_POC_003, new Definition(
                 ID_POC_003, "1", "pass", "pass",
                 Map.of(
+                        ResultCards.DATASET, ResultCards.COLUMNS,
                         "topProducts", List.of(
                                 integer("product_id", null),
                                 string("product"),
@@ -297,6 +305,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         defs.put(ID_POC_004, new Definition(
                 ID_POC_004, "1", "seat", "seat",
                 Map.of(
+                        ResultCards.DATASET, ResultCards.COLUMNS,
                         "seatSummary", List.of(
                                 integer("branch_id", null),
                                 integer("total", "석"),
@@ -319,6 +328,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         defs.put(ID_POC_005, new Definition(
                 ID_POC_005, "1", "room_reservation", "room_reservation",
                 Map.of(
+                        ResultCards.DATASET, ResultCards.COLUMNS,
                         "reservationRows", List.of(
                                 integer("reservation_id", null),
                                 integer("branch_id", null),
@@ -352,6 +362,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         defs.put(ID_POC_006, new Definition(
                 ID_POC_006, "1", "pass", "pass",
                 Map.of(
+                        ResultCards.DATASET, ResultCards.COLUMNS,
                         "expiringPasses", List.of(
                                 integer("pass_id", null),
                                 integer("branch_id", null),
@@ -361,7 +372,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                                 string("pass_type"),
                                 integer("remaining_minutes", "분"),
                                 timestamp("expires_at"),
-                                string("status")
+                                string("status"),
+                                integer("days_left", "일")
                         ),
                         "expiringByBranch", List.of(
                                 integer("branch_id", null),
@@ -378,6 +390,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         defs.put(ID_POC_007, new Definition(
                 ID_POC_007, "1", "payment", "payment",
                 Map.of(
+                        ResultCards.DATASET, ResultCards.COLUMNS,
                         "dailySales", List.of(
                                 string("date_kst"),
                                 krw("approved_krw"),
@@ -399,6 +412,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         defs.put(ID_POC_008, new Definition(
                 ID_POC_008, "1", "payment", "payment",
                 Map.of(
+                        ResultCards.DATASET, ResultCards.COLUMNS,
                         "purposeSales", List.of(
                                 string("purpose"),
                                 krw("approved_krw"),
@@ -406,7 +420,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                                 krw("net_krw"),
                                 integer("approved_count", "건"),
                                 integer("refund_count", "건"),
-                                decimal("share_pct", "%", 1)
+                                decimal("share_pct", "%", 1),
+                                string("purpose_label")
                         ),
                         "purposeWinner", List.of(
                                 string("winner_purpose"),
@@ -421,6 +436,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         defs.put(ID_POC_009, new Definition(
                 ID_POC_009, "1", "work_task", "work_task",
                 Map.of(
+                        ResultCards.DATASET, ResultCards.COLUMNS,
                         "urgentTasks", List.of(
                                 integer("id", null),
                                 string("title"),
@@ -442,6 +458,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         defs.put(ID_POC_010, new Definition(
                 ID_POC_010, "1", "attendance_record", "attendance_record",
                 Map.of(
+                        ResultCards.DATASET, ResultCards.COLUMNS,
                         "employeeWorkHours", List.of(
                                 integer("employee_id", null),
                                 string("employee_name"),
@@ -450,7 +467,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                                 integer("shift_days", "일"),
                                 integer("raw_work_minutes", "분"),
                                 integer("illustrative_corrected_minutes", "분"),
-                                integer("correction_delta_minutes", "분")
+                                integer("correction_delta_minutes", "분"),
+                                decimal("work_hours", "시간", 1)
                         ),
                         "attendancePolicyMeta", List.of(
                                 integer("illustrative_correction_delta_minutes", "분"),
@@ -715,35 +733,25 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         var dsBranch = new TypedDataset("branchSales", def.outputs().get("branchSales"), branchRows, branchRows.size(), 0, 10, now, now);
         var dsTotals = new TypedDataset("salesTotals", def.outputs().get("salesTotals"), totalRows, 1, 0, 1, now, now);
         var dsContrast = new TypedDataset("basisContrast", def.outputs().get("basisContrast"), contrastRows, contrastRows.size(), 0, 10, now, now);
-        var datasets = List.of(dsBranch, dsTotals, dsContrast);
+        var cards = ResultCards.dataset(List.of(
+                new ResultCards.Card("순매출", ResultCards.won(processed.totalNetKrw()), "승인액 − 환불액"),
+                new ResultCards.Card("승인 결제액", ResultCards.won(processed.totalApprovedKrw()),
+                        "승인 " + ResultCards.count(processed.totalApprovedCount(), "건")),
+                new ResultCards.Card("환불액", ResultCards.won(processed.totalRefundKrw()),
+                        "환불 " + ResultCards.count(processed.totalRefundCount(), "건") + " · 처리일 기준"),
+                new ResultCards.Card("조회 범위", ResultCards.count(branchRows.size(), "개 지점"), "허용된 지점 범위")), now);
+        var datasets = List.of(dsBranch, dsTotals, dsContrast, cards);
 
+        // The DomainLens result mock-up: KPI cards, then the branches' net sales beside their table.
         var view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
-                        new ViewSpec.Component(
-                                "kpi",
-                                new ViewSpec.Ref("KPI", COMPONENT_VERSION),
-                                "salesTotals",
-                                Map.of("values", List.of("approved_krw", "refund_krw", "net_krw")),
-                                Map.of("title", "이번 달 전체 순매출 요약", "currency", "KRW"),
-                                List.of()
-                        ),
-                        new ViewSpec.Component(
-                                "chart",
-                                new ViewSpec.Ref("BAR_CHART", COMPONENT_VERSION),
-                                "branchSales",
-                                Map.of("category", "branch_name", "value", "net_krw"),
-                                Map.of("title", "지점별 순매출 비교", "currency", "KRW"),
-                                List.of()
-                        ),
-                        new ViewSpec.Component(
-                                "table",
-                                new ViewSpec.Ref("DATA_TABLE", COMPONENT_VERSION),
-                                "branchSales",
-                                Map.of("columns", List.of("branch_id", "branch_name", "approved_krw", "refund_krw", "net_krw", "approved_count", "refund_count")),
-                                Map.of("title", "지점별 매출 상세"),
-                                List.of()
-                        )
+                        ResultCards.component(),
+                        ResultCards.panel("chart", "BAR_CHART", "branchSales",
+                                Map.of("category", "branch_name", "value", "net_krw"), "이번 달 지점별 순매출", "KRW · 순매출 기준"),
+                        ResultCards.panel("table", "DATA_TABLE", "branchSales",
+                                Map.of("columns", List.of("branch_name", "approved_krw", "refund_krw", "net_krw", "approved_count")),
+                                "지점별 매출 집계", "제목을 눌러 정렬")
                 ),
                 null // arranged() lays the components out
         ));
@@ -869,20 +877,46 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         }
 
         var dsHeatmap = new TypedDataset("heatmapRows", def.outputs().get("heatmapRows"), heatmapRows, heatmapRows.size(), 0, 50, now, now);
-        var dsPeaks = new TypedDataset("peakCells", def.outputs().get("peakCells"), peakDatasetRows, peakDatasetRows.size(), 0, 10, now, now);
-        var datasets = List.of(dsHeatmap, dsPeaks);
+        // Every cell ties for the peak when no seat was used (all 0%): the page holds them all (35 at most).
+        var dsPeaks = new TypedDataset("peakCells", def.outputs().get("peakCells"), peakDatasetRows, peakDatasetRows.size(), 0,
+                Math.max(10, peakDatasetRows.size()), now, now);
+        double averagePct = cells.stream().filter(c -> c.seatSampleCapacity() > 0)
+                .mapToDouble(HeatmapCell::sampledOccupancyPct).average().orElse(0.0);
+        var ranked = cells.stream()
+                .sorted(Comparator.comparingDouble(HeatmapCell::sampledOccupancyPct).reversed()
+                        .thenComparingInt(HeatmapCell::weekday).thenComparingInt(HeatmapCell::hourKst))
+                .limit(5).toList();
+        List<Map<String, Object>> topRows = new ArrayList<>(ranked.size());
+        for (var cell : ranked) {
+            var row = new LinkedHashMap<String, Object>();
+            row.put("weekday_label", ResultCards.weekday(cell.weekday()) + "요일");
+            row.put("hour_label", cell.hourKst() + "시");
+            row.put("sampled_occupancy_pct", cell.sampledOccupancyPct());
+            topRows.add(row);
+        }
+        var dsTop = new TypedDataset("peakTop5", def.outputs().get("peakTop5"), topRows, topRows.size(), 0, 5, now, now);
+        var peak = ranked.isEmpty() ? null : ranked.getFirst();
+        long observedDays = java.time.temporal.ChronoUnit.DAYS.between(period.startDateKst(), period.endDateExclusiveKst());
+        var cards = ResultCards.dataset(List.of(
+                new ResultCards.Card("평균 점유율", ResultCards.pct(averagePct), ResultCards.count(cells.size(), "개 시간대 슬롯")),
+                new ResultCards.Card("가장 혼잡",
+                        peak == null ? "-" : ResultCards.weekday(peak.weekday()) + " " + peak.hourKst() + "시",
+                        peak == null ? "샘플 없음" : ResultCards.pct(peak.sampledOccupancyPct())),
+                new ResultCards.Card("운영 좌석", ResultCards.count(availableSeats, "석"), "가용 좌석 기준"),
+                new ResultCards.Card("관측 기간", ResultCards.count(observedDays, "일"),
+                        ResultCards.days(period.startDateKst(), period.endDateExclusiveKst().minusDays(1)))), now);
+        var datasets = List.of(dsHeatmap, dsPeaks, dsTop, cards);
 
         var view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
-                        new ViewSpec.Component(
-                                "heatmap",
-                                new ViewSpec.Ref("HEATMAP", COMPONENT_VERSION),
-                                "heatmapRows",
+                        ResultCards.component(),
+                        ResultCards.panel("heatmap", "HEATMAP", "heatmapRows",
                                 Map.of("category", "weekday", "series", "hour_kst", "value", "sampled_occupancy_pct"),
-                                Map.of("title", branchName(branchId) + " 요일·시간대별 좌석 점유율 히트맵", "unit", "%"),
-                                List.of()
-                        )
+                                "요일 × 시간대 혼잡도", "샘플 시각 09·12·15·18·21시 · 좌석 점유율"),
+                        ResultCards.panel("table", "DATA_TABLE", "peakTop5",
+                                Map.of("columns", List.of("weekday_label", "hour_label", "sampled_occupancy_pct")),
+                                "혼잡 시간대 TOP 5", branchName(branchId))
                 ),
                 null // arranged() lays the components out
         ));
@@ -905,7 +939,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 ID_POC_002,
                 branchName(branchId) + "은 언제 가장 붐벼?",
                 "POLICY_PENDING_OCCUPANCY_DENOMINATOR_AND_TIME_WEIGHTING",
-                List.of("HEATMAP"),
+                List.of("KPI", "HEATMAP", "DATA_TABLE"),
                 envelope,
                 summary
         );
@@ -948,27 +982,28 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         }
 
         var dsTop5 = new TypedDataset("topProducts", def.outputs().get("topProducts"), datasetRows, datasetRows.size(), 0, 5, now, now);
-        var datasets = List.of(dsTop5);
+        long issued = 0L, refunded = 0L, net = 0L;
+        for (var row : datasetRows) {
+            issued += ResultCards.longValue(row.get("issued_units"));
+            refunded += ResultCards.longValue(row.get("refunded_units"));
+            net += ResultCards.longValue(row.get("net_units"));
+        }
+        var cards = ResultCards.dataset(List.of(
+                new ResultCards.Card("발급 수", ResultCards.count(issued, "건"), "표시 상품 합계"),
+                new ResultCards.Card("환불 수", ResultCards.count(refunded, "건"), "같은 기간 환불"),
+                new ResultCards.Card("순판매 수", ResultCards.count(net, "건"), "발급 − 환불"),
+                new ResultCards.Card("표시 상품", ResultCards.count(datasetRows.size(), "건"), "TOP 5 이내")), now);
+        var datasets = List.of(dsTop5, cards);
 
         var view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
-                        new ViewSpec.Component(
-                                "rankedBar",
-                                new ViewSpec.Ref("RANKED_BAR_CHART", COMPONENT_VERSION),
-                                "topProducts",
-                                Map.of("category", "product", "value", "net_units"),
-                                Map.of("title", "지난달 인기 이용권 TOP 5 (순판매 수량)", "unit", "개"),
-                                List.of()
-                        ),
-                        new ViewSpec.Component(
-                                "table",
-                                new ViewSpec.Ref("DATA_TABLE", COMPONENT_VERSION),
-                                "topProducts",
-                                Map.of("columns", List.of("product_id", "product", "issued_units", "refunded_units", "net_units")),
-                                Map.of("title", "이용권 상품별 판매·환불 상세"),
-                                List.of()
-                        )
+                        ResultCards.component(),
+                        ResultCards.panel("rankedBar", "RANKED_BAR_CHART", "topProducts",
+                                Map.of("category", "product", "value", "net_units"), "지난달 순판매량 TOP 5", "순판매 수량"),
+                        ResultCards.panel("table", "DATA_TABLE", "topProducts",
+                                Map.of("columns", List.of("product", "issued_units", "refunded_units", "net_units")),
+                                "상품별 순판매량", "발급·환불·순판매")
                 ),
                 null // arranged() lays the components out
         ));
@@ -984,7 +1019,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 ID_POC_003,
                 "지난달 가장 잘 팔린 이용권 TOP 5를 보여줘",
                 "CONFIRMED_ADR",
-                List.of("RANKED_BAR_CHART", "DATA_TABLE"),
+                List.of("KPI", "RANKED_BAR_CHART", "DATA_TABLE"),
                 envelope,
                 summary
         );
@@ -1059,27 +1094,21 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
 
         var dsSummary = new TypedDataset("seatSummary", def.outputs().get("seatSummary"), List.of(summaryRow), 1, 0, 1, now, now);
         var dsMap = new TypedDataset("seatMap", def.outputs().get("seatMap"), seatMapRows, seatMapRows.size(), 0, 30, now, now);
-        var datasets = List.of(dsSummary, dsMap);
+        var cards = ResultCards.dataset(List.of(
+                new ResultCards.Card("운영 좌석", ResultCards.count(available, "석"),
+                        blocked > 0 ? "차단 " + ResultCards.count(blocked, "석") + " 제외" : "차단 좌석 없음"),
+                new ResultCards.Card("이용 중", ResultCards.count(occupied, "석"), "현재 입실 세션"),
+                new ResultCards.Card("빈자리", ResultCards.count(free, "석"), "바로 배정 가능"),
+                new ResultCards.Card("점유율", ResultCards.pct(occupiedPct), "운영 좌석 기준")), now);
+        var datasets = List.of(dsSummary, dsMap, cards);
 
         var view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
-                        new ViewSpec.Component(
-                                "kpi",
-                                new ViewSpec.Ref("KPI", COMPONENT_VERSION),
-                                "seatSummary",
-                                Map.of("values", List.of("free", "occupied", "available", "blocked", "occupied_pct")),
-                                Map.of("title", branchName(branchId) + " 실시간 좌석 요약", "unit", "석"),
-                                List.of()
-                        ),
-                        new ViewSpec.Component(
-                                "seatMap",
-                                new ViewSpec.Ref("SEAT_MAP", COMPONENT_VERSION),
-                                "seatMap",
+                        ResultCards.component(),
+                        ResultCards.panel("seatMap", "SEAT_MAP", "seatMap",
                                 Map.of("columns", List.of("seat_id", "seat_no", "seat_status", "occupancy_state")),
-                                Map.of("title", branchName(branchId) + " 좌석 배치 현황"),
-                                List.of()
-                        )
+                                "현재 좌석 배치", branchName(branchId) + " · 실시간")
                 ),
                 null // arranged() lays the components out
         ));
@@ -1236,27 +1265,22 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         var dsReservations = new TypedDataset("reservationRows", def.outputs().get("reservationRows"), reservationRows, reservationRows.size(), 0, 100, now, now);
         var dsBranches = new TypedDataset("branchSummaries", def.outputs().get("branchSummaries"), branchSummaryRows, branchSummaryRows.size(), 0, 10, now, now);
         var dsTotals = new TypedDataset("reservationTotals", def.outputs().get("reservationTotals"), List.of(totalsRow), 1, 0, 1, now, now);
-        var datasets = List.of(dsReservations, dsBranches, dsTotals);
+        long weekDays = java.time.temporal.ChronoUnit.DAYS.between(period.startDateKst(), period.endDateExclusiveKst());
+        var cards = ResultCards.dataset(List.of(
+                new ResultCards.Card("주간 예약", ResultCards.count(allBookings, "건"), "일별 합계"),
+                new ResultCards.Card("예약 확정", ResultCards.count(allBookings - totalCancelled, "건"), "취소 제외"),
+                new ResultCards.Card("취소", ResultCards.count(totalCancelled, "건"), "같은 예약 원장"),
+                new ResultCards.Card("조회 일수", ResultCards.count(weekDays, "일"),
+                        ResultCards.days(period.startDateKst(), period.endDateExclusiveKst().minusDays(1)))), now);
+        var datasets = List.of(dsReservations, dsBranches, dsTotals, cards);
 
         var view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
-                        new ViewSpec.Component(
-                                "calendar",
-                                new ViewSpec.Ref("WEEK_CALENDAR", COMPONENT_VERSION),
-                                "reservationRows",
+                        ResultCards.component(),
+                        ResultCards.panel("calendar", "WEEK_CALENDAR", "reservationRows",
                                 Map.of("columns", List.of("reservation_id", "branch_name", "room_name", "start_at", "end_at", "status", "billable_amount_krw")),
-                                Map.of("title", "이번 주 스터디룸 주간 예약 캘린더"),
-                                List.of()
-                        ),
-                        new ViewSpec.Component(
-                                "table",
-                                new ViewSpec.Ref("DATA_TABLE", COMPONENT_VERSION),
-                                "branchSummaries",
-                                Map.of("columns", List.of("branch_id", "branch_name", "total", "confirmed_count", "completed_count", "cancelled_count", "billable_booking_amount_krw")),
-                                Map.of("title", "지점별 스터디룸 예약 요약"),
-                                List.of()
-                        )
+                                "이번 주 예약 · 날짜를 선택해 예약 보기", ResultCards.count(weekDays, "일"))
                 ),
                 null // arranged() lays the components out
         ));
@@ -1274,7 +1298,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 ID_POC_005,
                 "이번 주 스터디룸 예약 현황을 보여줘",
                 "CONFIRMED_ADR",
-                List.of("WEEK_CALENDAR", "DATA_TABLE"),
+                List.of("KPI", "WEEK_CALENDAR"),
                 envelope,
                 summary
         );
@@ -1374,27 +1398,28 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         var dsPasses = new TypedDataset("expiringPasses", def.outputs().get("expiringPasses"), passRows, passRows.size(), 0, 100, now, now);
         var dsByBranch = new TypedDataset("expiringByBranch", def.outputs().get("expiringByBranch"), branchRows, branchRows.size(), 0, 10, now, now);
         var dsTotals = new TypedDataset("expiringTotals", def.outputs().get("expiringTotals"), List.of(totalsRow), 1, 0, 1, now, now);
-        var datasets = List.of(dsPasses, dsByBranch, dsTotals);
+        var dsPassesDays = ResultCards.withColumns(dsPasses, List.of(integer("days_left", "일")), row -> {
+            Instant expires = row.get("expires_at") instanceof Instant at ? at : now;
+            long days = Math.max(0L, java.time.temporal.ChronoUnit.DAYS.between(
+                    now.atZone(OpenStudyClock.KST).toLocalDate(), expires.atZone(OpenStudyClock.KST).toLocalDate()));
+            return Map.of("days_left", days);
+        });
+        long withinThree = dsPassesDays.rows().stream().filter(r -> ResultCards.longValue(r.get("days_left")) <= 3).count();
+        long branchCount = dsPassesDays.rows().stream().map(r -> r.get("branch_name")).distinct().count();
+        var cards = ResultCards.dataset(List.of(
+                new ResultCards.Card("7일 이내 만료", ResultCards.count(passRows.size(), "건"), "사용 중 이용권"),
+                new ResultCards.Card("3일 이내", ResultCards.count(withinThree, "건"), "임박"),
+                new ResultCards.Card("조회 지점", ResultCards.count(branchCount, "개"), "만료 예정이 있는 지점"),
+                new ResultCards.Card("표 표시", ResultCards.count(passRows.size(), "건"), "가까운 만료일 순")), now);
+        var datasets = List.of(dsPassesDays, dsByBranch, dsTotals, cards);
 
         var view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
-                        new ViewSpec.Component(
-                                "kpi",
-                                new ViewSpec.Ref("KPI", COMPONENT_VERSION),
-                                "expiringTotals",
-                                Map.of("values", List.of("count")),
-                                Map.of("title", "7일 이내 만료 예정 이용권 수", "unit", "건"),
-                                List.of()
-                        ),
-                        new ViewSpec.Component(
-                                "table",
-                                new ViewSpec.Ref("DATA_TABLE", COMPONENT_VERSION),
-                                "expiringPasses",
-                                Map.of("columns", List.of("pass_id", "branch_name", "product_name", "pass_type", "remaining_minutes", "expires_at", "status")),
-                                Map.of("title", "만료 예정 이용권 목록 (개인정보 비노출)"),
-                                List.of()
-                        )
+                        ResultCards.component(),
+                        ResultCards.panel("table", "DATA_TABLE", "expiringPasses",
+                                Map.of("columns", List.of("pass_id", "product_name", "branch_name", "expires_at", "days_left")),
+                                "만료 예정 목록 · 가장 가까운 날짜 순", "개인정보 비노출")
                 ),
                 null // arranged() lays the components out
         ));
@@ -1458,27 +1483,29 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
 
         var dsDaily = new TypedDataset("dailySales", def.outputs().get("dailySales"), dayRows, dayRows.size(), 0, 31, now, now);
         var dsTotals = new TypedDataset("dailySalesTotals", def.outputs().get("dailySalesTotals"), List.of(totalsRow), 1, 0, 1, now, now);
-        var datasets = List.of(dsDaily, dsTotals);
+        long approvedSum = 0L, refundSum = 0L, netSum = 0L;
+        for (var row : dayRows) {
+            approvedSum += ResultCards.longValue(row.get("approved_krw"));
+            refundSum += ResultCards.longValue(row.get("refund_krw"));
+            netSum += ResultCards.longValue(row.get("net_krw"));
+        }
+        var cards = ResultCards.dataset(List.of(
+                new ResultCards.Card("승인액", ResultCards.won(approvedSum), "선택 기간"),
+                new ResultCards.Card("환불액", ResultCards.won(refundSum), "처리일 기준"),
+                new ResultCards.Card("순매출", ResultCards.won(netSum), "승인액 − 환불액"),
+                new ResultCards.Card("일별 데이터", ResultCards.count(dayRows.size(), "일"), "0원인 날 포함")), now);
+        var datasets = List.of(dsDaily, dsTotals, cards);
 
         var view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
-                        new ViewSpec.Component(
-                                "lineChart",
-                                new ViewSpec.Ref("LINE_CHART", COMPONENT_VERSION),
-                                "dailySales",
-                                Map.of("category", "date_kst", "value", "net_krw"),
-                                Map.of("title", "지난달 일별 순매출 추이 (0원 일자 포함)", "currency", "KRW"),
-                                List.of()
-                        ),
-                        new ViewSpec.Component(
-                                "table",
-                                new ViewSpec.Ref("DATA_TABLE", COMPONENT_VERSION),
-                                "dailySales",
-                                Map.of("columns", List.of("date_kst", "approved_krw", "refund_krw", "net_krw", "approved_count", "refund_count")),
-                                Map.of("title", "지난달 일별 매출 상세"),
-                                List.of()
-                        )
+                        ResultCards.component(),
+                        ResultCards.panel("lineChart", "LINE_CHART", "dailySales",
+                                Map.of("category", "date_kst", "values", List.of("approved_krw", "net_krw")),
+                                "지난달 일별 승인액 · 순매출", "빈 날짜는 0으로 표시"),
+                        ResultCards.panel("table", "DATA_TABLE", "dailySales",
+                                Map.of("columns", List.of("date_kst", "approved_krw", "refund_krw", "net_krw")),
+                                "일별 집계 표", "같은 원장")
                 ),
                 null // arranged() lays the components out
         ));
@@ -1497,7 +1524,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 ID_POC_007,
                 "지난달 일별 매출 추이를 그래프로 보여줘",
                 "CONFIRMED_ADR",
-                List.of("LINE_CHART", "DATA_TABLE"),
+                List.of("KPI", "LINE_CHART", "DATA_TABLE"),
                 envelope,
                 summary
         );
@@ -1545,27 +1572,32 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
 
         var dsPurpose = new TypedDataset("purposeSales", def.outputs().get("purposeSales"), purposeRows, purposeRows.size(), 0, 10, now, now);
         var dsWinner = new TypedDataset("purposeWinner", def.outputs().get("purposeWinner"), List.of(winnerRow), 1, 0, 1, now, now);
-        var datasets = List.of(dsPurpose, dsWinner);
+        var labels = Map.of("PASS", "이용권", "ROOM", "스터디룸", "LOCKER", "사물함");
+        var dsPurposeLabeled = ResultCards.withColumns(dsPurpose, List.of(string("purpose_label")),
+                row -> Map.of("purpose_label", labels.getOrDefault(String.valueOf(row.get("purpose")), String.valueOf(row.get("purpose")))));
+        long approvedSum = 0L, refundSum = 0L, netSum = 0L;
+        for (var row : purposeRows) {
+            approvedSum += ResultCards.longValue(row.get("approved_krw"));
+            refundSum += ResultCards.longValue(row.get("refund_krw"));
+            netSum += ResultCards.longValue(row.get("net_krw"));
+        }
+        String winner = dsPurposeLabeled.rows().isEmpty() ? "없음" : String.valueOf(dsPurposeLabeled.rows().getFirst().get("purpose_label"));
+        var cards = ResultCards.dataset(List.of(
+                new ResultCards.Card("총 승인액", ResultCards.won(approvedSum), ResultCards.count(purposeRows.size(), "개 결제 목적")),
+                new ResultCards.Card("총 환불액", ResultCards.won(refundSum), "처리일 기준"),
+                new ResultCards.Card("총 순매출", ResultCards.won(netSum), "승인액 − 환불액"),
+                new ResultCards.Card("최대 매출", winner, "순매출 기준")), now);
+        var datasets = List.of(dsPurposeLabeled, dsWinner, cards);
 
         var view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
-                        new ViewSpec.Component(
-                                "kpi",
-                                new ViewSpec.Ref("KPI", COMPONENT_VERSION),
-                                "purposeWinner",
-                                Map.of("values", List.of("winner_purpose", "winner_net_krw", "total_net_krw")),
-                                Map.of("title", "지난달 최고 매출 부문 요약", "currency", "KRW"),
-                                List.of()
-                        ),
-                        new ViewSpec.Component(
-                                "barChart",
-                                new ViewSpec.Ref("BAR_CHART", COMPONENT_VERSION),
-                                "purposeSales",
-                                Map.of("category", "purpose", "value", "net_krw"),
-                                Map.of("title", "상품 구분별 순매출 비교 (PASS / ROOM / LOCKER)", "currency", "KRW"),
-                                List.of()
-                        )
+                        ResultCards.component(),
+                        ResultCards.panel("barChart", "BAR_CHART", "purposeSales",
+                                Map.of("category", "purpose_label", "value", "net_krw"), "지난달 용도별 순매출", "KRW"),
+                        ResultCards.panel("table", "DATA_TABLE", "purposeSales",
+                                Map.of("columns", List.of("purpose_label", "approved_krw", "refund_krw", "net_krw")),
+                                "승인·환불·순매출", "같은 원장")
                 ),
                 null // arranged() lays the components out
         ));
@@ -1582,7 +1614,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 ID_POC_008,
                 "지난달 이용권, 스터디룸, 사물함 중 어디서 매출이 가장 많이 나왔어?",
                 "CONFIRMED_ADR",
-                List.of("BAR_CHART", "KPI"),
+                List.of("KPI", "BAR_CHART", "DATA_TABLE"),
                 envelope,
                 summary
         );
@@ -1653,19 +1685,23 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
 
         var dsTasks = new TypedDataset("urgentTasks", def.outputs().get("urgentTasks"), taskRows, taskRows.size(), 0, 20, now, now);
         var dsMeta = new TypedDataset("taskPolicyMeta", def.outputs().get("taskPolicyMeta"), List.of(metaRow), 1, 0, 1, now, now);
-        var datasets = List.of(dsTasks, dsMeta);
+        long urgent = taskRows.stream().filter(r -> "URGENT".equals(String.valueOf(r.get("priority")))).count();
+        long inProgress = taskRows.stream().filter(r -> "IN_PROGRESS".equals(String.valueOf(r.get("status")))).count();
+        long branchCount = taskRows.stream().map(r -> r.get("branch_name")).distinct().count();
+        var cards = ResultCards.dataset(List.of(
+                new ResultCards.Card("처리 대상", ResultCards.count(taskRows.size(), "건"), "기한 지남·오늘 마감"),
+                new ResultCards.Card("긴급", ResultCards.count(urgent, "건"), "우선순위 긴급"),
+                new ResultCards.Card("진행 중", ResultCards.count(inProgress, "건"), "상태 기준"),
+                new ResultCards.Card("조회 지점", ResultCards.count(branchCount, "개"), "업무가 있는 지점")), now);
+        var datasets = List.of(dsTasks, dsMeta, cards);
 
         var view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
-                        new ViewSpec.Component(
-                                "taskList",
-                                new ViewSpec.Ref("TASK_LIST", COMPONENT_VERSION),
-                                "urgentTasks",
+                        ResultCards.component(),
+                        ResultCards.panel("taskList", "TASK_LIST", "urgentTasks",
                                 Map.of("columns", List.of("id", "title", "branch_id", "branch_name", "priority", "status", "due_at", "assignee_employee_id")),
-                                Map.of("title", "긴급·높음 우선순위 당일 및 지연 미완료 업무 후보"),
-                                List.of()
-                        )
+                                "기한이 도래한 미완료 업무 · 우선순위 순", "긴급·높음")
                 ),
                 null // arranged() lays the components out
         ));
@@ -1689,7 +1725,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 ID_POC_009,
                 "지금 급하게 처리해야 할 업무가 뭐야?",
                 "POLICY_PENDING_URGENT_DEFINITION",
-                List.of("TASK_LIST"),
+                List.of("KPI", "TASK_LIST"),
                 envelope,
                 summary
         );
@@ -1844,27 +1880,27 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
 
         var dsEmp = new TypedDataset("employeeWorkHours", def.outputs().get("employeeWorkHours"), datasetRows, datasetRows.size(), 0, 20, now, now);
         var dsMeta = new TypedDataset("attendancePolicyMeta", def.outputs().get("attendancePolicyMeta"), List.of(metaRow), 1, 0, 1, now, now);
-        var datasets = List.of(dsEmp, dsMeta);
+        var dsEmpHours = ResultCards.withColumns(dsEmp, List.of(decimal("work_hours", "시간", 1)),
+                row -> Map.of("work_hours", Math.round(ResultCards.longValue(row.get("raw_work_minutes")) / 6.0) / 10.0));
+        double totalHours = dsEmpHours.rows().stream().mapToDouble(r -> ResultCards.doubleValue(r.get("work_hours"))).sum();
+        long people = dsEmpHours.rows().size();
+        long branchCount = dsEmpHours.rows().stream().map(r -> r.get("branch_name")).distinct().count();
+        var cards = ResultCards.dataset(List.of(
+                new ResultCards.Card("대상 직원", ResultCards.count(people, "명"), "근무 기록이 있는 직원"),
+                new ResultCards.Card("총 근무시간", ResultCards.hours(totalHours), "실근무 기준"),
+                new ResultCards.Card("평균", ResultCards.hours(people == 0 ? 0.0 : totalHours / people), "1인당"),
+                new ResultCards.Card("조회 지점", ResultCards.count(branchCount, "개"), "소속 지점")), now);
+        var datasets = List.of(dsEmpHours, dsMeta, cards);
 
         var view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
-                        new ViewSpec.Component(
-                                "barChart",
-                                new ViewSpec.Ref("BAR_CHART", COMPONENT_VERSION),
-                                "employeeWorkHours",
-                                Map.of("category", "employee_name", "value", "raw_work_minutes"),
-                                Map.of("title", "지난주 직원별 실근무시간(분) 비교", "unit", "분"),
-                                List.of()
-                        ),
-                        new ViewSpec.Component(
-                                "table",
-                                new ViewSpec.Ref("DATA_TABLE", COMPONENT_VERSION),
-                                "employeeWorkHours",
-                                Map.of("columns", List.of("employee_id", "employee_name", "branch_id", "branch_name", "shift_days", "raw_work_minutes", "illustrative_corrected_minutes", "correction_delta_minutes")),
-                                Map.of("title", "지난주 직원별 근무시간 및 정정 반영 비교"),
-                                List.of()
-                        )
+                        ResultCards.component(),
+                        ResultCards.panel("barChart", "BAR_CHART", "employeeWorkHours",
+                                Map.of("category", "employee_name", "value", "work_hours"), "지난주 직원별 근무 시간", "실근무"),
+                        ResultCards.panel("table", "DATA_TABLE", "employeeWorkHours",
+                                Map.of("columns", List.of("employee_name", "branch_name", "work_hours")),
+                                "지난주 근무 기록 요약", "시간 단위")
                 ),
                 null // arranged() lays the components out
         ));
@@ -1893,7 +1929,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 ID_POC_010,
                 "지난주 직원별 근무시간을 비교해줘",
                 "POLICY_PENDING_ATTENDANCE_CORRECTION_AGGREGATION",
-                List.of("BAR_CHART", "DATA_TABLE"),
+                List.of("KPI", "BAR_CHART", "DATA_TABLE"),
                 envelope,
                 summary
         );
