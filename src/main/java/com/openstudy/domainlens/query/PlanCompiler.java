@@ -193,7 +193,7 @@ public final class PlanCompiler {
         for(var component:views)if(presentationExcluded(component.componentRef().id(),prompt.data().question()))
             return stop(IrStatus.NEEDS_CLARIFICATION,ReasonCode.SEMANTIC_GROUNDING_FAILED,"요청에서 제외한 화면 표현은 사용할 수 없습니다.",List.of());
         if(views.isEmpty())return stop(IrStatus.UNSUPPORTED,"요청한 결과에 사용할 승인된 화면 구성이 없습니다.",List.of());
-        var view=new ViewSpec(prompt.components().catalogVersion(),views,Layout.stack(views.stream().map(c->Layout.leaf(c.id())).toList()));
+        var view=new ViewSpec(prompt.components().catalogVersion(),views,ViewLayouts.compose(views));
         return new IrDocument(IrDocument.VERSION,IrStatus.READY,null,List.of(),null,queries,view,List.copyOf(used));
     }
     private static boolean sameAnalysisInputs(QuerySpec left,QuerySpec right) {
