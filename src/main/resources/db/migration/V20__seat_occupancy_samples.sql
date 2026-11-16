@@ -2,18 +2,16 @@
 -- 지점마다 Asia/Seoul 기준 최근 371일의 9·12·15·18·21시에 이용 중이던 좌석 수와 현재 가용 좌석 수를 한 행으로 만든다.
 -- 등록 분석 POC-002(요일·시간대 혼잡도)와 같은 정의다: 입실 시각 <= 샘플 시각 < 퇴실 시각(미퇴실 포함)이면 이용 중.
 -- 저장 테이블이 아니라 뷰이므로 입퇴실 기록이 바뀌면 바로 반영된다. 아직 오지 않은 샘플 시각은 넣지 않는다.
--- 모든 식에 짧은 별칭을 둔다. 없으면 MySQL이 식 전체를 열 이름으로 붙여 SHOW CREATE VIEW가 64자를 넘는다.
 
 CREATE VIEW `seat_occupancy_samples` AS
 WITH RECURSIVE `sample_days` (`day_kst`) AS (
-  SELECT DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR)) - INTERVAL 370 DAY AS `day_kst`
+  SELECT DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR)) - INTERVAL 370 DAY
   UNION ALL
-  SELECT `day_kst` + INTERVAL 1 DAY AS `day_kst` FROM `sample_days`
+  SELECT `day_kst` + INTERVAL 1 DAY FROM `sample_days`
   WHERE `day_kst` < DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR))
 ),
 `sample_hours` (`hour_kst`) AS (
-  SELECT 9 AS `hour_kst` UNION ALL SELECT 12 AS `hour_kst` UNION ALL SELECT 15 AS `hour_kst`
-  UNION ALL SELECT 18 AS `hour_kst` UNION ALL SELECT 21 AS `hour_kst`
+  SELECT 9 UNION ALL SELECT 12 UNION ALL SELECT 15 UNION ALL SELECT 18 UNION ALL SELECT 21
 ),
 `samples` AS (
   SELECT
