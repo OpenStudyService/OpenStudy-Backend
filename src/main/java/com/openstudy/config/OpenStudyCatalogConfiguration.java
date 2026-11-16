@@ -339,8 +339,13 @@ public class OpenStudyCatalogConfiguration {
     /** Implementation ids of general metrics; every other metric belongs to a registered analysis. */
     public static final String GENERAL_METRIC_PREFIX = "openstudy.metric.";
     /** A payment counts as sales once it is approved; pending and failed payments never do. */
+    /**
+     * An approved payment as the M9 sales API counts it: every payment that was approved (approved_at set), including
+     * one refunded later. Its refund is a separate item; filtering on APPROVED alone dropped refunded payments (#97).
+     */
     static final com.openstudy.domainlens.api.ir.Filter APPROVED_PAYMENT =
-            new com.openstudy.domainlens.api.ir.Filter.Leaf("payment.status", com.openstudy.domainlens.api.ir.Filter.Operator.EQ, List.of("APPROVED"));
+            new com.openstudy.domainlens.api.ir.Filter.Leaf("payment.status", com.openstudy.domainlens.api.ir.Filter.Operator.IN,
+                    List.of("APPROVED", "REFUNDED"));
     /** The time field a resolved period ("이번 달") constrains for each general metric. */
     public static final Map<String, String> PERIOD_FIELDS = Map.of(
             "sales.approved_amount_krw", "payment.paid_at",

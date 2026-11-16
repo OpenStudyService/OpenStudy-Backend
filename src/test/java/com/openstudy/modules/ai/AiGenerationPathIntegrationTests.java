@@ -65,6 +65,8 @@ class AiGenerationPathIntegrationTests extends AiTestSupport {
         pay(customer, first, 12_000, "APPROVED", now);
         pay(customer, second, 50_000, "APPROVED", now);
         pay(customer, second, 99_000, "FAILED", now);
+        // #97: approved, then refunded: still an approved payment for the M9 sales API (its refund is a separate item).
+        pay(customer, first, 8_000, "REFUNDED", now);
         pay(customer, second, 7_000, "APPROVED", now.minus(Duration.ofDays(100)));
     }
 
@@ -118,7 +120,7 @@ class AiGenerationPathIntegrationTests extends AiTestSupport {
 
             var export = send(s, "GET", "/api/ai/executions/" + executionId + "/export", null);
             assertThat(export.statusCode()).as(export.body()).isEqualTo(200);
-            assertThat(export.body()).contains(name(first)).contains("42000").contains("AI 생성 조회");
+            assertThat(export.body()).contains(name(first)).contains("50000").contains("AI 생성 조회");
             // Columns are named after what they select, not the compiler's aliases; no registered-analysis terms.
             var month = YearMonth.now(KST);
             assertThat(export.body()).contains("지점명,결제 승인액(KRW)").doesNotContain("d0,m0")
@@ -227,12 +229,12 @@ class AiGenerationPathIntegrationTests extends AiTestSupport {
         jdbc.update("INSERT INTO payments(customer_id,branch_id,purpose,method,amount_krw,status,idempotency_key,issued_pass_quantity,approved_at,failed_at,created_by) "
                         + "VALUES(?,?,'LOCKER','CASH',?,?,?,0,?,?,?)",
                 customer, branch, amount, status, "GEN-" + UUID.randomUUID(),
-                "APPROVED".equals(status) ? Timestamp.from(at) : null, "FAILED".equals(status) ? Timestamp.from(at) : null, owner);
+                "FAILED".equals(status) ? null : Timestamp.from(at), "FAILED".equals(status) ? Timestamp.from(at) : null, owner);
     }
 
     long approvedThisMonth(long branch) {
         var month = YearMonth.now(KST);
-        return count("SELECT COALESCE(SUM(amount_krw),0) FROM payments WHERE branch_id=? AND status='APPROVED' AND approved_at>=? AND approved_at<?",
+        return count("SELECT COALESCE(SUM(amount_krw),0) FROM payments WHERE branch_id=? AND approved_at>=? AND approved_at<?",
                 branch, Timestamp.from(month.atDay(1).atStartOfDay(KST).toInstant()), Timestamp.from(month.plusMonths(1).atDay(1).atStartOfDay(KST).toInstant()));
     }
 

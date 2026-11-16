@@ -382,6 +382,10 @@ public class AiWorkspaceService {
     }
 
     /** #96: an optional client key; a malformed one is a validation error rather than silently ignored. */
+    static long elapsedMs(long fromNanos, long toNanos) {
+        return Math.max(0L, Duration.ofNanos(toNanos - fromNanos).toMillis());
+    }
+
     static String clientRequestKey(AiQueryRequest request) {
         if (request == null || request.clientRequestKey() == null || request.clientRequestKey().isBlank()) return null;
         String key = request.clientRequestKey().trim();
@@ -486,6 +490,7 @@ public class AiWorkspaceService {
         Set<Long> namedBranches = rawQuestion == null ? Set.of() : userResolver.mentionedBranches(rawQuestion);
         String followUp = basis != null && clarificationChoice == null && AiReuse.isFollowUp(rawQuestion, !namedBranches.isEmpty())
                 ? basis.getAnalysisId() : null;
+        long planStart = System.nanoTime();
         var plan = playbackGateway.planQuestion(
                 rawQuestion,
                 clarificationChoice,
@@ -494,14 +499,18 @@ public class AiWorkspaceService {
                 followUp,
                 basis == null ? null : previousConditions(basis)
         );
+        long planEnd = System.nanoTime();
+        // #97: measured, not fixed: the plan's time less its model call is the rule match and catalog search.
+        long acceptedMs = elapsedMs(startNanos, planStart);
+        long retrievingMs = Math.max(0L, elapsedMs(planStart, planEnd) - Math.max(0L, plan.llmDurationMs()));
         // #102: the HTTP request ID (MDC) and the AI request/trace IDs of the M10 diagnostic log on one line.
         log.atInfo().addKeyValue("aiRequestId", requestId).addKeyValue("aiTraceId", traceId).addKeyValue("outcome", plan.outcome())
                 .log("AI question aiRequestId={} aiTraceId={} outcome={}", requestId, traceId, plan.outcome());
 
         List<StageSpan> stages = new ArrayList<>();
-        stages.add(new StageSpan("accepted", "질문 접수 및 정규화", "COMPLETED", 2L,
+        stages.add(new StageSpan("accepted", "질문 접수 및 정규화", "COMPLETED", acceptedMs,
                 "입력 길이 및 금지 토큰 검사 완료"));
-        stages.add(new StageSpan("retrieving", "시맨틱 카탈로그·ONNX 임베딩 검색", "COMPLETED", 6L,
+        stages.add(new StageSpan("retrieving", "시맨틱 카탈로그·ONNX 임베딩 검색", "COMPLETED", retrievingMs,
                 "koen-e5-tiny-q8 384차원 검색 후보 " + plan.retrievedCandidates().size() + "건"));
 
         Map<String, Object> securityGate = new LinkedHashMap<>();
@@ -669,7 +678,7 @@ public class AiWorkspaceService {
         }
 
         var querySpec = playbackGateway.buildQuerySpec(plan.analysisId());
-        long genMs = plan.llmDurationMs() > 0 ? plan.llmDurationMs() : 4L;
+        long genMs = Math.max(0L, plan.llmDurationMs());
         String genLabel = plan.llmDurationMs() > 0
                 ? "Qwen LLM 조회 명세(QuerySpec) 생성 (" + playbackGateway.activeModelName() + ")"
                 : "조회 명세(QuerySpec) 생성";
@@ -678,10 +687,10 @@ public class AiWorkspaceService {
                         + (plan.totalTokens() > 0 ? " · " + plan.totalTokens() + " tokens" : "")
                 : "Registered analysis: " + plan.analysisId();
         stages.add(new StageSpan("generating", genLabel, "COMPLETED", genMs, genDetail));
-        stages.add(new StageSpan("validating", "권한·스코프·예산 가드레일 검증", "COMPLETED", 3L,
+        long execStart = System.nanoTime();
+        stages.add(new StageSpan("validating", "권한·스코프·예산 가드레일 검증", "COMPLETED", elapsedMs(planEnd, execStart),
                 "허용 지점: " + targetBranches + ", 최대 행: " + plan.truncation().maxRows()));
 
-        long execStart = System.nanoTime();
         OpenStudyAnalyses.PocExecutionResult pocResult = executeWithOverrides(
                 actor.employeeId(),
                 plan.analysisId(),
@@ -691,12 +700,12 @@ public class AiWorkspaceService {
                 period,
                 inheritedProducts
         );
-        long execMs = Math.max(2L, Duration.ofNanos(System.nanoTime() - execStart).toMillis());
-        stages.add(new StageSpan("executing", "데이터베이스 집계 실행", "COMPLETED", execMs,
+        long execEnd = System.nanoTime();
+        stages.add(new StageSpan("executing", "데이터베이스 집계 실행", "COMPLETED", elapsedMs(execStart, execEnd),
                 "데이터셋 " + pocResult.envelope().datasets().size() + "종 조회 완료"));
-        stages.add(new StageSpan("completed", "ViewSpec 바인딩 및 결과 검증", "COMPLETED", 2L,
+        // The analysis binds its view while it runs; this span is what is left before the response is saved.
+        stages.add(new StageSpan("completed", "ViewSpec 바인딩 및 결과 검증", "COMPLETED", elapsedMs(execEnd, System.nanoTime()),
                 "컴포넌트: " + pocResult.expectedViewTypes()));
-
 
         long totalMs = Math.max(5L, Duration.ofNanos(System.nanoTime() - startNanos).toMillis());
         var saved = persistExecutionAndTrace(
@@ -796,15 +805,20 @@ public class AiWorkspaceService {
         }
         var completed = (AiGenerationService.Completed) result;
         int tokens = completed.usage().stream().mapToInt(u -> u.inputTokens() + u.outputTokens()).sum();
-        securityGate.put("llmDurationMs", completed.durationMs());
-        securityGate.put("llmTotalTokens", tokens);
+        // The registered selector's own model call (llmDurationMs) is kept; the generation path reports its own.
+        securityGate.put("generationLlmDurationMs", completed.stage("generating"));
+        securityGate.put("generationDurationMs", completed.durationMs());
+        securityGate.put("generationTotalTokens", tokens);
+        // #97: each span is the pipeline's measured stage time, not a fixed placeholder.
+        stages.add(new StageSpan("retrieving", "DomainLens 의미 카탈로그 검색", "COMPLETED",
+                completed.stage("retrieving"), "생성 경로 문맥 검색"));
         stages.add(new StageSpan("generating", "DomainLens 조회 계획 생성·서버 컴파일 (" + model + ")", "COMPLETED",
-                completed.durationMs(), "지표: " + completed.queries().stream().flatMap(q -> q.metrics().stream())
+                completed.stage("generating"), "지표: " + completed.queries().stream().flatMap(q -> q.metrics().stream())
                         .map(QuerySpec.Selection::field).toList() + " · " + tokens + " tokens"));
-        stages.add(new StageSpan("validating", "권한·스코프·예산 가드레일 검증", "COMPLETED", 1L, "허용 지점: " + branches));
-        stages.add(new StageSpan("executing", "데이터베이스 집계 실행", "COMPLETED", 1L,
+        stages.add(new StageSpan("validating", "조회 명세 검증·실행 계획", "COMPLETED", completed.stage("validating"),
+                "허용 지점: " + branches));
+        stages.add(new StageSpan("executing", "데이터베이스 집계 실행·화면 구성", "COMPLETED", completed.stage("executing"),
                 "데이터셋 " + completed.envelope().datasets().size() + "종 조회 완료"));
-        stages.add(new StageSpan("completed", "ViewSpec 바인딩 및 결과 검증", "COMPLETED", 1L, "생성된 화면 구성"));
         long totalMs = Math.max(1L, Duration.ofNanos(System.nanoTime() - startNanos).toMillis());
         var saved = persistExecutionAndTrace(executionId, requestId, traceId, convId, actor, scope, branches, question, null,
                 null, completed.domain(), "READY", AiGenerationService.RESULT_CATEGORY, null, completed.queries(),

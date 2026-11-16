@@ -13,7 +13,9 @@ import com.openstudy.domainlens.catalog.SemanticRegistry;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,9 +39,45 @@ public class AiGenerationService {
 
     public sealed interface Result permits Completed, Declined, Failed {}
 
-    /** The model's queries ran: the saved queries and view, the result, and the model's usage. */
+    /**
+     * The model's queries ran: the saved queries and view, the result, and the model's usage. {@code stageMs} holds the
+     * measured time of each pipeline stage in the order it ran (retrieving, generating, validating, executing).
+     */
     public record Completed(List<QuerySpec> queries, ViewSpec view, ResultEnvelope envelope, String domain,
-            List<ModelUsage> usage, long durationMs) implements Result {}
+            List<ModelUsage> usage, long durationMs, Map<String, Long> stageMs) implements Result {
+        public Completed {
+            stageMs = Map.copyOf(stageMs);
+        }
+
+        /** The measured time of one stage; 0 when the pipeline did not report it. */
+        public long stage(String name) {
+            return stageMs.getOrDefault(name, 0L);
+        }
+    }
+
+    /** #97: times the pipeline's stage marks; each stage lasts until the next mark or the end of the run. */
+    static final class StageTimer {
+        private final Map<String, Long> ms = new LinkedHashMap<>();
+        private String current;
+        private long since;
+
+        void mark(String stage) {
+            long now = System.nanoTime();
+            close(now);
+            current = stage;
+            since = now;
+        }
+
+        Map<String, Long> finish() {
+            close(System.nanoTime());
+            return ms;
+        }
+
+        private void close(long now) {
+            if (current != null) ms.merge(current, Math.max(0L, Duration.ofNanos(now - since).toMillis()), Long::sum);
+            current = null;
+        }
+    }
 
     /** The generation path could not answer either (unknown metric, ungrounded selection, …): still unsupported. */
     public record Declined(String reason, long durationMs) implements Result {}
@@ -64,14 +102,17 @@ public class AiGenerationService {
         var gateway = model.gateway().orElseThrow(() -> new IllegalStateException("No generation model"));
         long started = System.nanoTime();
         try {
-            var outcome = pipelines.create(gateway).run(question, user, new Cancellation(), pipelines.retrieval());
+            var timer = new StageTimer();
+            var outcome = pipelines.create(gateway).observing(timer::mark)
+                    .run(question, user, new Cancellation(), pipelines.retrieval());
+            var stageMs = timer.finish();
             long ms = elapsed(started);
             if (outcome.ir().status() != IrStatus.READY || !"COMPLETED".equals(outcome.result().status())) {
                 String reason = outcome.ir().reasonCode() == null ? outcome.ir().status().name() : outcome.ir().reasonCode().name();
                 return new Declined(reason, ms);
             }
             var queries = outcome.ir().queries();
-            return new Completed(queries, outcome.ir().view(), outcome.result(), domain(queries), outcome.usage(), ms);
+            return new Completed(queries, outcome.ir().view(), outcome.result(), domain(queries), outcome.usage(), ms, stageMs);
         } catch (EngineException ex) {
             log.atInfo().addKeyValue("engineCode", ex.code()).log("AI generation stopped: {} {}", ex.code(), ex.getMessage());
             return failure(ex, elapsed(started));

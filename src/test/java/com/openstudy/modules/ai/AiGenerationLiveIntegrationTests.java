@@ -86,7 +86,7 @@ class AiGenerationLiveIntegrationTests extends AiTestSupport {
     long approvedThisMonth(long branch) {
         var kst = java.time.ZoneId.of("Asia/Seoul");
         var month = java.time.YearMonth.now(kst);
-        return count("SELECT COALESCE(SUM(amount_krw),0) FROM payments WHERE branch_id=? AND status='APPROVED' AND approved_at>=? AND approved_at<?",
+        return count("SELECT COALESCE(SUM(amount_krw),0) FROM payments WHERE branch_id=? AND approved_at>=? AND approved_at<?",
                 branch, Timestamp.from(month.atDay(1).atStartOfDay(kst).toInstant()), Timestamp.from(month.plusMonths(1).atDay(1).atStartOfDay(kst).toInstant()));
     }
 
