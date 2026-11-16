@@ -138,6 +138,59 @@ class AiGenerationPathIntegrationTests extends AiTestSupport {
         }
     }
 
+    @Test void theSameQuestionInANewConversationReusesThePlanWithoutTheModel() throws Exception {
+        try (var s = login(owner)) {
+            body(ask(s, QUESTION, "all"));
+            assertThat(modelCalls).hasValue(1);
+
+            // Another conversation, other spacing and ending: the saved QuerySpec·ViewSpec runs, the model is not called.
+            JsonNode again = body(ask(s, "이번달 지점별 결제 금액 합계를 보여줘", "all"));
+            assertThat(again.get("status").asString()).as(again.toString()).isEqualTo("COMPLETED");
+            assertThat(again.get("resultCategory").asString()).isEqualTo("GENERATED_EXECUTION");
+            assertThat(again.at("/securityGate/planCache").asString()).isEqualTo("HIT");
+            assertThat(again.at("/stages").toString()).contains("저장된 조회 계획 재사용");
+            assertThat(again.at("/querySpec/metrics/0/field").asString()).isEqualTo(METRIC);
+            assertThat(sums(again.at("/envelope/datasets/0/rows")))
+                    .containsEntry(name(first), approvedThisMonth(first)).containsEntry(name(second), approvedThisMonth(second));
+            assertThat(modelCalls).hasValue(1);
+
+            // Another period is another question: the model plans it.
+            answer = () -> plan("지난달 지점별 결제 금액 합계 보여줘");
+            JsonNode lastMonth = body(ask(s, "지난달 지점별 결제 금액 합계 보여줘", "all"));
+            assertThat(lastMonth.at("/securityGate/planCache").isMissingNode()).isTrue();
+            assertThat(modelCalls).hasValue(2);
+        }
+    }
+
+    @Test void aReusedPlanRunsUnderTheNewRequestersOwnPermissions() throws Exception {
+        // A total, not a branch comparison: comparing every branch is the owner's only.
+        String total = "이번 달 결제 금액 합계 보여줘";
+        answer = () -> totalPlan(total);
+        try (var s = login(owner)) {
+            JsonNode body = body(ask(s, total, "all"));
+            assertThat(body.get("status").asString()).as(body.toString()).isEqualTo("COMPLETED");
+            assertThat(body.at("/envelope/datasets/0/rows/0/m0").asLong())
+                    .isEqualTo(approvedThisMonth(first) + approvedThisMonth(second));
+        }
+        // A staff member of the first branch asks the same: the owner's plan, this staff member's branch only.
+        long staff = person("EMPLOYEE");
+        member(staff, first, "ai:read", "sales:read");
+        try (var s = login(staff)) {
+            JsonNode body = body(ask(s, total, Long.toString(first)));
+            assertThat(body.get("status").asString()).as(body.toString()).isEqualTo("COMPLETED");
+            assertThat(body.at("/securityGate/planCache").asString()).isEqualTo("HIT");
+            assertThat(body.at("/envelope/datasets/0/rows/0/m0").asLong()).isEqualTo(approvedThisMonth(first));
+        }
+        assertThat(modelCalls).hasValue(1);
+    }
+
+    static SemanticPlan totalPlan(String question) {
+        var evidence = List.of(new SemanticPlan.Evidence(METRIC, SemanticPlan.Origin.QUESTION, question));
+        var request = new SemanticPlan.Request(QuerySpec.Mode.AGGREGATE, null, null, List.of(METRIC), List.of(), null,
+                List.of(), null, null, null, false, List.of(), evidence, List.of());
+        return new SemanticPlan(SemanticPlan.VERSION, IrStatus.READY, null, List.of(), List.of(request), List.of(), null);
+    }
+
     @Test void registeredQuestionsStayWithTheirAnalysis() throws Exception {
         try (var s = login(owner)) {
             JsonNode body = body(ask(s, "이번 달 지점별 매출을 비교해줘", "all"));

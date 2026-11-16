@@ -141,6 +141,7 @@ public class AiWorkspaceService {
     private final com.openstudy.common.audit.AuditTrail audit;
     private final AiGenerationService generation;
     private final OpenStudyIntentAnalyzer intents;
+    private final AiPlanCache planCache;
 
     public AiWorkspaceService(
             OpenStudyUserContextResolver userResolver,
@@ -158,9 +159,11 @@ public class AiWorkspaceService {
             AiReadiness readinessCheck,
             com.openstudy.common.audit.AuditTrail audit,
             AiGenerationService generation,
-            OpenStudyIntentAnalyzer intents
+            OpenStudyIntentAnalyzer intents,
+            AiPlanCache planCache
     ) {
         this.intents = intents;
+        this.planCache = planCache;
         this.generation = generation;
         this.audit = audit;
         this.readinessCheck = readinessCheck;
@@ -689,10 +692,15 @@ public class AiWorkspaceService {
 
         var querySpec = playbackGateway.buildQuerySpec(plan.analysisId());
         long genMs = Math.max(0L, plan.llmDurationMs());
-        String genLabel = plan.llmDurationMs() > 0
+        if (plan.planCached()) securityGate.put("planCache", "HIT");
+        String genLabel = plan.planCached()
+                ? "저장된 조회 계획 재사용 (LLM 호출 없음)"
+                : plan.llmDurationMs() > 0
                 ? "Qwen LLM 조회 명세(QuerySpec) 생성 (" + playbackGateway.activeModelName() + ")"
                 : "조회 명세(QuerySpec) 생성";
-        String genDetail = plan.llmDurationMs() > 0
+        String genDetail = plan.planCached()
+                ? "같은 뜻의 이전 질문에서 고른 분석: " + plan.analysisId()
+                : plan.llmDurationMs() > 0
                 ? "Model: " + playbackGateway.activeModelName() + " · " + plan.analysisId()
                         + (plan.totalTokens() > 0 ? " · " + plan.totalTokens() + " tokens" : "")
                 : "Registered analysis: " + plan.analysisId();
@@ -795,7 +803,37 @@ public class AiWorkspaceService {
         securityGate.put("path", "GENERATED");
         String model = playbackGateway.activeModelName();
         // The branches are this request's scope already; the model plans the question without their names.
-        var result = generation.generate(userResolver.withoutBranchNames(question), actor.toUserContext(scope, branches));
+        String planned = userResolver.withoutBranchNames(question);
+        var user = actor.toUserContext(scope, branches);
+        // 2026-11-16: a question already planned (the same meaning, read the same way) runs its saved QuerySpec·ViewSpec
+        // again without the model, under this requester's permissions and branches.
+        String cacheVersion = planCache.versionKey(AiPlanCache.Kind.GENERATED, model, "generation");
+        AiGenerationService.Result result = null;
+        boolean cached = false;
+        var hit = planCache.find(AiPlanCache.Kind.GENERATED, cacheVersion, planned).filter(h -> h.queries() != null);
+        if (hit.isPresent()) {
+            long started = System.nanoTime();
+            try {
+                var queries = generation.current(hit.get().queries(), planned);
+                var envelope = generation.rerun(hit.get().queries(), hit.get().view(), planned, user);
+                long ms = Math.max(1L, Duration.ofNanos(System.nanoTime() - started).toMillis());
+                result = new AiGenerationService.Completed(queries, hit.get().view(), envelope,
+                        hit.get().intentDomain() == null ? AiGenerationService.domain(queries) : hit.get().intentDomain(),
+                        List.of(), ms, Map.of("executing", ms));
+                cached = true;
+                securityGate.put("planCache", "HIT");
+                securityGate.put("planCacheSimilarity", Math.round(hit.get().similarity() * 1000) / 1000.0);
+            } catch (com.openstudy.domainlens.api.error.EngineException e) {
+                // A saved plan that no longer runs (catalog or data changed) is planned again by the model.
+                securityGate.put("planCache", "STALE");
+            }
+        }
+        if (result == null) {
+            result = generation.generate(planned, user);
+            if (result instanceof AiGenerationService.Completed done) {
+                planCache.storeGenerated(cacheVersion, planned, done.queries(), done.view(), done.domain());
+            }
+        }
         if (result instanceof AiGenerationService.Declined declined) {
             securityGate.put("generation", declined.reason());
             stages.add(new StageSpan("generating", "DomainLens 조회 계획 생성 (" + model + ")", "UNSUPPORTED",
@@ -823,9 +861,13 @@ public class AiWorkspaceService {
         // #97: each span is the pipeline's measured stage time, not a fixed placeholder.
         stages.add(new StageSpan("retrieving", "DomainLens 의미 카탈로그 검색", "COMPLETED",
                 completed.stage("retrieving"), "생성 경로 문맥 검색"));
-        stages.add(new StageSpan("generating", "DomainLens 조회 계획 생성·서버 컴파일 (" + model + ")", "COMPLETED",
-                completed.stage("generating"), "지표: " + completed.queries().stream().flatMap(q -> q.metrics().stream())
-                        .map(QuerySpec.Selection::field).toList() + " · " + tokens + " tokens"));
+        String metrics = "지표: " + completed.queries().stream().flatMap(q -> q.metrics().stream())
+                .map(QuerySpec.Selection::field).toList();
+        stages.add(cached
+                ? new StageSpan("generating", "저장된 조회 계획 재사용 (LLM 호출 없음)", "COMPLETED", 0L,
+                        metrics + " · 같은 뜻의 이전 질문에서 만든 QuerySpec·ViewSpec")
+                : new StageSpan("generating", "DomainLens 조회 계획 생성·서버 컴파일 (" + model + ")", "COMPLETED",
+                        completed.stage("generating"), metrics + " · " + tokens + " tokens"));
         stages.add(new StageSpan("validating", "조회 명세 검증·실행 계획", "COMPLETED", completed.stage("validating"),
                 "허용 지점: " + branches));
         stages.add(new StageSpan("executing", "데이터베이스 집계 실행·화면 구성", "COMPLETED", completed.stage("executing"),

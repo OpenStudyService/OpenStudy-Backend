@@ -210,7 +210,7 @@ public class AiGenerationService {
     }
 
     /** The permission domain of the queries: payments and refunds are sales. */
-    static String domain(List<QuerySpec> queries) {
+    public static String domain(List<QuerySpec> queries) {
         boolean sales = queries.stream().anyMatch(q -> "payment".equals(q.source()) || "refund".equals(q.source()));
         if (sales) return "sales";
         if (queries.isEmpty()) return "generated";

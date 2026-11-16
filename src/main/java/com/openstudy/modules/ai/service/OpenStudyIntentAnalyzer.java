@@ -86,6 +86,16 @@ public class OpenStudyIntentAnalyzer implements QueryIntent.Analyzer {
         return new QueryIntent(Set.of(metric.get().id()), dimensions, period, order, Set.of(), IrStatus.READY, null);
     }
 
+    /**
+     * Every period the question names, read now as KST date ranges ("2026-11-01~2026-12-01"), for comparing two
+     * questions (AiPlanCache). "OUT_OF_RANGE" stands for a period too long to read.
+     */
+    public List<String> periodReadings(String question) {
+        var found = periods(QuestionNormalizer.key(question));
+        if (found == null) return List.of("OUT_OF_RANGE");
+        return found.stream().map(range -> range[0] + "~" + range[1]).toList();
+    }
+
     /** The general metric whose catalog term the question uses; the longest term wins, a tie resolves nothing. */
     Optional<SemanticRegistry.Metric> metric(String key) {
         String best = null;
