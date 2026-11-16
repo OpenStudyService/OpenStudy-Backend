@@ -116,7 +116,9 @@ public final class PlanCompiler {
                 boolean set=switch(slot){case "page"->r.page()!=null;case "size"->r.size()!=null;case "limit"->r.limit()!=null;case "order"->!r.order().isEmpty();default->!r.presentations().isEmpty();};
                 if(set && !optionProof(r,slot,prompt,intent))return stop(IrStatus.NEEDS_CLARIFICATION,ReasonCode.SEMANTIC_GROUNDING_FAILED,"정렬·페이지·표현 요구의 근거를 검증하지 못했습니다.",List.of());
             }
-            int page=r.page()==null?0:r.page(),size=r.size()==null?10:r.size(),limit=r.limit()==null?10:r.limit();
+            // A server-chosen heatmap needs its whole grid, not the first ten cells: up to the engine's 50-row limit.
+            int rows=r.presentations().isEmpty() && defaultFormats(r,r.dimensions().size(),prompt.components()).contains("Heatmap")?50:10;
+            int page=r.page()==null?0:r.page(),size=r.size()==null?rows:r.size(),limit=r.limit()==null?rows:r.limit();
             var dimensions=selections(r.dimensions(),"d");var metrics=selections(r.metrics(),"m");
             var aliases=new HashMap<String,String>();dimensions.forEach(s->aliases.put(s.field(),s.alias()));metrics.forEach(s->aliases.put(s.field(),s.alias()));
             var orders=new ArrayList<QuerySpec.Order>();
@@ -162,9 +164,12 @@ public final class PlanCompiler {
                     if(formats.stream().anyMatch(format->contract.presentations().stream().noneMatch(p->p.component().equals(canonicalComponent(format,prompt.components())))))return stop(IrStatus.UNSUPPORTED,"공식에 등록된 화면 표현이 아닙니다.",List.of());
                 }
                 int groupViewStart=views.size();
-                for(String format:r.presentations().isEmpty()?List.of("PaginatedDataTable"):r.presentations()) {
+                boolean defaulted=r.presentations().isEmpty();
+                for(String format:defaulted?defaultFormats(r,dimensions.size(),prompt.components()):r.presentations()) {
                     if(format.equals("KpiGroup") && includeTotal && !dimensions.isEmpty())continue;
                     var component=component(format,queryId,schema,views.size(),prompt.components(),r.kind()==QuerySpec.Mode.AGGREGATE && dimensions.isEmpty());
+                    // A server-chosen chart that the columns do not fit is dropped; the table still shows the result.
+                    if(component==null && defaulted && !format.equals("PaginatedDataTable"))continue;
                     if(component==null)return stop(IrStatus.UNSUPPORTED,"요청한 표현과 조회 결과의 열 형식이 맞지 않습니다.",List.of());views.add(component);
                 }
                 if(views.size()==groupViewStart && !dimensions.isEmpty()) {
@@ -216,7 +221,10 @@ public final class PlanCompiler {
         var selected=new HashSet<>(request.metrics());selected.addAll(request.dimensions());
         // Unselected/unknown fields remain subject to the existing evidence and ID validation.
         if(request.order().stream().anyMatch(sort->!selected.contains(sort.field())))return request;
-        return new SemanticPlan.Request(request.kind(),request.source(),request.analysisId(),request.metrics(),request.dimensions(),request.filter(),List.of(),request.page(),request.size(),request.limit(),request.total(),request.presentations(),request.evidence(),request.formulas());
+        // The ranking's row cap goes with it: without the order, "the first N rows" is an arbitrary cut of the result
+        // ("언제 가장 붐벼" planned as top-1 congestion). The server's default rows apply.
+        return new SemanticPlan.Request(request.kind(),request.source(),request.analysisId(),request.metrics(),request.dimensions(),request.filter(),List.of(),null,null,null,request.total(),request.presentations(),
+                request.evidence().stream().filter(e->!Set.of("order","page","size","limit").contains(e.slot())).toList(),request.formulas());
     }
     /** Conservatively require a positive table request without another presentation or negation. */
     private static boolean tableOnlyTotal(PromptPackage prompt) {
@@ -240,6 +248,15 @@ public final class PlanCompiler {
                 && Objects.equals(filter,total.filter()==null?intent.period():total.filter());
     }
     private List<QuerySpec.Selection> selections(List<String> ids,String prefix){if(new HashSet<>(ids).size()!=ids.size())invalid("Duplicate selection");var out=new ArrayList<QuerySpec.Selection>();for(String id:ids)out.add(new QuerySpec.Selection(id,prefix+out.size()));return out;}
+    /**
+     * The server's presentation when the question names none: a table, and for one metric over two groupings (weekday
+     * by hour) a heatmap beside it, the shape the DomainLens result mock-up draws for congestion.
+     */
+    private static List<String> defaultFormats(SemanticPlan.Request request,int dimensions,ComponentCatalog catalog) {
+        boolean heatmap=request.kind()==QuerySpec.Mode.AGGREGATE && dimensions==2 && request.metrics().size()==1
+                && catalog.components().stream().anyMatch(d->d.id().equals("Heatmap"));
+        return heatmap?List.of("Heatmap","PaginatedDataTable"):List.of("PaginatedDataTable");
+    }
     private static String canonicalComponent(String format,ComponentCatalog catalog){return format.equals("DataTable") && catalog.components().stream().anyMatch(d->d.id().equals("PaginatedDataTable"))?"PaginatedDataTable":format;}
     private ViewSpec.Component component(String format,String dataset,List<TypedDataset.Column> columns,int index,ComponentCatalog catalog,boolean scalar) {
         String selectedFormat=canonicalComponent(format,catalog);
@@ -247,11 +264,17 @@ public final class PlanCompiler {
         if(definition==null && format.equals("PaginatedDataTable"))definition=catalog.components().stream().filter(d->d.id().equals("DataTable")).findFirst().orElse(null);if(definition==null)return null;
         if(format.equals("KpiGroup") && !scalar)return null;
         var bindings=new LinkedHashMap<String,Object>();
+        // A heatmap's two axes are both groupings and often of one type (weekday, hour): they bind in column order,
+        // groupings first (category, then series), and the value takes the metric that is left.
+        boolean ordered=definition.id().equals("Heatmap");
+        var bound=new HashSet<String>();
         for(var entry:definition.dataSlots().entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
-            var choices=columns.stream().filter(c->entry.getValue().types().contains(c.type())).map(TypedDataset.Column::alias).toList();
+            var choices=columns.stream().filter(c->entry.getValue().types().contains(c.type())).map(TypedDataset.Column::alias)
+                    .filter(alias->!ordered || !bound.contains(alias)).toList();
             if(choices.isEmpty()){if(entry.getValue().required())return null;continue;}
-            if(!entry.getValue().multiple() && choices.size()!=1)return null;
+            if(!entry.getValue().multiple() && choices.size()!=1 && !ordered)return null;
             bindings.put(entry.getKey(),entry.getValue().multiple()?choices:choices.getFirst());
+            if(!entry.getValue().multiple())bound.add(choices.getFirst());
         }
         var events=definition.events().stream().filter(e->Set.of("pageChange","sortChange","export").contains(e.event())).sorted(Comparator.comparing(ViewSpec.Event::event)).toList();
         return new ViewSpec.Component("c"+index,new ViewSpec.Ref(definition.id(),definition.version()),dataset,bindings,Map.of(),events);

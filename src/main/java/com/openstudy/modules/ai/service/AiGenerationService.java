@@ -1,5 +1,6 @@
 package com.openstudy.modules.ai.service;
 
+import com.openstudy.config.OpenStudyCatalogConfiguration;
 import com.openstudy.domainlens.api.error.EngineException;
 import com.openstudy.domainlens.api.ir.Filter;
 import com.openstudy.domainlens.api.ir.IrStatus;
@@ -94,6 +95,18 @@ public class AiGenerationService {
         return intents.analyze(question, null).metrics().stream().findFirst().map(id -> registry.metrics().get(id));
     }
 
+    /**
+     * Whether the live chat answers this question through the generation path before any registered analysis: its
+     * metric is one the catalog hands to the generation path first (seat congestion). A question about the present
+     * ("지금", "현재", "실시간") stays with the registered real-time analyses.
+     */
+    public boolean firstFor(String question) {
+        if (question == null) return false;
+        String key = QuestionNormalizer.key(question);
+        if (key.contains("지금") || key.contains("현재") || key.contains("실시간")) return false;
+        return metric(question).map(m -> OpenStudyCatalogConfiguration.GENERATION_FIRST_METRICS.contains(m.id())).orElse(false);
+    }
+
     public static boolean sales(SemanticRegistry.Metric metric) {
         return "payment".equals(metric.source()) || "refund".equals(metric.source());
     }
@@ -133,7 +146,8 @@ public class AiGenerationService {
     static final java.util.Map<String, String> METRIC_NAMES = java.util.Map.of(
             "sales.approved_amount_krw", "결제 승인액",
             "sales.approved_count", "결제 건수",
-            "passes.issued_count", "이용권 발급 수");
+            "passes.issued_count", "이용권 발급 수",
+            "seats.occupancy_pct", "좌석 점유율");
 
     /** A catalog metric or field ID as people read it ("결제 승인액", "지점명"), or the ID when it has no name. */
     public String displayName(String id) {
@@ -198,7 +212,10 @@ public class AiGenerationService {
     /** The permission domain of the queries: payments and refunds are sales. */
     static String domain(List<QuerySpec> queries) {
         boolean sales = queries.stream().anyMatch(q -> "payment".equals(q.source()) || "refund".equals(q.source()));
-        return sales ? "sales" : queries.isEmpty() ? "generated" : queries.getFirst().source();
+        if (sales) return "sales";
+        if (queries.isEmpty()) return "generated";
+        String source = queries.getFirst().source();
+        return source.startsWith("seat") ? "seats" : source;
     }
 
     static Result failure(EngineException ex, long ms) {

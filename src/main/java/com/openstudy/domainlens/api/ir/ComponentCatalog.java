@@ -148,6 +148,9 @@ public record ComponentCatalog(String catalogVersion, List<Definition> component
         generated.put("DonutChart", Map.of("category", label, "value", amount));
         generated.put("LineChart", Map.of("category", time, "value", amount));
         generated.put("AreaChart", Map.of("category", time, "value", amount));
+        // Two groupings and one metric (weekday x hour congestion). The compiler binds a heatmap's axes in column order.
+        var axis = new Slot(Set.of(ValueType.STRING, ValueType.INTEGER), true, false, 0, 1000);
+        generated.put("Heatmap", Map.of("category", axis, "series", axis, "value", new Slot(Set.of(ValueType.DECIMAL, ValueType.INTEGER), true, false, 0, 1000)));
         generated.forEach((id, slots) -> definitions.add(new Definition(id, "1.0.0", id, slots, options, events, composition, new Limits(1000), "표 대안과 접근성 레이블을 제공한다.")));
         return new ComponentCatalog("openstudy-ui-1.0.0", definitions, Set.of("ui-1.0.0", "ui-1.2.0", "ui-1.3.0", "ui-1.4.0", "1.0.0"));
     }

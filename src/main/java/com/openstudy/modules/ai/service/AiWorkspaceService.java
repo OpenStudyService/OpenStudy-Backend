@@ -491,49 +491,59 @@ public class AiWorkspaceService {
         String followUp = basis != null && clarificationChoice == null && AiReuse.isFollowUp(rawQuestion, !namedBranches.isEmpty())
                 ? basis.getAnalysisId() : null;
         long planStart = System.nanoTime();
-        var plan = playbackGateway.planQuestion(
+        // Seat congestion is answered by the model-planned query when a live model is there (POC-002 otherwise).
+        boolean generationFirst = followUp == null && clarificationChoice == null && generation.available()
+                && generation.firstFor(rawQuestion);
+        var firstPlan = playbackGateway.planQuestion(
                 rawQuestion,
                 clarificationChoice,
                 actor,
                 scope,
                 followUp,
-                basis == null ? null : previousConditions(basis)
+                basis == null ? null : previousConditions(basis),
+                generationFirst
         );
         long planEnd = System.nanoTime();
         // #97: measured, not fixed: the plan's time less its model call is the rule match and catalog search.
         long acceptedMs = elapsedMs(startNanos, planStart);
-        long retrievingMs = Math.max(0L, elapsedMs(planStart, planEnd) - Math.max(0L, plan.llmDurationMs()));
+        long retrievingMs = Math.max(0L, elapsedMs(planStart, planEnd) - Math.max(0L, firstPlan.llmDurationMs()));
         // #102: the HTTP request ID (MDC) and the AI request/trace IDs of the M10 diagnostic log on one line.
-        log.atInfo().addKeyValue("aiRequestId", requestId).addKeyValue("aiTraceId", traceId).addKeyValue("outcome", plan.outcome())
-                .log("AI question aiRequestId={} aiTraceId={} outcome={}", requestId, traceId, plan.outcome());
+        log.atInfo().addKeyValue("aiRequestId", requestId).addKeyValue("aiTraceId", traceId).addKeyValue("outcome", firstPlan.outcome())
+                .log("AI question aiRequestId={} aiTraceId={} outcome={}", requestId, traceId, firstPlan.outcome());
 
         List<StageSpan> stages = new ArrayList<>();
         stages.add(new StageSpan("accepted", "질문 접수 및 정규화", "COMPLETED", acceptedMs,
                 "입력 길이 및 금지 토큰 검사 완료"));
         stages.add(new StageSpan("retrieving", "시맨틱 카탈로그·ONNX 임베딩 검색", "COMPLETED", retrievingMs,
-                "koen-e5-tiny-q8 384차원 검색 후보 " + plan.retrievedCandidates().size() + "건"));
+                "koen-e5-tiny-q8 384차원 검색 후보 " + firstPlan.retrievedCandidates().size() + "건"));
 
         Map<String, Object> securityGate = new LinkedHashMap<>();
         securityGate.put("actorEmployeeId", actor.employeeId());
         securityGate.put("actorEmail", actor.email());
         securityGate.put("requestedScope", scope);
-        securityGate.put("outcome", plan.outcome());
-        securityGate.put("resultCategory", plan.resultCategory());
-        securityGate.put("behavior", plan.behavior());
-        securityGate.put("errorCode", plan.errorCode());
+        securityGate.put("outcome", firstPlan.outcome());
+        securityGate.put("resultCategory", firstPlan.resultCategory());
+        securityGate.put("behavior", firstPlan.behavior());
+        securityGate.put("errorCode", firstPlan.errorCode());
         securityGate.put("modelMode", playbackGateway.activeMode());
         securityGate.put("modelName", playbackGateway.activeModelName());
-        if (plan.llmDurationMs() > 0) {
-            securityGate.put("llmDurationMs", plan.llmDurationMs());
-            securityGate.put("llmTotalTokens", plan.totalTokens());
+        if (firstPlan.llmDurationMs() > 0) {
+            securityGate.put("llmDurationMs", firstPlan.llmDurationMs());
+            securityGate.put("llmTotalTokens", firstPlan.totalTokens());
         }
 
         // #233: a question no registered analysis answers goes to the DomainLens generation path (registered first).
-        if (OpenStudyPlaybackGateway.noRegisteredAnalysis(plan, clarificationChoice) && generation.available()) {
+        if (OpenStudyPlaybackGateway.noRegisteredAnalysis(firstPlan, clarificationChoice) && generation.available()) {
             var generated = generated(rawQuestion, actor, scope, convId, requestId, executionId, traceId, now, startNanos,
-                    stages, plan, securityGate, clientKey);
+                    stages, firstPlan, securityGate, clientKey);
             if (generated.isPresent()) return generated.get();
         }
+        // A congestion question the generation path could not answer (the model abstained) is answered by the
+        // registered analysis POC-002 instead of ending as "no analysis found".
+        final var plan = generationFirst && OpenStudyPlaybackGateway.noRegisteredAnalysis(firstPlan, clarificationChoice)
+                ? playbackGateway.planQuestion(rawQuestion, clarificationChoice, actor, scope, followUp,
+                        basis == null ? null : previousConditions(basis), false)
+                : firstPlan;
 
         if (!"EXECUTE".equals(plan.outcome())) {
             String stageStatus = "CLARIFICATION".equals(plan.outcome()) ? "CLARIFICATION"
@@ -784,7 +794,8 @@ public class AiWorkspaceService {
         securityGate.put("authorizedBranches", branches);
         securityGate.put("path", "GENERATED");
         String model = playbackGateway.activeModelName();
-        var result = generation.generate(question, actor.toUserContext(scope, branches));
+        // The branches are this request's scope already; the model plans the question without their names.
+        var result = generation.generate(userResolver.withoutBranchNames(question), actor.toUserContext(scope, branches));
         if (result instanceof AiGenerationService.Declined declined) {
             securityGate.put("generation", declined.reason());
             stages.add(new StageSpan("generating", "DomainLens 조회 계획 생성 (" + model + ")", "UNSUPPORTED",

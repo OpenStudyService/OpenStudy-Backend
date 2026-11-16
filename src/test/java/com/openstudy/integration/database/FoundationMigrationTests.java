@@ -58,11 +58,11 @@ class FoundationMigrationTests {
     }
     long count(String sql) { return jdbc.queryForObject(sql, Long.class); }
     @Test void createsTheConsolidatedBaselineWithIncrementalMigrationsAndPreservesDataOnRestart() {
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(19);
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(20);
         assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success=1 ORDER BY installed_rank", String.class))
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20");
         assertThat(count("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name <> 'flyway_schema_history'"))
-                .isEqualTo(79); // V7 adds the seven ai_* tables of the AI workspace (DomainLens), V12 branch_closures, V14 customer_merges, V15 daily_closings and daily_closing_adjustments, V16 password_reset_tokens, V18 drops ai_export_approvals, V19 retention_rules and retention_runs
+                .isEqualTo(80); // V7 adds the seven ai_* tables of the AI workspace (DomainLens), V12 branch_closures, V14 customer_merges, V15 daily_closings and daily_closing_adjustments, V16 password_reset_tokens, V18 drops ai_export_approvals, V19 retention_rules and retention_runs, V20 the seat_occupancy_samples view
         assertThat(count("SELECT COUNT(*) FROM employees")).isZero();
         assertThat(count("SELECT COUNT(*) FROM administration_guard WHERE id=1")).isEqualTo(1);
         jdbc.update("INSERT INTO branches(code,name,address) VALUES('RESTART','Restart test','Test')");
@@ -274,7 +274,7 @@ class FoundationMigrationTests {
         jdbc.update("INSERT INTO conversation_members(conversation_id,employee_id,last_read_message_id,last_read_at) VALUES(30,10,NULL,NULL),(30,11,41,'2026-11-01 00:00:00'),(30,12,42,'2026-11-01 00:00:00'),(31,10,NULL,NULL)");
         jdbc.update("INSERT INTO messages(id,conversation_id,sender_employee_id,parent_message_id,body,client_message_key) VALUES(40,30,10,NULL,'original','k1'),(41,30,10,40,'reply','k2'),(42,30,10,NULL,'later','k3'),(43,31,10,NULL,'other','k4'),(44,30,10,40,'reply 2','k5')");
 
-        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(14); // V6 through V19
+        assertThat(flyway(null).migrate().migrationsExecuted).isEqualTo(15); // V6 through V20
         assertThat(flyway(null).validateWithResult().validationSuccessful).isTrue();
 
         // A position on a reply (41) carries over as it is, and no position stays none.
@@ -542,7 +542,9 @@ class FoundationMigrationTests {
         flyway(null).migrate();
         var columns = jdbc.queryForList("SELECT TABLE_NAME,COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,COLUMN_KEY,COLUMN_DEFAULT,EXTRA,COLUMN_COMMENT FROM information_schema.columns WHERE table_schema=DATABASE() ORDER BY TABLE_NAME,ORDINAL_POSITION");
         var keys = jdbc.queryForList("SELECT k.TABLE_NAME,k.COLUMN_NAME,k.REFERENCED_TABLE_NAME,k.REFERENCED_COLUMN_NAME,k.CONSTRAINT_NAME,r.DELETE_RULE FROM information_schema.key_column_usage k JOIN information_schema.referential_constraints r ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME WHERE k.TABLE_SCHEMA=DATABASE() ORDER BY k.TABLE_NAME,k.CONSTRAINT_NAME,k.ORDINAL_POSITION");
-        var tableNames = jdbc.queryForList("SELECT table_name FROM information_schema.tables WHERE table_schema=DATABASE() ORDER BY table_name",String.class);
+        var tableNames = jdbc.queryForList("SELECT table_name FROM information_schema.tables WHERE table_schema=DATABASE() AND table_type='BASE TABLE' ORDER BY table_name",String.class);
+        // Views (V20 seat_occupancy_samples) come after every table they read; SHOW CREATE TABLE has no table text for them.
+        var viewNames = jdbc.queryForList("SELECT table_name FROM information_schema.tables WHERE table_schema=DATABASE() AND table_type='VIEW' ORDER BY table_name",String.class);
         var ordered = new ArrayList<String>();
         while(ordered.size()<tableNames.size()) {
             int before=ordered.size();
@@ -552,6 +554,9 @@ class FoundationMigrationTests {
         }
         var sql = new StringBuilder("-- OpenStudy consolidated V1 / MySQL 8.4 / Flyway V1\n-- EMPTY database only. Includes real Flyway history, reference seeds, no business credentials.\nSET NAMES utf8mb4;\nSET time_zone = '+00:00';\n");
         for(String t:ordered) sql.append(jdbc.queryForMap("SHOW CREATE TABLE `"+t+"`").get("Create Table")).append(";\n\n");
+        // The definer is the exporting account; an installation runs the view as whoever creates it.
+        for(String v:viewNames) sql.append(String.valueOf(jdbc.queryForMap("SHOW CREATE VIEW `"+v+"`").get("Create View"))
+                .replaceFirst("DEFINER=`[^`]*`@`[^`]*` ","")).append(";\n\n");
         for(String t:List.of("permission_definitions","permission_presets","permission_preset_grants","administration_guard","flyway_schema_history")) {
             for(var row:jdbc.queryForList("SELECT * FROM `"+t+"`")) {
                 sql.append("INSERT INTO `").append(t).append("` (`").append(String.join("`,`",row.keySet())).append("`) VALUES (");
@@ -574,7 +579,7 @@ class FoundationMigrationTests {
             var metadata=new LinkedHashMap<String,Object>();
             metadata.put("contractVersion","consolidated-v1"); metadata.put("flywayVersion",1);
             metadata.put("mysqlVersion",jdbc.queryForObject("SELECT VERSION()",String.class));
-            metadata.put("tables",tableNames); metadata.put("columns",columns); metadata.put("foreignKeys",keys);
+            metadata.put("tables",tableNames); metadata.put("views",viewNames); metadata.put("columns",columns); metadata.put("foreignKeys",keys);
             metadata.put("uniqueIndexes",jdbc.queryForList("SELECT TABLE_NAME,INDEX_NAME,COLUMN_NAME FROM information_schema.statistics WHERE TABLE_SCHEMA=DATABASE() AND NON_UNIQUE=0 ORDER BY TABLE_NAME,INDEX_NAME,SEQ_IN_INDEX"));
             Files.writeString(out.resolve("schema-metadata.json"),JsonMapper.builder().build().writerWithDefaultPrettyPrinter().writeValueAsString(metadata));
         }

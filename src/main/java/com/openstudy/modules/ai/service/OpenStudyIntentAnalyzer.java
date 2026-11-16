@@ -40,8 +40,17 @@ public class OpenStudyIntentAnalyzer implements QueryIntent.Analyzer {
             Map.entry("결제항목별", "payment.item_type"),
             Map.entry("결제상태별", "payment.status"),
             Map.entry("이용권구분별", "pass.pass_type"),
-            Map.entry("이용권종류별", "pass.pass_type")
+            Map.entry("이용권종류별", "pass.pass_type"),
+            // Seat congestion: weekday before hour, so a heatmap reads weekday across and hour down. "언제" asks for both.
+            Map.entry("요일", "seat_occupancy_sample.weekday_kst"),
+            Map.entry("언제", "seat_occupancy_sample.weekday_kst"),
+            Map.entry("시간대", "seat_occupancy_sample.hour_kst"),
+            Map.entry("시간별", "seat_occupancy_sample.hour_kst"),
+            Map.entry("몇시", "seat_occupancy_sample.hour_kst"),
+            Map.entry("언제", "seat_occupancy_sample.hour_kst")
     );
+    /** Metrics with a period of their own when the question names none: congestion reads the last two full weeks (POC-002). */
+    static final Set<String> TWO_WEEK_DEFAULT = Set.of("seats.occupancy_pct");
     static final Pattern RECENT_DAYS = Pattern.compile("(?:최근|지난)([0-9]{1,3})일");
     static final Pattern NAMED_MONTH = Pattern.compile("([0-9]{4})년(0?[1-9]|1[0-2])월");
     /**
@@ -62,7 +71,14 @@ public class OpenStudyIntentAnalyzer implements QueryIntent.Analyzer {
         for (var grouping : GROUPINGS) {
             if (key.contains(grouping.getKey()) && reachable(metric.get(), grouping.getValue())) dimensions.add(grouping.getValue());
         }
-        Filter period = period(key).map(range -> (Filter) new Filter.Group(Filter.Junction.AND, List.of(
+        var named = period(key);
+        // Only when the question names no period at all; a range, several periods or one out of range stay unresolved.
+        boolean namesNone = !key.contains("부터") && !key.contains("까지") && periods(key) != null && periods(key).isEmpty();
+        if (named.isEmpty() && namesNone && TWO_WEEK_DEFAULT.contains(metric.get().id())) {
+            var twoWeeks = clock.previousTwoWeeks();
+            named = Optional.of(new Range(twoWeeks.startInclusive(), twoWeeks.endExclusive()));
+        }
+        Filter period = named.map(range -> (Filter) new Filter.Group(Filter.Junction.AND, List.of(
                 new Filter.Leaf(OpenStudyCatalogConfiguration.PERIOD_FIELDS.get(metric.get().id()), Filter.Operator.GTE, List.of(range.start().toString())),
                 new Filter.Leaf(OpenStudyCatalogConfiguration.PERIOD_FIELDS.get(metric.get().id()), Filter.Operator.LT, List.of(range.end().toString()))
         ))).orElse(null);
