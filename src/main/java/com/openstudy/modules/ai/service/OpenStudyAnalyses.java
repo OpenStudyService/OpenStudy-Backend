@@ -5,7 +5,6 @@ import com.openstudy.domainlens.api.error.EngineException;
 import com.openstudy.domainlens.api.formula.FormulaDefinition;
 import com.openstudy.domainlens.api.ir.ComponentCatalog;
 import com.openstudy.domainlens.api.ir.ContractRules;
-import com.openstudy.domainlens.api.ir.Layout;
 import com.openstudy.domainlens.api.ir.OutcomeNotice;
 import com.openstudy.domainlens.api.ir.QuerySpec;
 import com.openstudy.domainlens.api.ir.ResultEnvelope;
@@ -56,6 +55,11 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
     /** Analyses that look at one branch only; a wider scope asks which branch (2026-11-08 decision, ADR-M10-003). */
     public static final java.util.Set<String> SINGLE_BRANCH = java.util.Set.of("openstudy.seats.hourlyCongestion",
             "openstudy.seats.realtimeAvailability");
+
+    /** The result arranged as the DomainLens mock-up assembles it: KPI row, then each chart beside its table. */
+    static ViewSpec arranged(ViewSpec view) {
+        return new ViewSpec(view.catalogVersion(), view.components(), com.openstudy.domainlens.query.ViewLayouts.compose(view.components()));
+    }
 
     public static final String ID_POC_001 = "openstudy.sales.branchComparison";
     public static final String ID_POC_002 = "openstudy.seats.hourlyCongestion";
@@ -713,7 +717,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         var dsContrast = new TypedDataset("basisContrast", def.outputs().get("basisContrast"), contrastRows, contrastRows.size(), 0, 10, now, now);
         var datasets = List.of(dsBranch, dsTotals, dsContrast);
 
-        var view = new ViewSpec(
+        var view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
                         new ViewSpec.Component(
@@ -741,8 +745,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                                 List.of()
                         )
                 ),
-                Layout.stack(List.of(Layout.leaf("kpi"), Layout.leaf("chart"), Layout.leaf("table")))
-        );
+                null // arranged() lays the components out
+        ));
 
         var envelope = buildEnvelope("POC-001", datasets, view, null);
         Map<String, Object> summary = new LinkedHashMap<>();
@@ -868,7 +872,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         var dsPeaks = new TypedDataset("peakCells", def.outputs().get("peakCells"), peakDatasetRows, peakDatasetRows.size(), 0, 10, now, now);
         var datasets = List.of(dsHeatmap, dsPeaks);
 
-        var view = new ViewSpec(
+        var view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
                         new ViewSpec.Component(
@@ -880,8 +884,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                                 List.of()
                         )
                 ),
-                Layout.stack(List.of(Layout.leaf("heatmap")))
-        );
+                null // arranged() lays the components out
+        ));
 
         var notice = new OutcomeNotice(
                 "PROVISIONAL_OCCUPANCY_DEFINITION",
@@ -946,7 +950,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         var dsTop5 = new TypedDataset("topProducts", def.outputs().get("topProducts"), datasetRows, datasetRows.size(), 0, 5, now, now);
         var datasets = List.of(dsTop5);
 
-        var view = new ViewSpec(
+        var view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
                         new ViewSpec.Component(
@@ -966,8 +970,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                                 List.of()
                         )
                 ),
-                Layout.stack(List.of(Layout.leaf("rankedBar"), Layout.leaf("table")))
-        );
+                null // arranged() lays the components out
+        ));
 
         var envelope = buildEnvelope("POC-003", datasets, view, null);
         Map<String, Object> summary = new LinkedHashMap<>();
@@ -1057,7 +1061,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         var dsMap = new TypedDataset("seatMap", def.outputs().get("seatMap"), seatMapRows, seatMapRows.size(), 0, 30, now, now);
         var datasets = List.of(dsSummary, dsMap);
 
-        var view = new ViewSpec(
+        var view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
                         new ViewSpec.Component(
@@ -1077,8 +1081,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                                 List.of()
                         )
                 ),
-                Layout.stack(List.of(Layout.leaf("kpi"), Layout.leaf("seatMap")))
-        );
+                null // arranged() lays the components out
+        ));
 
         var envelope = buildEnvelope("POC-004", datasets, view, null);
         Map<String, Object> summary = new LinkedHashMap<>();
@@ -1234,7 +1238,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         var dsTotals = new TypedDataset("reservationTotals", def.outputs().get("reservationTotals"), List.of(totalsRow), 1, 0, 1, now, now);
         var datasets = List.of(dsReservations, dsBranches, dsTotals);
 
-        var view = new ViewSpec(
+        var view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
                         new ViewSpec.Component(
@@ -1254,8 +1258,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                                 List.of()
                         )
                 ),
-                Layout.stack(List.of(Layout.leaf("calendar"), Layout.leaf("table")))
-        );
+                null // arranged() lays the components out
+        ));
 
         var envelope = buildEnvelope("POC-005", datasets, view, null);
         Map<String, Object> summary = new LinkedHashMap<>();
@@ -1372,7 +1376,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         var dsTotals = new TypedDataset("expiringTotals", def.outputs().get("expiringTotals"), List.of(totalsRow), 1, 0, 1, now, now);
         var datasets = List.of(dsPasses, dsByBranch, dsTotals);
 
-        var view = new ViewSpec(
+        var view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
                         new ViewSpec.Component(
@@ -1392,8 +1396,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                                 List.of()
                         )
                 ),
-                Layout.stack(List.of(Layout.leaf("kpi"), Layout.leaf("table")))
-        );
+                null // arranged() lays the components out
+        ));
 
         var envelope = buildEnvelope("POC-006", datasets, view, null);
         Map<String, Object> summary = new LinkedHashMap<>();
@@ -1456,7 +1460,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         var dsTotals = new TypedDataset("dailySalesTotals", def.outputs().get("dailySalesTotals"), List.of(totalsRow), 1, 0, 1, now, now);
         var datasets = List.of(dsDaily, dsTotals);
 
-        var view = new ViewSpec(
+        var view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
                         new ViewSpec.Component(
@@ -1476,8 +1480,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                                 List.of()
                         )
                 ),
-                Layout.stack(List.of(Layout.leaf("lineChart"), Layout.leaf("table")))
-        );
+                null // arranged() lays the components out
+        ));
 
         var envelope = buildEnvelope("POC-007", datasets, view, null);
         Map<String, Object> summary = new LinkedHashMap<>();
@@ -1543,7 +1547,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         var dsWinner = new TypedDataset("purposeWinner", def.outputs().get("purposeWinner"), List.of(winnerRow), 1, 0, 1, now, now);
         var datasets = List.of(dsPurpose, dsWinner);
 
-        var view = new ViewSpec(
+        var view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
                         new ViewSpec.Component(
@@ -1563,8 +1567,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                                 List.of()
                         )
                 ),
-                Layout.stack(List.of(Layout.leaf("kpi"), Layout.leaf("barChart")))
-        );
+                null // arranged() lays the components out
+        ));
 
         var envelope = buildEnvelope("POC-008", datasets, view, null);
         Map<String, Object> summary = new LinkedHashMap<>();
@@ -1651,7 +1655,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         var dsMeta = new TypedDataset("taskPolicyMeta", def.outputs().get("taskPolicyMeta"), List.of(metaRow), 1, 0, 1, now, now);
         var datasets = List.of(dsTasks, dsMeta);
 
-        var view = new ViewSpec(
+        var view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
                         new ViewSpec.Component(
@@ -1663,8 +1667,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                                 List.of()
                         )
                 ),
-                Layout.stack(List.of(Layout.leaf("taskList")))
-        );
+                null // arranged() lays the components out
+        ));
 
         var notice = new OutcomeNotice(
                 "POLICY_PENDING_URGENT_DEFINITION",
@@ -1842,7 +1846,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         var dsMeta = new TypedDataset("attendancePolicyMeta", def.outputs().get("attendancePolicyMeta"), List.of(metaRow), 1, 0, 1, now, now);
         var datasets = List.of(dsEmp, dsMeta);
 
-        var view = new ViewSpec(
+        var view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
                         new ViewSpec.Component(
@@ -1862,8 +1866,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                                 List.of()
                         )
                 ),
-                Layout.stack(List.of(Layout.leaf("barChart"), Layout.leaf("table")))
-        );
+                null // arranged() lays the components out
+        ));
 
         var notice = new OutcomeNotice(
                 "POLICY_PENDING_ATTENDANCE_CORRECTION_AGGREGATION",
