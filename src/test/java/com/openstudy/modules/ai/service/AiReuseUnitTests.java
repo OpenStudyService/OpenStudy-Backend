@@ -40,8 +40,10 @@ class AiReuseUnitTests {
         assertThat(AiReuse.EDITABLE.keySet()).isEqualTo(OpenStudyAnalyses.REGISTERED);
         // One-branch analyses are the same ones the question flow treats as one-branch.
         AiReuse.EDITABLE.forEach((id, editable) -> assertThat(editable.singleBranch()).as(id).isEqualTo(SINGLE_BRANCH.contains(id)));
+        // Realtime seats compare several branches since 2026-11-16, so a refinement may pick several.
         assertThat(AiReuse.editable(ID_POC_004).toMap()).containsEntry("period", null).containsEntry("products", false)
-                .containsEntry("branches", Map.of("single", true));
+                .containsEntry("branches", Map.of("single", false));
+        assertThat(AiReuse.editable(ID_POC_002).toMap()).containsEntry("branches", Map.of("single", true));
         assertThat(AiReuse.editable(ID_POC_003).toMap()).containsEntry("period", Map.of("maxDays", 366)).containsEntry("products", true);
     }
 
@@ -73,9 +75,11 @@ class AiReuseUnitTests {
         assertThat(fields(() -> AiReuse.parse(period("2026-10-01", "2026-10-02"), realtime))).containsKey("period");
         assertThat(code(() -> AiReuse.parse(Map.of("productIds", List.of("1")), AiReuse.editable(ID_POC_001))))
                 .isEqualTo("FILTER_NOT_EDITABLE");
-        // A one-branch analysis takes exactly one branch.
-        assertThat(code(() -> AiReuse.parse(Map.of("branchIds", List.of("1", "2")), realtime))).isEqualTo("VALIDATION_FAILED");
-        assertThat(AiReuse.parse(Map.of("branchIds", List.of("2")), realtime).branchIds()).containsExactly(2L);
+        // A one-branch analysis takes exactly one branch; realtime seats take several.
+        var congestion = AiReuse.editable(ID_POC_002);
+        assertThat(code(() -> AiReuse.parse(Map.of("branchIds", List.of("1", "2")), congestion))).isEqualTo("VALIDATION_FAILED");
+        assertThat(AiReuse.parse(Map.of("branchIds", List.of("2")), congestion).branchIds()).containsExactly(2L);
+        assertThat(AiReuse.parse(Map.of("branchIds", List.of("1", "2")), realtime).branchIds()).containsExactly(1L, 2L);
         // Products: an empty list is every product; too many are refused.
         var passes = AiReuse.editable(ID_POC_003);
         assertThat(AiReuse.parse(Map.of("productIds", List.of()), passes).productIds()).isEmpty();

@@ -97,9 +97,33 @@ class AiRegisteredAnalysisIntegrationTests {
         }
     }
 
+    @Test void realtimeSeatsOverSeveralBranchesCompareTheBranchesWithoutAsking() throws Exception {
+        try (var s = login(owner)) {
+            // The planning document's question: every branch in scope, side by side (2026-11-16).
+            var compared = ask(s, "현재 지점별 사용 중인 좌석이 몇 개야?", "all", null);
+            assertThat(compared.statusCode()).as(compared.body()).isEqualTo(200);
+            JsonNode result = json.readTree(compared.body());
+            assertThat(result.get("status").asString()).isEqualTo("COMPLETED");
+            assertThat(result.get("analysisId").asString()).isEqualTo(OpenStudyAnalyses.ID_POC_004);
+            assertThat(result.get("viewSpec").toString()).contains("BAR_CHART", "DATA_TABLE", "지점별 좌석 점유율")
+                    .doesNotContain("SEAT_MAP");
+            String datasets = result.get("envelope").get("datasets").toString();
+            assertThat(datasets).contains("branchSeats", firstName, secondName, "occupied_pct");
+        }
+        try (var s = login(owner)) {
+            // One branch named: its seat map, as before.
+            var one = ask(s, firstName + " 지금 빈자리가 얼마나 있어?", "all", null);
+            assertThat(one.statusCode()).as(one.body()).isEqualTo(200);
+            JsonNode result = json.readTree(one.body());
+            assertThat(result.get("status").asString()).isEqualTo("COMPLETED");
+            assertThat(result.get("viewSpec").toString()).contains("SEAT_MAP");
+        }
+    }
+
     @Test void aOneBranchAnalysisOverSeveralBranchesAsksWhichBranchAndThenRunsThatBranch() throws Exception {
         try (var s = login(owner)) {
-            var asked = ask(s, "지금 빈자리가 얼마나 있어?", "all", null);
+            // "피크" reaches the registered congestion analysis; "붐벼" goes to the generation path first.
+            var asked = ask(s, "피크 시간대가 언제야?", "all", null);
             assertThat(asked.statusCode()).as(asked.body()).isEqualTo(200);
             JsonNode question = json.readTree(asked.body());
             assertThat(question.get("status").asString()).isEqualTo("CLARIFICATION");
@@ -113,7 +137,7 @@ class AiRegisteredAnalysisIntegrationTests {
             }
             assertThat(labels).contains(firstName, secondName);
             assertThat(picked).isNotNull();
-            assertThat(picked.get("id").asString()).isEqualTo("branch:" + first + ":" + OpenStudyAnalyses.ID_POC_004);
+            assertThat(picked.get("id").asString()).isEqualTo("branch:" + first + ":" + OpenStudyAnalyses.ID_POC_002);
 
             var answered = ask(s, picked.get("label").asString(), "all", picked.get("id").asString());
             assertThat(answered.statusCode()).as(answered.body()).isEqualTo(200);
@@ -124,12 +148,12 @@ class AiRegisteredAnalysisIntegrationTests {
         }
         try (var s = login(staff)) {
             // With one branch in scope there is nothing to choose.
-            var direct = ask(s, "지금 빈자리가 얼마나 있어?", Long.toString(first), null);
+            var direct = ask(s, "언제 가장 붐벼?", Long.toString(first), null);
             assertThat(direct.statusCode()).as(direct.body()).isEqualTo(200);
             assertThat(json.readTree(direct.body()).get("status").asString()).isEqualTo("COMPLETED");
             // A choice naming a branch outside the scope is checked again and refused.
-            var forged = ask(s, "지금 빈자리가 얼마나 있어?", Long.toString(first),
-                    "branch:" + second + ":" + OpenStudyAnalyses.ID_POC_004);
+            var forged = ask(s, "언제 가장 붐벼?", Long.toString(first),
+                    "branch:" + second + ":" + OpenStudyAnalyses.ID_POC_002);
             assertThat(forged.statusCode()).as(forged.body()).isEqualTo(403);
         }
     }

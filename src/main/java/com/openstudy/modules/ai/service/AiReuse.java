@@ -49,7 +49,7 @@ final class AiReuse {
             ID_POC_001, new Editable(366, false, false),
             ID_POC_002, new Editable(92, true, false),
             ID_POC_003, new Editable(366, false, true),
-            ID_POC_004, new Editable(null, true, false),
+            ID_POC_004, new Editable(null, false, false),
             ID_POC_005, new Editable(31, false, false),
             ID_POC_006, new Editable(92, false, true),
             ID_POC_007, new Editable(366, false, false),
