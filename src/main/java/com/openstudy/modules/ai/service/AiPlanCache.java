@@ -84,24 +84,40 @@ public class AiPlanCache {
             Instant now = clock.asOf();
             var candidates = repository.findByKindAndVersionKeyAndExpiresAtAfterOrderByLastUsedAtDesc(kind.name(),
                     versionKey, now, PageRequest.of(0, MAX_PER_KIND));
-            if (candidates.isEmpty()) return Optional.empty();
+            if (candidates.isEmpty()) {
+                log.info("AI plan cache miss: kind={} no plans for this version", kind);
+                return Optional.empty();
+            }
             String reading = reading(question);
             var exact = candidates.stream().filter(c -> c.getQuestionKey().equals(questionKey(versionKey, question))).findFirst();
             AiPlanCacheEntity best = exact.orElse(null);
             double bestScore = exact.isPresent() ? 1.0 : -1.0;
+            double closest = -1.0;
+            int readDifferently = 0;
             if (best == null) {
                 var vector = embeddings.embedQuery(question);
                 for (var candidate : candidates) {
                     double score = cosine(vector, parse(candidate.getVectorJson()));
-                    if (score >= MIN_SIMILARITY && score > bestScore && reading.equals(reading(candidate.getQuestionText()))) {
-                        best = candidate;
-                        bestScore = score;
+                    closest = Math.max(closest, score);
+                    if (score < MIN_SIMILARITY || score <= bestScore) continue;
+                    if (!reading.equals(reading(candidate.getQuestionText()))) {
+                        readDifferently++;
+                        continue;
                     }
+                    best = candidate;
+                    bestScore = score;
                 }
             } else if (!reading.equals(reading(best.getQuestionText()))) {
+                log.info("AI plan cache miss: kind={} same text read differently now", kind);
                 return Optional.empty();
             }
-            if (best == null) return Optional.empty();
+            if (best == null) {
+                log.info("AI plan cache miss: kind={} plans={} closest={} close-but-read-differently={}", kind,
+                        candidates.size(), Math.round(closest * 1000) / 1000.0, readDifferently);
+                return Optional.empty();
+            }
+            log.info("AI plan cache hit: kind={} plan={} similarity={}", kind, best.getId(),
+                    Math.round(bestScore * 1000) / 1000.0);
             best.used(now);
             return Optional.of(hit(best, bestScore));
         } catch (RuntimeException ex) {
@@ -141,6 +157,7 @@ public class AiPlanCache {
             }
             payload.accept(entity);
             repository.save(entity);
+            log.info("AI plan cache stored: kind={} plan={}", kind, entity.getId());
             long excess = repository.countByKind(kind.name()) - MAX_PER_KIND;
             if (excess > 0) {
                 repository.deleteAll(repository.findByKindOrderByLastUsedAtAsc(kind.name(), PageRequest.of(0, (int) excess)));

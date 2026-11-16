@@ -53,7 +53,7 @@ class AiPlanCacheIntegrationTests extends AiTestSupport {
                 SOLD_MOST)).isEmpty();
         assertThat(cache.find(Kind.GENERATED, version, SOLD_MOST)).isEmpty();
         // Every hit counts; the plan is shared, nothing in it names who asked.
-        assertThat(count("SELECT hit_count FROM ai_plan_cache WHERE kind='REGISTERED_PICK'")).isEqualTo(2L);
+        assertThat(count("SELECT hit_count FROM ai_plan_cache WHERE version_key=?", version)).isEqualTo(2L);
     }
 
     @Test void anExpiredPlanIsNotUsed() {

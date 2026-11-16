@@ -767,17 +767,22 @@ public class OpenStudyPlaybackGateway {
         boolean generalMetric = generationFirst || followUpAnalysisId == null && keywordAnalysisId == null
                 && !intents.analyze(q, null).metrics().isEmpty();
         boolean planCached = false;
+        // 2026-11-16: the plan cache in front of the model. Any question that is not a follow-up or a choice looks it up,
+        // in a new conversation or later in one; only a conversation's first question, read without earlier context,
+        // is stored. What is stored is the decision the server executed (below), whichever rule or model made it.
+        boolean lookUp = clarificationChoice == null && followUpAnalysisId == null;
+        boolean storeDecision = false;
+        String cacheQuestion = null;
+        String cacheVersion = null;
         if ("live".equals(activeMode()) && !generalMetric) {
-            // 2026-11-16: a first question (no follow-up, no choice) the model already mapped is answered from the plan
-            // cache; the model's pick is all that is kept, the server reads the rest of the question again below.
-            boolean cacheable = previousConditions == null && clarificationChoice == null && followUpAnalysisId == null;
-            String cacheQuestion = userResolver.withoutBranchNames(q);
-            String cacheVersion = planCache.versionKey(AiPlanCache.Kind.REGISTERED_PICK, activeModelName(),
+            cacheQuestion = userResolver.withoutBranchNames(q);
+            cacheVersion = planCache.versionKey(AiPlanCache.Kind.REGISTERED_PICK, activeModelName(),
                     Integer.toHexString(LIVE_QWEN_SYSTEM_PROMPT.hashCode()));
-            var cached = cacheable
+            var cached = lookUp
                     ? planCache.find(AiPlanCache.Kind.REGISTERED_PICK, cacheVersion, cacheQuestion)
                             .filter(hit -> hit.analysisId() != null && analyses.definition(hit.analysisId()).isPresent())
                     : Optional.<AiPlanCache.Hit>empty();
+            if (!lookUp) log.info("AI plan cache skipped: follow-up or clarification choice");
             if (cached.isPresent()) {
                 var hit = cached.get();
                 llmResult = new LiveLlmPlanResult("EXECUTE", hit.analysisId(), hit.intentDomain(), hit.refundBasisOverride(),
@@ -785,14 +790,10 @@ public class OpenStudyPlaybackGateway {
                 planCached = true;
             } else {
                 llmResult = callLiveQwenPlanner(q, requestedScope, candidates, previousConditions);
+                storeDecision = lookUp && previousConditions == null;
                 if (llmResult != null) {
                     llmDurationMs = llmResult.durationMs();
                     totalTokens = llmResult.totalTokens();
-                    if (cacheable && "EXECUTE".equalsIgnoreCase(llmResult.outcome()) && llmResult.analysisId() != null
-                            && analyses.definition(llmResult.analysisId()).isPresent()) {
-                        planCache.storePick(cacheVersion, cacheQuestion, llmResult.analysisId(), llmResult.intentDomain(),
-                                llmResult.refundBasisOverride(), llmResult.zeroFillOverrideRequested());
-                    }
                 }
             }
         }
@@ -919,6 +920,12 @@ public class OpenStudyPlaybackGateway {
             );
         }
 
+        if (storeDecision) {
+            // The analysis the server runs, whether the keyword rules or the model chose it: the same question then
+            // skips the model next time even when the model's own answer named no analysis.
+            planCache.storePick(cacheVersion, cacheQuestion, resolvedAnalysisId, intentDomain, refundBasisOverride,
+                    zeroFillOverrideRequested);
+        }
         return new PlanDecision(
                 "EXECUTE",
                 200,
