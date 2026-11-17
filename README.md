@@ -1,106 +1,100 @@
-# OpenStudy-Backend
-OpenStudy 스터디카페 백오피스 백엔드 API
+# OpenStudy Backend
 
-## 현재 구성
+스터디카페 지점 운영 백오피스 **OpenStudy**의 API 서버입니다.
+사장님·지점 관리자·직원이 한 화면에서 고객·이용권·결제, 좌석·룸·사물함, 업무·채팅, 근무·근태, 매출, AI 자연어 분석을 처리할 수 있도록 업무 규칙과 데이터를 책임집니다.
 
-Java 21, Spring Boot 4.1.1, Gradle Wrapper 9.8.1 기반의 단일 Gradle 프로젝트입니다. 빌드는 Groovy DSL, 애플리케이션 설정은 YAML을 사용합니다. 실행 클래스는 `com.openstudy.OpenstudyBackendApplication`입니다. 20개 업무 모듈의 골격, DB 연결 설정과 Flyway 초기 마이그레이션을 준비했고 Docker 전용 MySQL에서 앱 기동·마이그레이션·세션 저장·관련 제약을 검증했습니다. 기본 로그인·로그아웃·현재 사용자 조회와 JDBC 세션 인증을 구현했으며 나머지 업무 API와 운영 환경 검수는 후속 범위입니다.
+> 프로젝트 전체 소개와 화면은 [OpenStudy 대표 저장소](https://github.com/OpenStudyService/OpenStudy)를 참고하세요.
+> 화면은 [OpenStudy-Frontend](https://github.com/OpenStudyService/OpenStudy-Frontend), AWS 인프라는 [OpenStudy-Infra](https://github.com/OpenStudyService/OpenStudy-Infra)에서 관리합니다.
 
-검토 완료된 SRS 8개 중분류·61개 요구사항의 [1차 DB·API 설계](docs/design/foundation/README.md)를 관리합니다. 현재 개발 DB 기준은 빈 DB용 통합 V1입니다. 기존 V1~V3 적용 개발 DB는 [재생성 방침](docs/db/foundation-upgrade.md)에 따라 전환합니다. [전체 구축 SQL·ERD](docs/db/README.md), [API 엑셀](docs/design/foundation/OpenStudy-Foundation-API.xlsx), [개발 계획](docs/design/foundation/implementation-plan.md)을 제공합니다. 업무 API는 구현 전 목표 계약이며 GitHub 마일스톤·이슈는 아직 등록하지 않았습니다.
+## 기술 스택
 
-## 디렉토리 구조
-
-```text
-openstudy-backend/
-├── build.gradle
-├── settings.gradle
-├── gradlew / gradlew.bat
-├── gradle/wrapper/
-├── docs/
-│   ├── architecture/              현재 구조 설계와 요구사항/WBS 대응
-│   ├── db/                        DB 스키마와 ERD 설계 자료
-│   ├── design-decisions/          기존 설계 선택 기록
-│   └── development-log/           날짜별 작업 기록
-└── src/
-    ├── main/
-    │   ├── java/com/openstudy/
-    │   │   ├── OpenstudyBackendApplication.java
-    │   │   ├── config/           Spring 설정
-    │   │   ├── common/exception/ 공통 예외와 HTTP 오류 처리
-    │   │   └── modules/          20개 업무 모듈
-    │   └── resources/
-    │       ├── application.yaml
-    │       └── db/
-    │           ├── migration/
-    │           └── seed/local/
-    └── test/
-        ├── java/com/openstudy/
-        │   ├── OpenstudyBackendApplicationTests.java
-        │   ├── architecture/
-        │   ├── modules/          업무별 테스트
-        │   ├── common/
-        │   ├── integration/     http, concurrency, domainlens
-        │   └── support/         database, fixture, http, clock
-        └── resources/fixtures/
-```
-
-현재 소스 디렉터리의 `.gitkeep`과 `package-info.java`는 업무 패키지 구조와 책임을 보존합니다. 상세 설명은 [디렉터리 설계](docs/architecture/directory-structure.md), [설계 결정](docs/design-decisions/README.md), [DB 관리 안내](docs/db/README.md)를 참고하세요. 사용하지 않는 이전 골격과 초기 자동 생성 안내 파일은 추적하지 않습니다.
-
-## 업무 패키지
-
-| 구분 | 모듈 |
+| 구분 | 사용 기술 |
 |---|---|
-| 인증·조직 | auth, authorization, branch, employee, invitation |
-| 협업 | task, chat |
-| 고객·이용·거래 | customer, ticket, payment, seat, reservation, locker |
-| 운영 관리 | facility, inquiry, notice |
-| 근무·집계 | workforce, sales, home |
-| 외부 엔진 연동 | ai |
+| 언어·프레임워크 | Java 21, Spring Boot 4.1 (Web MVC, Validation, Mail, Actuator) |
+| 데이터 | MySQL 8.4, Spring Data JPA, Flyway(V1~V22) |
+| 인증·보안 | Spring Security, Spring Session JDBC(HttpOnly 쿠키 세션), CSRF 토큰 |
+| AI | Spring AI(OpenAI 호환 Qwen), ONNX Runtime 로컬 임베딩(`koen-e5-tiny-q8`) |
+| 파일 | AWS SDK S3(프로필 사진) |
+| API 문서 | springdoc-openapi, [기반 OpenAPI 릴리스](docs/releases/foundation-0.1.2/README.md) |
+| 테스트 | JUnit 5, Testcontainers(MySQL 8.4), 아키텍처 경계 테스트 |
+| 빌드·배포 | Gradle 9.8, Docker 이미지, `prod` 프로필 |
 
-각 모듈은 다음 구조를 사용합니다. 아래 reservation 클래스 이름은 배치 예시입니다. 현재 auth와 인증에 필요한 employee·branch 조회를 구현했습니다.
+## 구현 기능
+
+SRS 61개 요구사항을 마일스톤 M1~M15로 나누어 GitHub 이슈·PR 단위로 구현했습니다.
+
+| 영역 | 모듈 | 주요 기능 |
+|---|---|---|
+| 인증·조직 | auth, account, authorization, branch, employee, invitation | 로그인·세션·CSRF, 지점·직원 관리, 역할·권한 프리셋, 메일 초대와 관리자 승인 |
+| 고객·거래 | customer, ticket, payment, passhistory, customerhistory | 고객 원장·병합, 이용권 상품·요율, Mock 결제·환불, 이용권 사용·고객 이력 |
+| 공간 | seat, reservation, locker | 좌석 배치·입퇴실·이용권 차감, 스터디룸 예약, 사물함 유료 대여 |
+| 운영 | facility, inquiry, notice | 시설 점검, 고객 문의, 공지 |
+| 협업 | task, chat | 업무·체크리스트·담당자, 채널·DM·스레드, 업무와 대화 연결 |
+| 인력 | workforce | 주간 근무표, 출퇴근·휴게, 근태 정정, 휴가, 대체근무 |
+| 집계 | home, sales | 운영 홈 카드, 지점별 매출(환불 처리일·원거래일 기준) |
+| AI | ai | 자연어 질문 → 조회 계획 → 권한 범위 재검증 → 표·차트 결과 |
+| 공통 | audit, retention, workspace | 감사 기록, 개인정보 보존 기간 처리, 로컬 미리보기 데이터 |
+
+## 아키텍처와 설계 포인트
+
+### 모듈형 단일 애플리케이션
 
 ```text
-modules/reservation/
-├── package-info.java
-├── controller/                 ReservationController.java
-├── service/                    ReservationService.java
-├── repository/                 ReservationRepository.java
-├── entity/                     Reservation.java
-└── dto/
-    ├── request/                CreateReservationRequest.java
-    └── response/               ReservationResponse.java
+src/main/java/com/openstudy/
+├── config/            Spring·보안 설정
+├── common/            예외 처리 등 업무 비종속 공통 기능
+└── modules/<업무>/
+    ├── controller/    요청 처리·입력 검증
+    ├── service/       업무 흐름·권한·트랜잭션
+    ├── repository/    DB 접근
+    ├── entity/        JPA 매핑·상태 변경 규칙
+    └── dto/           요청·응답 DTO (엔티티를 직접 노출하지 않음)
 ```
 
-Controller는 요청 처리와 입력 검증, Service는 업무 흐름·권한·트랜잭션, Repository는 DB 접근, Entity는 JPA 매핑과 상태 변경 규칙을 담당합니다. 요청·응답 DTO를 엔티티와 분리하고 엔티티를 HTTP 응답에 직접 노출하지 않습니다. Spring Data JPA 저장소 인터페이스와 필요한 사용자 정의 구현은 모두 repository에 둡니다.
+- 모듈 사이에는 공개한 service 진입점과 DTO만 사용하고, 다른 모듈의 entity·repository 접근과 순환 의존을 금지합니다. 아키텍처 테스트로 경계를 검사합니다.
+- 상세: [디렉터리 설계](docs/architecture/directory-structure.md), [권한 정책](docs/architecture/authorization-policies.md), [설계 결정](docs/design-decisions/README.md)
 
-모듈 간에는 명시적으로 공개한 service 진입점과 DTO만 사용합니다. 다른 모듈의 entity·repository에 직접 접근하지 않으며 모듈 순환 의존을 금지합니다. Java public이라는 이유만으로 모든 Service 메서드를 다른 모듈에 공개하지 않습니다. 호출 진입점과 DTO는 해당 기능 구현 시 문서와 경계 검사 대상으로 명시합니다.
+### 데이터 정합성
 
-workforce는 근무표·근태·휴가·대체근무를 하나의 업무 모듈로 유지합니다. 세부 패키지는 실제 구현량에 따라 필요한 계층에 추가합니다. 공통 설정은 config, 업무에 종속되지 않는 공통 기능은 common에 두며 common/exception 외의 세부 폴더는 기능 구현 시 추가합니다.
+- **멱등 키와 버전 검사**: 결제·환불·예약·입퇴실 같은 민감 명령은 같은 요청이 두 번 처리되지 않도록 멱등 키를 저장하고, 수정은 버전 충돌(409)을 반환합니다.
+- **스키마는 Flyway가 정본**: 빈 DB용 통합 V1부터 V22까지 마이그레이션으로 관리합니다. [DB 관리 안내](docs/db/README.md)
+- **실제 MySQL로 테스트**: 통합 테스트는 Testcontainers의 전용 MySQL 8.4에서 실행하며 개발 DB로 대체하지 않습니다.
 
-각 모듈의 package-info.java는 책임을 설명하고 .gitkeep은 빈 디렉터리를 보존합니다. 업무 구현은 순차 진행하며 운영 사장님 초기화 명령을 제공합니다. 실행용 스키마 SQL은 src/main/resources/db/migration/에서 관리합니다.
+### 인증과 권한
 
-현재 구조는 [디렉터리 설계](docs/architecture/directory-structure.md)와 [2026-10-22 변경 기록](docs/development-log/2026-10-22-simplify-backend-package-layout.md)을 따릅니다. 이전 골격은 Git 이력에서 확인할 수 있으며, 과거 개발 기록은 결정의 맥락을 보존합니다.
+- 프론트엔드 로그인 폼 → `/api/auth/login` → JDBC 쿠키 세션. 기본 로그인 화면과 HTTP Basic은 비활성화했습니다.
+- 서버가 지점 범위와 역할(OWNER·MANAGER·STAFF)을 매 요청 검사합니다. [기본 로그인 안내](docs/authentication.md)
 
-## 개발과 검증
+### AI 자연어 분석
 
-IntelliJ에서는 저장소 루트를 Gradle 프로젝트로 열고 Project SDK와 Gradle JVM을 JDK 21로 맞춥니다. `.idea/`, `*.iml`, `*.ipr`, `*.iws`, `out/`은 개인 개발 환경 파일이므로 Git에서 제외합니다.
+- 질문을 등록 분석(키워드 규칙 → LLM 선택) 또는 생성 경로(LLM SemanticPlan → 서버 컴파일)로 처리하고, 결과는 QuerySpec·ViewSpec으로 표·차트를 구성합니다.
+- **조회 계획 캐시**: 같은 의미의 질문은 저장된 계획을 재사용해 LLM 호출을 줄입니다. 결과 데이터는 저장하지 않고 요청자 권한으로 다시 실행합니다. [설계 기록](docs/development-log/2026-11-16-ai-plan-cache.md)
+- 모델 응답 기본값은 저장된 응답 재생(`playback`)이며, 키를 설정하면 실제 Qwen(`live`)을 호출합니다.
 
-JDK 21을 설치하고 `JAVA_HOME`을 설정한 뒤 저장소 루트에서 실행합니다.
+## 실행하기
+
+### 준비물
+
+- JDK 21 (`JAVA_HOME` 설정)
+- Docker 엔진 (테스트용 MySQL 컨테이너)
+- 로컬 서버 실행 시 MySQL 8.4
+
+### 빌드와 테스트
 
 ```powershell
-.\gradlew.bat build
+.\gradlew.bat build       # macOS/Linux: ./gradlew build
 ```
 
-macOS/Linux에서는 `./gradlew build`를 사용합니다. JDK 21과 실행 중인 Docker 엔진이 필요하며 첫 실행에는 의존성과 테스트 이미지 다운로드가 필요합니다. `build`는 Testcontainers로 전용 MySQL을 만들고 테스트 종료 시 정리합니다. 테스트를 위해 개발 DB나 `DB_USERNAME`·`DB_PASSWORD`를 준비할 필요는 없습니다. 테스트만 실행하려면 `./gradlew test` 또는 `.\gradlew.bat test`를 사용합니다.
+| 명령 | 범위 |
+|---|---|
+| `./gradlew test` | 전체 테스트 |
+| `./gradlew fastTest` | `@Tag("slow")`(스키마 재생성 마이그레이션·OWNER 초기화)를 제외한 테스트 |
+| `./gradlew slowTest` | 마이그레이션·OWNER 초기화 테스트만 |
+| `./gradlew test --tests "com.openstudy.modules.<모듈>.*"` | 특정 모듈 |
 
-테스트 DB는 digest로 고정한 MySQL 8.4.11/InnoDB입니다. `@MySqlIntegrationTest`가 test 프로필과 Spring 관리 컨테이너를 연결하며 `@ServiceConnection`이 JDBC와 Flyway 접속 정보를 제공합니다. 컨테이너 설정이 빠진 테스트는 접속 불가 주소로 실패하고 개발 DB로 자동 대체하지 않습니다. IntelliJ에서도 통합 테스트에는 이 공통 애너테이션을 사용합니다. 운영 대상 Debian 검수와 도메인별 업무·경합 검증은 별도입니다.
+테스트는 여러 JVM에서 병렬 실행합니다. 메모리가 부족하면 `-PtestForks=1`을 붙입니다.
 
-[DB 초기화 검증 v1.0](docs/verification/database-initialization-v1.0.md)에 실제 실행 환경과 32개 테스트 결과를 기록했습니다. 배포용 bootJar에는 Testcontainers와 테스트 설정이 포함되지 않습니다. 일반 앱 실행(`bootRun`)은 [DB 관리 안내](docs/db/README.md)에 따라 개발 DB·계정과 환경 변수를 따로 준비합니다.
-
-DB·계정 수동 준비와 Flyway 변경 절차는 [DB 관리 안내](docs/db/README.md)를 따릅니다. v0.4·v0.5 설계 폴더와 ZIP은 로컬 참고용으로만 보존하고 커밋하지 않습니다. SQL 정본은 Flyway 마이그레이션이며 최초 적용 전 전용 MySQL 8.4 DB에서 검증해야 합니다.
-
-### 로컬 서버 실행
-
-`openstudy-backend` 폴더에서 `.env.example`을 `.env`로 복사하고 실제 MySQL 계정과 비밀번호를 입력합니다. `.env`가 이미 있다면 복사로 덮어쓰지 말고 기존 파일을 수정합니다.
+### 로컬 서버
 
 ```powershell
 Copy-Item .env.example .env
@@ -108,45 +102,65 @@ Copy-Item .env.example .env
 .\gradlew.bat bootRun
 ```
 
-Spring Boot가 실행 작업 디렉터리의 `.env`를 Java properties 형식으로 읽습니다. 값에 따옴표나 `export`를 사용하지 않고, 실제 역슬래시는 `\\`로 이스케이프합니다. IntelliJ에서는 백엔드 실행 구성의 Working directory를 `openstudy-backend` 폴더의 절대 경로로 지정합니다. 별도 프로필은 필요하지 않습니다. 이 설정은 Spring 설정으로 로딩되며 OS 프로세스의 환경 변수를 생성하지는 않습니다.
+- `.env`는 Java properties 형식이며 Git에 포함하지 않습니다. OS 환경 변수가 `.env` 값보다 우선합니다.
+- 빈 DB의 첫 관리자 계정은 `local` 프로필에서 `.env`의 `BOOTSTRAP_OWNER_EMAIL`, `BOOTSTRAP_OWNER_PASSWORD`로 만듭니다.
+- 프론트엔드는 `npm run dev:live`로 실행해 이 서버에 연결합니다.
+- `local` 프로필은 [로컬 워크스페이스 샘플](docs/local-preview.md)을 제공합니다.
 
-`.env`는 선택 사항이며 OS 환경 변수 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`가 파일의 같은 이름 값보다 우선합니다. 운영에서는 `.env` 없이 ECS가 동일한 이름으로 주입하도록 설정합니다. DB 주소는 RDS 접속 주소로, 계정과 비밀번호는 운영용 값으로 지정합니다. 세 값이 모두 제공되어야 DB에 연결할 수 있습니다.
+<details>
+<summary>AI 채팅 로컬 실행</summary>
 
-공통 설정과 `.env.example`은 Git에 포함하고, 실제 비밀값을 담은 `.env`는 Git과 배포 이미지에 포함하지 않습니다. `.env`는 이미 Git에서 제외되어 있습니다. 개인별 설정은 Git에서 제외하는 `application-local.yaml`, `application-*-local.yaml` 등에도 둘 수 있습니다. Gradle 캐시·빌드 결과·IDE 설정·로그·업로드 파일은 커밋하지 않습니다.
+- 로컬 임베딩 모델(약 40MB)은 Git에 포함하지 않습니다. `.models/koen-e5-tiny-q8/`에 `manifest.json`, `model_quint8_x86_64.onnx`, `tokenizer.json`을 넣습니다. 모델이 없으면 서버는 기동하고 AI 검색만 비활성화됩니다.
+- 실제 Qwen을 호출하려면 Git에서 제외되는 `.env.qwen.local`에 `OPENSTUDY_AI_MODEL_MODE=live`, `DOMAINLENS_MODEL_MODE=live`, `QWEN_API_KEY`를 넣습니다. 키가 없으면 `playback`으로 동작합니다.
+- `/api/ai/**`도 로그인 세션과 CSRF 토큰이 필요하며, 요청 본문의 `actor`는 무시하고 로그인한 직원 기준으로 조회합니다.
+- `com.openstudy.modules.ai` 통합 테스트 4종은 모델·시드된 docker-compose MySQL(127.0.0.1:3307)·기대값 파일이 있을 때 `OPENSTUDY_AI_LOCAL_TESTS=true`, `OPENSTUDY_AI_TEST_DB_PASSWORD`를 지정해 실행합니다. 조건이 없으면 건너뜁니다.
 
-### AI 채팅(DomainLens) 로컬 실행
+</details>
 
-AI 채팅의 자연어 조회는 로컬 ONNX 임베딩 모델 `koen-e5-tiny-q8`을 씁니다. 모델 파일(약 40MB)은 Git에 포함하지 않으므로 `openstudy-backend/.models/koen-e5-tiny-q8/`에 `manifest.json`, `model_quint8_x86_64.onnx`, `tokenizer.json`을 직접 넣습니다. 모델이 없어도 서버는 정상 기동하고, 경고 로그를 남긴 뒤 AI 검색만 비활성화됩니다.
+<details>
+<summary>운영 사장님 최초 초기화</summary>
 
-- 모델 응답 기본값은 `playback`(저장된 응답 재생)입니다. 실제 Qwen을 호출하려면 Git에서 제외되는 `.env.qwen.local`에 `OPENSTUDY_AI_MODEL_MODE=live`, `DOMAINLENS_MODEL_MODE=live`, `QWEN_API_KEY`를 넣습니다. 키가 비어 있으면 `live`로 설정해도 `playback`으로 동작합니다.
-- `/api/ai/**`도 다른 API처럼 로그인 세션과 CSRF 토큰이 필요하며, 요청 본문의 `actor` 값은 무시하고 로그인한 직원으로만 조회합니다.
-- `com.openstudy.modules.ai`의 통합 테스트 4종은 모델, 시드된 docker-compose MySQL(127.0.0.1:3307), DomainLens 기대값 파일이 모두 있을 때만 `OPENSTUDY_AI_LOCAL_TESTS=true`와 `OPENSTUDY_AI_TEST_DB_PASSWORD`를 지정해 실행합니다. 그렇지 않으면 건너뜁니다.
+서버 부팅과 분리된 명령으로 최초 OWNER를 만듭니다. 마이그레이션이 모두 적용된 스키마에만 연결하며 마이그레이션을 자동 적용하지 않습니다.
 
-### 실행 이미지와 운영 설정
-
-배포용 컨테이너 이미지(`Dockerfile`)와 `prod` 프로필의 빌드·환경 변수·프록시·DB 계약은 [운영 계약](docs/deployment/README.md)을 따릅니다. 로컬 TLS 프록시 검증 구성은 `deploy/local-https/`에 있습니다.
-
-### 운영 사장님 최초 초기화
-
-일반 서버 부팅과 분리된 `./gradlew ownerBootstrap --no-daemon`(Windows: `.\gradlew.bat ownerBootstrap --no-daemon`) 명령을 제공합니다. 실행 이미지에서는 진입점을 바꿔 같은 클래스를 실행합니다([운영 계약 8절](docs/deployment/README.md#8-owner-초기화)). 서버, 웹 포트, preview 시드, 메일을 실행하지 않습니다. 통합 V1을 포함해 현재 코드의 migration이 모두 적용되고 Flyway 검증을 통과한 스키마에만 연결합니다. 마이그레이션을 자동 적용하지 않습니다. 먼저 [DB 전환 절차](docs/db/foundation-upgrade.md)를 완료합니다.
-
-명령 실행 프로세스에 다음 환경 변수를 주입합니다. 운영에서는 비밀값 관리 서비스 또는 제한된 작업 실행 환경이 주입하도록 합니다. 비밀번호를 CLI 인자나 Gradle `-P` 인자로 전달하지 않습니다.
+```powershell
+.\gradlew.bat ownerBootstrap --no-daemon
+```
 
 | 환경 변수 | 용도 |
 |---|---|
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | 대상 MySQL 접속 정보 |
-| `OWNER_EMAIL` | 최초 사장님 이메일. 앞뒤 공백 제거·소문자 정규화 |
-| `OWNER_NAME` | 이름, 1~100자. 최초 별명도 같은 값 사용 |
-| `OWNER_PASSWORD` | 8자 이상, UTF-8 기준 72바이트 이하. BCrypt 저장 |
+| `OWNER_EMAIL` | 최초 사장님 이메일(공백 제거·소문자 정규화) |
+| `OWNER_NAME` | 이름, 1~100자 |
+| `OWNER_PASSWORD` | 8자 이상, UTF-8 72바이트 이하. BCrypt 저장 |
 
-이 명령은 Spring 설정 로더를 사용하지 않으므로 `.env`와 `application*.yaml`을 자동으로 읽지 않습니다. 로컬에서는 IDE/쉘의 환경 변수 주입 기능으로 위 이름의 값을 설정하고 명령을 실행합니다. 서버용 `.env`를 사용하려면 실행 도구가 내용을 실제 프로세스 환경으로 주입해야 합니다. 프로젝트의 `.env`는 Java properties 형식이므로 쉘 스크립트처럼 실행하지 않습니다. 초기화 후 `OWNER_PASSWORD`를 실행 환경에서 제거합니다.
+- 이 명령은 `.env`와 `application*.yaml`을 읽지 않으므로 실행 환경에 직접 주입합니다. 비밀번호를 CLI 인자로 넘기지 않습니다.
+- 기존 OWNER가 있으면 아무것도 바꾸지 않고 성공 종료합니다. 종료 코드: 성공 0, 입력·계정 충돌 2, DB·스키마 실패 1.
+- 실행 이미지에서의 사용법은 [운영 계약 8절](docs/deployment/README.md#8-owner-초기화)을 따릅니다.
 
-동시·반복 실행은 관리자 가드 행과 DB 유일 제약으로 보호합니다. 기존 OWNER가 있으면 상태와 비밀번호를 포함한 모든 계정 정보를 변경하지 않고 성공 종료합니다. OWNER가 없더라도 같은 이메일의 일반 직원이 있으면 실패하며 승격하지 않습니다. 신규 생성과 시스템 감사 기록은 한 트랜잭션입니다. Java 명령은 성공 시 종료 코드 0, 입력·계정 충돌 시 2, DB·스키마 실패 시 1을 반환하며 이메일·비밀번호·접속 URL·드라이버 예외 원문을 출력하지 않습니다. Gradle 실행 시 Java의 비정상 종료는 task 실패로 보고되며 Gradle 자체 종료 코드는 1입니다.
+</details>
 
-### 로그인
+### 배포
 
-프론트엔드 로그인 폼의 이메일·비밀번호로 `/api/auth/login`을 호출하고 JDBC 쿠키 세션을 사용합니다. 기본 Spring Security 로그인 화면과 HTTP Basic은 비활성화했습니다. `/api/auth/csrf`, `/api/me`, `/api/auth/logout`과 세션 만료·계정 상태 검사도 구현했습니다.
+배포용 컨테이너 이미지(`Dockerfile`)와 `prod` 프로필의 환경 변수·프록시·DB 계약은 [운영 계약](docs/deployment/README.md)을 따릅니다. 로컬 TLS 프록시 검증 구성은 `deploy/local-https/`에 있습니다.
 
-빈 DB에서 사용할 최초 관리자 계정 생성은 `local` 프로필에서 `.env`의 `BOOTSTRAP_OWNER_EMAIL`, `BOOTSTRAP_OWNER_PASSWORD`로 명시적으로 요청합니다. 기존 OWNER의 비밀번호는 덮어쓰지 않습니다. 프론트엔드는 `npm run dev:live`로 실행합니다. 상세 설정·API·검증 결과와 미구현 범위는 [기본 로그인 안내](docs/authentication.md)를 참고하세요.
+## 프로젝트 현황
 
-`local` 프로필에서는 [로컬 워크스페이스 샘플](docs/local-preview.md)도 기본 제공하여 로그인 후 홈·기본 목록을 볼 수 있습니다. 지점이 없으면 샘플 지점 두 개만 준비하고, 나머지 샘플은 조회 전용 가상 데이터로 반환합니다. 실제 업무 API가 준비되면 `openstudy.local-preview.enabled=false`로 비활성화합니다.
+- M1~M10 핵심 업무와 M12~M15 확장 기능을 구현했습니다.
+- 남은 작업은 주로 **M11 릴리스 검증·운영 준비**입니다: 전체 업무 회귀·동시성 재검증, 백업·복구 검증, 상태 점검·지표·로그, 운영 HTTPS 보안 확인, 개인정보 보존 기간 확정, DomainLens 실엔진 수치 동등성 검증.
+- 최신 상태는 [마일스톤](https://github.com/OpenStudyService/OpenStudy-Backend/milestones)과 [열린 이슈](https://github.com/OpenStudyService/OpenStudy-Backend/issues)를 확인하세요.
+
+## 문서
+
+| 문서 | 내용 |
+|---|---|
+| [docs/design/foundation](docs/design/foundation/README.md) | 1차 DB·API 설계 |
+| [docs/releases/foundation-0.1.2](docs/releases/foundation-0.1.2/README.md) | 기반 스키마·OpenAPI·ERD 릴리스 |
+| [docs/db](docs/db/README.md) | DB 관리·Flyway 변경 절차 |
+| [docs/verification](docs/verification/database-initialization-v1.0.md) | DB 초기화 검증 |
+| [docs/privacy](docs/privacy/personal-information-handling.md) | 개인정보 처리 |
+| [docs/development-log](docs/development-log/) | 날짜별 작업·의사결정 기록 |
+
+## 개발 환경 참고
+
+- IntelliJ에서는 저장소 루트를 Gradle 프로젝트로 열고 Project SDK와 Gradle JVM을 JDK 21로 맞춥니다. 실행 구성의 Working directory는 이 폴더로 지정합니다.
+- `.idea/`, `*.iml`, `out/`, `.env`, `application-*-local.yaml`, 빌드 결과·로그·업로드 파일은 커밋하지 않습니다.
