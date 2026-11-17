@@ -1,0 +1,61 @@
+erDiagram
+  conversations {
+    bigint_unsigned id PK
+    enum kind
+    bigint_unsigned branch_id FK
+    bigint_unsigned version
+  }
+  conversation_members {
+    bigint_unsigned conversation_id PK,FK
+    bigint_unsigned employee_id PK
+  }
+  conversation_thread_reads {
+    bigint_unsigned conversation_id PK,FK
+    bigint_unsigned employee_id PK,FK
+    bigint_unsigned parent_message_id PK,FK
+    bigint_unsigned last_read_message_id FK
+  }
+  messages {
+    bigint_unsigned id PK
+    bigint_unsigned conversation_id FK
+    bigint_unsigned sender_employee_id FK
+    bigint_unsigned parent_message_id FK
+    bigint_unsigned related_task_id FK
+    enum kind
+  }
+  work_tasks {
+    bigint_unsigned id PK
+    bigint_unsigned branch_id FK
+    bigint_unsigned assignee_employee_id FK
+    enum priority
+    enum status
+    bigint_unsigned version
+  }
+  task_checklist_items {
+    bigint_unsigned id PK
+    bigint_unsigned task_id FK
+  }
+  task_events {
+    bigint_unsigned id PK
+    bigint_unsigned task_id FK
+  }
+  branch_memberships {
+    bigint_unsigned id PK
+    string domain "계정·권한·보안"
+  }
+  branches {
+    bigint_unsigned id PK
+    string domain "지점 운영·시설"
+  }
+  conversations ||--o{ conversation_members : "conversation_id"
+  conversation_members ||--o{ conversation_thread_reads : "conversation_id,employee_id"
+  messages ||--o{ conversation_thread_reads : "parent_message_id,conversation_id"
+  messages ||--o{ conversation_thread_reads : "last_read_message_id,conversation_id"
+  branches |o--o{ conversations : "branch_id"
+  conversation_members ||--o{ messages : "conversation_id,sender_employee_id"
+  messages |o--o{ messages : "parent_message_id,conversation_id"
+  work_tasks |o--o{ messages : "related_task_id"
+  work_tasks ||--o{ task_checklist_items : "task_id"
+  work_tasks ||--o{ task_events : "task_id"
+  branches ||--o{ work_tasks : "branch_id"
+  branch_memberships ||--o{ work_tasks : "branch_id,assignee_employee_id"

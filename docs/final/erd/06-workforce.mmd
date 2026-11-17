@@ -1,0 +1,85 @@
+erDiagram
+  shifts {
+    bigint_unsigned id PK
+    bigint_unsigned employee_id FK
+    bigint_unsigned branch_id FK
+    enum status
+    bigint_unsigned version
+  }
+  shift_events {
+    bigint_unsigned id PK
+    bigint_unsigned shift_id FK
+    enum event_type
+  }
+  shift_swaps {
+    bigint_unsigned id PK
+    bigint_unsigned original_shift_id FK
+    enum status
+    bigint_unsigned version
+  }
+  attendance_records {
+    bigint_unsigned id PK
+    bigint_unsigned employee_id FK
+    bigint_unsigned branch_id FK
+    bigint_unsigned shift_id FK
+    enum status
+    bigint_unsigned active_employee_id UK
+    bigint_unsigned version
+  }
+  attendance_breaks {
+    bigint_unsigned id PK
+    bigint_unsigned attendance_id FK
+  }
+  attendance_corrections {
+    bigint_unsigned id PK
+    bigint_unsigned attendance_id FK
+    enum correction_kind
+    bigint_unsigned break_id FK
+    enum status
+    bigint_unsigned version
+  }
+  leave_grants {
+    bigint_unsigned id PK
+    bigint_unsigned origin_branch_id FK
+    bigint_unsigned version
+  }
+  leave_requests {
+    bigint_unsigned id PK
+    bigint_unsigned branch_id FK
+    enum status
+    bigint_unsigned version
+  }
+  leave_allocations {
+    bigint_unsigned id PK
+    bigint_unsigned leave_request_id FK
+    bigint_unsigned leave_grant_id FK
+  }
+  leave_balance_events {
+    bigint_unsigned id PK
+    bigint_unsigned leave_grant_id FK
+    bigint_unsigned leave_request_id FK
+    enum event_type
+    varchar_120 event_key UK
+  }
+  branch_memberships {
+    bigint_unsigned id PK
+    string domain "계정·권한·보안"
+  }
+  branches {
+    bigint_unsigned id PK
+    string domain "지점 운영·시설"
+  }
+  attendance_records ||--o{ attendance_breaks : "attendance_id"
+  attendance_records ||--o{ attendance_corrections : "attendance_id"
+  attendance_breaks |o--o{ attendance_corrections : "break_id"
+  branch_memberships ||--o{ attendance_records : "branch_id,employee_id"
+  shifts |o--o{ attendance_records : "shift_id"
+  leave_requests ||--o{ leave_allocations : "leave_request_id"
+  leave_grants ||--o{ leave_allocations : "leave_grant_id"
+  leave_grants ||--o{ leave_balance_events : "leave_grant_id"
+  leave_requests |o--o{ leave_balance_events : "leave_request_id"
+  branches ||--o{ leave_grants : "origin_branch_id"
+  branches ||--o{ leave_requests : "branch_id"
+  shifts ||--o{ shift_events : "shift_id"
+  shifts ||--o{ shift_swaps : "original_shift_id"
+  branch_memberships ||--o{ shifts : "branch_id,employee_id"

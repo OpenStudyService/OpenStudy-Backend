@@ -1,0 +1,122 @@
+erDiagram
+  seats {
+    bigint_unsigned id PK
+    bigint_unsigned branch_id FK
+    enum kind
+    enum status
+    bigint_unsigned version
+  }
+  seat_sessions {
+    bigint_unsigned id PK
+    bigint_unsigned customer_id FK
+    bigint_unsigned pass_id FK
+    bigint_unsigned branch_id FK
+    bigint_unsigned seat_id FK
+    enum status
+    bigint_unsigned active_seat_id UK
+    bigint_unsigned active_customer_id UK
+    varchar_120 start_request_key UK
+    varchar_120 end_request_key UK
+    bigint_unsigned version
+  }
+  seat_session_moves {
+    bigint_unsigned id PK
+    bigint_unsigned seat_session_id FK
+    bigint_unsigned from_seat_id FK
+    bigint_unsigned to_seat_id FK
+    varchar_120 request_key UK
+  }
+  seat_session_corrections {
+    bigint_unsigned id PK
+    bigint_unsigned seat_session_id FK
+    varchar_120 request_key UK
+  }
+  rooms {
+    bigint_unsigned id PK
+    bigint_unsigned branch_id FK
+    enum status
+    bigint_unsigned version
+  }
+  room_weekly_hours {
+    bigint_unsigned id PK
+    bigint_unsigned room_id FK
+  }
+  room_reservations {
+    bigint_unsigned id PK
+    bigint_unsigned room_id FK
+    bigint_unsigned branch_id FK
+    bigint_unsigned customer_id FK
+    bigint_unsigned payment_id UK,FK
+    bigint_unsigned amount_krw
+    enum status
+    varchar_120 request_key UK
+    bigint_unsigned version
+  }
+  room_reservation_slots {
+    bigint_unsigned id PK
+    bigint_unsigned reservation_id FK
+    bigint_unsigned room_id FK
+  }
+  room_usages {
+    bigint_unsigned id PK
+    bigint_unsigned reservation_id UK,FK
+  }
+  lockers {
+    bigint_unsigned id PK
+    bigint_unsigned branch_id FK
+    enum status
+    bigint_unsigned version
+  }
+  locker_assignments {
+    bigint_unsigned id PK
+    bigint_unsigned locker_id FK
+    bigint_unsigned customer_id FK
+    enum status
+    bigint_unsigned version
+  }
+  locker_assignment_charges {
+    bigint_unsigned id PK
+    bigint_unsigned assignment_id FK
+    bigint_unsigned payment_id UK,FK
+    enum charge_kind
+    bigint_unsigned initial_assignment_slot UK
+    bigint_unsigned amount_krw
+    enum status
+  }
+  branches {
+    bigint_unsigned id PK
+    string domain "지점 운영·시설"
+  }
+  customers {
+    bigint_unsigned id PK
+    string domain "고객·문의"
+  }
+  passes {
+    bigint_unsigned id PK
+    string domain "상품·결제·이용권·정산"
+  }
+  payments {
+    bigint_unsigned id PK
+    string domain "상품·결제·이용권·정산"
+  }
+  locker_assignments ||--o{ locker_assignment_charges : "assignment_id"
+  payments ||--o{ locker_assignment_charges : "payment_id"
+  lockers ||--o{ locker_assignments : "locker_id"
+  customers ||--o{ locker_assignments : "customer_id"
+  branches ||--o{ lockers : "branch_id"
+  room_reservations ||--o{ room_reservation_slots : "reservation_id,room_id"
+  rooms ||--o{ room_reservations : "room_id,branch_id"
+  customers ||--o{ room_reservations : "customer_id"
+  payments |o--o{ room_reservations : "payment_id,customer_id,branch_id"
+  room_reservations ||--o{ room_usages : "reservation_id"
+  rooms ||--o{ room_weekly_hours : "room_id"
+  branches ||--o{ rooms : "branch_id"
+  seat_sessions ||--o{ seat_session_corrections : "seat_session_id"
+  seat_sessions ||--o{ seat_session_moves : "seat_session_id"
+  seats ||--o{ seat_session_moves : "from_seat_id"
+  seats ||--o{ seat_session_moves : "to_seat_id"
+  customers ||--o{ seat_sessions : "customer_id"
+  passes ||--o{ seat_sessions : "pass_id"
+  branches ||--o{ seat_sessions : "branch_id"
+  seats ||--o{ seat_sessions : "seat_id,branch_id"
+  branches ||--o{ seats : "branch_id"

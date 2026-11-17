@@ -1,0 +1,146 @@
+erDiagram
+  employees {
+    bigint_unsigned id PK
+    varchar_254 email UK
+    enum global_role
+    tinyint owner_slot UK
+    enum status
+    enum theme
+    bigint_unsigned version
+    bigint_unsigned created_by FK
+    bigint_unsigned updated_by FK
+  }
+  branch_memberships {
+    bigint_unsigned id PK
+    bigint_unsigned employee_id FK
+    bigint_unsigned branch_id FK
+    enum role
+    enum status
+    bigint_unsigned approved_by FK
+    bigint_unsigned version
+    bigint_unsigned created_by FK
+    bigint_unsigned updated_by FK
+  }
+  permission_definitions {
+    bigint_unsigned id PK
+    varchar_80 code UK
+  }
+  permission_presets {
+    bigint_unsigned id PK
+    enum role
+    bigint_unsigned created_by FK
+    bigint_unsigned version
+    bigint_unsigned updated_by FK
+  }
+  permission_preset_grants {
+    bigint_unsigned preset_id PK,FK
+    bigint_unsigned permission_id PK,FK
+  }
+  membership_permission_grants {
+    bigint_unsigned membership_id PK,FK
+    bigint_unsigned permission_id PK,FK
+  }
+  employee_invitations {
+    bigint_unsigned id PK
+    bigint_unsigned branch_id FK
+    enum initial_role
+    bigint_unsigned preset_id FK
+    bigint_unsigned created_by FK
+    bigint_unsigned accepted_employee_id FK
+    bigint_unsigned approved_by FK
+    enum status
+    binary_32 token_hash UK
+    bigint_unsigned version
+    bigint_unsigned rejected_by FK
+    bigint_unsigned cancelled_by FK
+    bigint_unsigned updated_by FK
+  }
+  invitation_permission_grants {
+    bigint_unsigned invitation_id PK,FK
+    bigint_unsigned permission_id PK,FK
+  }
+  invitation_send_jobs {
+    bigint_unsigned id PK
+    bigint_unsigned invitation_id FK
+    enum status
+  }
+  password_reset_tokens {
+    bigint_unsigned id PK
+    bigint_unsigned employee_id FK
+    bigint_unsigned requested_by FK
+    enum status
+    binary_32 token_hash UK
+  }
+  administration_guard {
+    tinyint_unsigned id PK
+  }
+  audit_events {
+    bigint_unsigned id PK
+    bigint_unsigned actor_employee_id FK
+    bigint_unsigned branch_id FK
+    enum result
+  }
+  idempotency_records {
+    bigint_unsigned id PK
+    bigint_unsigned actor_employee_id FK
+    enum state
+  }
+  workspace_event_outbox {
+    bigint_unsigned id PK
+    bigint_unsigned branch_id FK
+    bigint_unsigned target_employee_id FK
+    enum event_type
+  }
+  retention_rules {
+    varchar_40 code PK
+  }
+  retention_runs {
+    bigint_unsigned id PK
+    varchar_40 rule_code FK
+    enum result
+  }
+  SPRING_SESSION {
+    char_36 PRIMARY_ID PK
+    char_36 SESSION_ID UK
+  }
+  SPRING_SESSION_ATTRIBUTES {
+    char_36 SESSION_PRIMARY_ID PK,FK
+    varchar_200 ATTRIBUTE_NAME PK
+  }
+  branches {
+    bigint_unsigned id PK
+    string domain "지점 운영·시설"
+  }
+  SPRING_SESSION ||--o{ SPRING_SESSION_ATTRIBUTES : "SESSION_PRIMARY_ID"
+  employees |o--o{ audit_events : "actor_employee_id"
+  branches |o--o{ audit_events : "branch_id"
+  employees ||--o{ branch_memberships : "employee_id"
+  branches ||--o{ branch_memberships : "branch_id"
+  employees |o--o{ branch_memberships : "approved_by"
+  employees |o--o{ branch_memberships : "created_by"
+  employees |o--o{ branch_memberships : "updated_by"
+  branches ||--o{ employee_invitations : "branch_id"
+  permission_presets |o--o{ employee_invitations : "preset_id"
+  employees ||--o{ employee_invitations : "created_by"
+  employees |o--o{ employee_invitations : "accepted_employee_id"
+  employees |o--o{ employee_invitations : "approved_by"
+  employees |o--o{ employee_invitations : "cancelled_by"
+  employees |o--o{ employee_invitations : "rejected_by"
+  employees |o--o{ employee_invitations : "updated_by"
+  employees |o--o{ employees : "created_by"
+  employees |o--o{ employees : "updated_by"
+  employees ||--o{ idempotency_records : "actor_employee_id"
+  employee_invitations ||--o{ invitation_permission_grants : "invitation_id"
+  permission_definitions ||--o{ invitation_permission_grants : "permission_id"
+  employee_invitations ||--o{ invitation_send_jobs : "invitation_id"
+  branch_memberships ||--o{ membership_permission_grants : "membership_id"
+  permission_definitions ||--o{ membership_permission_grants : "permission_id"
+  employees ||--o{ password_reset_tokens : "employee_id"
+  employees |o--o{ password_reset_tokens : "requested_by"
+  permission_presets ||--o{ permission_preset_grants : "preset_id"
+  permission_definitions ||--o{ permission_preset_grants : "permission_id"
+  employees |o--o{ permission_presets : "created_by"
+  employees |o--o{ permission_presets : "updated_by"
+  retention_rules ||--o{ retention_runs : "rule_code"
+  branches |o--o{ workspace_event_outbox : "branch_id"
+  employees |o--o{ workspace_event_outbox : "target_employee_id"

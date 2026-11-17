@@ -1,0 +1,57 @@
+erDiagram
+  customers {
+    bigint_unsigned id PK
+    varchar_40 member_no UK
+    bigint_unsigned registered_branch_id FK
+    enum status
+    bigint_unsigned merged_into_customer_id FK
+    bigint_unsigned version
+  }
+  customer_status_events {
+    bigint_unsigned id PK
+    bigint_unsigned customer_id FK
+  }
+  customer_service_interactions {
+    bigint_unsigned id PK
+    bigint_unsigned customer_id FK
+    bigint_unsigned branch_id FK
+    bigint_unsigned employee_id FK
+    enum source
+  }
+  customer_merges {
+    bigint_unsigned id PK
+    bigint_unsigned target_customer_id FK
+    bigint_unsigned absorbed_customer_id FK
+    bigint_unsigned via_customer_id FK
+  }
+  inquiries {
+    bigint_unsigned id PK
+    bigint_unsigned branch_id FK
+    bigint_unsigned customer_id FK
+    enum source
+    enum status
+    bigint_unsigned version
+  }
+  inquiry_events {
+    bigint_unsigned id PK
+    bigint_unsigned inquiry_id FK
+  }
+  branch_memberships {
+    bigint_unsigned id PK
+    string domain "계정·권한·보안"
+  }
+  branches {
+    bigint_unsigned id PK
+    string domain "지점 운영·시설"
+  }
+  customers ||--o{ customer_merges : "absorbed_customer_id"
+  customers ||--o{ customer_merges : "target_customer_id"
+  customers |o--o{ customer_merges : "via_customer_id"
+  customers ||--o{ customer_service_interactions : "customer_id"
+  branch_memberships ||--o{ customer_service_interactions : "branch_id,employee_id"
+  customers ||--o{ customer_status_events : "customer_id"
+  customers |o--o{ customers : "merged_into_customer_id"
+  branches |o--o{ customers : "registered_branch_id"
+  branches ||--o{ inquiries : "branch_id"
+  customers ||--o{ inquiries : "customer_id"
+  inquiries ||--o{ inquiry_events : "inquiry_id"

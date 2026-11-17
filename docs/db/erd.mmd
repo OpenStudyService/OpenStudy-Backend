@@ -1,5 +1,6 @@
-%% OpenStudy consolidated V1 / MySQL 8.4 / generated from validated DB metadata
-%% All business/session columns and physical foreign keys; Flyway history excluded.
+%% OpenStudy full schema / MySQL 8.4 / Flyway V1~V22 / generated from migrated DB metadata
+%% All business/session columns and physical foreign keys; Flyway history and views excluded.
+%% Regenerate with: python scripts/export_schema_snapshot.py
 erDiagram
   SPRING_SESSION {
     char_36 PRIMARY_ID PK
@@ -54,26 +55,15 @@ erDiagram
     text view_spec_json
     varchar_40 refund_basis
     tinyint_1 zero_fill_requested
+    date period_from
+    date period_to
+    varchar_500 product_ids_csv
+    varchar_20 origin
+    varchar_64 source_execution_id
     datetime_6 as_of_utc
     varchar_64 snapshot_version
     varchar_64 policy_version
     datetime_6 created_at
-  }
-  ai_export_approvals {
-    varchar_64 id PK
-    varchar_64 execution_id
-    varchar_80 dataset_id
-    bigint_unsigned requester_employee_id FK
-    bigint_unsigned approver_employee_id FK
-    varchar_64 scope_key
-    varchar_255 branch_ids_csv
-    varchar_500 reason
-    varchar_500 decision_note
-    int_unsigned row_count
-    varchar_32 status
-    datetime_6 requested_at
-    datetime_6 decided_at
-    datetime_6 expires_at
   }
   ai_messages {
     bigint_unsigned id PK
@@ -82,6 +72,24 @@ erDiagram
     text content
     varchar_64 execution_id
     datetime_6 created_at
+  }
+  ai_plan_cache {
+    bigint id PK
+    varchar_20 kind
+    varchar_64 version_key
+    char_64 question_key UK
+    varchar_500 question_text
+    mediumtext vector_json
+    varchar_80 analysis_id
+    varchar_30 intent_domain
+    varchar_40 refund_basis_override
+    tinyint_1 zero_fill_override
+    mediumtext query_spec_json
+    mediumtext view_spec_json
+    int hit_count
+    datetime_6 created_at
+    datetime_6 last_used_at
+    datetime_6 expires_at
   }
   ai_requests {
     bigint_unsigned id PK
@@ -310,6 +318,7 @@ erDiagram
     varchar_500 status_reason
     bigint_unsigned merged_into_customer_id FK
     varchar_1000 memo
+    datetime_6 anonymized_at
     datetime_6 registered_at
     datetime_6 updated_at
     bigint_unsigned version
@@ -317,7 +326,7 @@ erDiagram
   daily_closing_adjustments {
     bigint_unsigned id PK
     bigint_unsigned closing_id FK
-    bigint_unsigned refund_id UK
+    bigint_unsigned refund_id UK,FK
     bigint_unsigned payment_id FK
     bigint_unsigned amount_krw
     bigint_unsigned processed_by FK
@@ -605,6 +614,22 @@ erDiagram
     datetime_6 updated_at
     bigint_unsigned version
   }
+  password_reset_tokens {
+    bigint_unsigned id PK
+    bigint_unsigned employee_id FK
+    bigint_unsigned requested_by FK
+    enum__PENDING___SENDING___SENT___USED___REVOKED___FAILED status
+    binary_32 token_hash UK
+    datetime_6 expires_at
+    int_unsigned attempts
+    datetime_6 next_attempt_at
+    varchar_100 worker_id
+    datetime_6 lease_until
+    varchar_40 failure_reason
+    datetime_6 created_at
+    datetime_6 updated_at
+    datetime_6 used_at
+  }
   payments {
     bigint_unsigned id PK
     bigint_unsigned customer_id FK
@@ -704,6 +729,26 @@ erDiagram
     varchar_500 reason
     varchar_120 idempotency_key UK
     datetime_6 refunded_at
+  }
+  retention_rules {
+    varchar_40 code PK
+    varchar_200 description
+    tinyint_1 enabled
+    int_unsigned period_days
+    int_unsigned legal_minimum_days
+    datetime_6 updated_at
+  }
+  retention_runs {
+    bigint_unsigned id PK
+    varchar_40 rule_code FK
+    int_unsigned period_days
+    datetime_6 cutoff_at
+    datetime_6 started_at
+    datetime_6 finished_at
+    int_unsigned target_count
+    int_unsigned processed_count
+    enum__SUCCESS___FAILED result
+    varchar_120 error_code
   }
   room_reservation_slots {
     bigint_unsigned id PK
@@ -910,8 +955,6 @@ erDiagram
   SPRING_SESSION ||--o{ SPRING_SESSION_ATTRIBUTES : "fk_SPRING_SESSION_ATTRIBUTES_1: SESSION_PRIMARY_ID"
   employees ||--o{ ai_conversations : "fk_ai_conversations_emp: employee_id"
   employees ||--o{ ai_executions : "fk_ai_executions_emp: employee_id"
-  employees |o--o{ ai_export_approvals : "fk_ai_export_approvals_app: approver_employee_id"
-  employees ||--o{ ai_export_approvals : "fk_ai_export_approvals_req: requester_employee_id"
   ai_conversations ||--o{ ai_messages : "fk_ai_messages_conv: conversation_id"
   ai_threads ||--o{ ai_requests : "fk_ai_requests_1: thread_id"
   employees ||--o{ ai_threads : "fk_ai_threads_1: employee_id"
@@ -952,11 +995,11 @@ erDiagram
   employees ||--o{ customer_merges : "fk_customer_merges_by: merged_by"
   customers ||--o{ customer_merges : "fk_customer_merges_target: target_customer_id"
   customers |o--o{ customer_merges : "fk_customer_merges_via: via_customer_id"
-  customers |o--o{ customers : "fk_customers_merged_into: merged_into_customer_id"
   customers ||--o{ customer_service_interactions : "fk_customer_service_interactions_1: customer_id"
   branch_memberships ||--o{ customer_service_interactions : "fk_customer_service_interactions_2: branch_id,employee_id"
   customers ||--o{ customer_status_events : "fk_customer_status_events_1: customer_id"
   employees ||--o{ customer_status_events : "fk_customer_status_events_2: actor_employee_id"
+  customers |o--o{ customers : "fk_customers_merged_into: merged_into_customer_id"
   branches |o--o{ customers : "fk_customers_registered_branch: registered_branch_id"
   daily_closings ||--o{ daily_closing_adjustments : "fk_daily_closing_adjustments_1: closing_id"
   refunds ||--o{ daily_closing_adjustments : "fk_daily_closing_adjustments_2: refund_id"
@@ -1002,7 +1045,7 @@ erDiagram
   employees |o--o{ leave_requests : "fk_leave_requests_2: decided_by"
   branches ||--o{ leave_requests : "fk_leave_requests_branch: branch_id"
   locker_assignments ||--o{ locker_assignment_charges : "fk_locker_assignment_charges_1: assignment_id"
-  payments ||--o| locker_assignment_charges : "fk_locker_assignment_charges_2: payment_id"
+  payments ||--o{ locker_assignment_charges : "fk_locker_assignment_charges_2: payment_id"
   lockers ||--o{ locker_assignments : "fk_locker_assignments_1: locker_id"
   customers ||--o{ locker_assignments : "fk_locker_assignments_2: customer_id"
   employees ||--o{ locker_assignments : "fk_locker_assignments_3: assigned_by"
@@ -1019,9 +1062,11 @@ erDiagram
   employees |o--o{ pass_balance_events : "fk_pass_balance_events_4: actor_employee_id"
   customers ||--o{ passes : "fk_passes_1: customer_id"
   products ||--o{ passes : "fk_passes_2: product_id"
-  payments ||--o| passes : "fk_passes_3: purchase_payment_id,customer_id,purchase_branch_id,product_id"
+  payments ||--o{ passes : "fk_passes_3: purchase_payment_id,customer_id,purchase_branch_id,product_id"
   branches ||--o{ passes : "fk_passes_4: purchase_branch_id"
   product_revisions ||--o{ passes : "fk_passes_purchase_revision_product: purchase_product_revision_id,product_id"
+  employees ||--o{ password_reset_tokens : "fk_password_reset_tokens_1: employee_id"
+  employees |o--o{ password_reset_tokens : "fk_password_reset_tokens_2: requested_by"
   customers ||--o{ payments : "fk_payments_1: customer_id"
   branches ||--o{ payments : "fk_payments_2: branch_id"
   products |o--o{ payments : "fk_payments_3: product_id"
@@ -1039,16 +1084,17 @@ erDiagram
   product_categories ||--o{ products : "fk_products_category_required: category_id"
   employees |o--o{ products : "fk_products_created_by: created_by"
   employees |o--o{ products : "fk_products_updated_by: updated_by"
-  payments ||--o| refunds : "fk_refunds_1: payment_id"
+  payments ||--o{ refunds : "fk_refunds_1: payment_id"
   branches ||--o{ refunds : "fk_refunds_2: processing_branch_id"
   employees ||--o{ refunds : "fk_refunds_3: processed_by"
+  retention_rules ||--o{ retention_runs : "fk_retention_runs_1: rule_code"
   room_reservations ||--o{ room_reservation_slots : "fk_room_reservation_slots_1: reservation_id,room_id"
   rooms ||--o{ room_reservations : "fk_room_reservations_1: room_id,branch_id"
   customers ||--o{ room_reservations : "fk_room_reservations_2: customer_id"
-  payments |o--o| room_reservations : "fk_room_reservations_3: payment_id,customer_id,branch_id"
+  payments |o--o{ room_reservations : "fk_room_reservations_3: payment_id,customer_id,branch_id"
   employees ||--o{ room_reservations : "fk_room_reservations_4: created_by"
   employees |o--o{ room_reservations : "fk_room_reservations_5: cancelled_by"
-  room_reservations ||--o| room_usages : "fk_room_usages_1: reservation_id"
+  room_reservations ||--o{ room_usages : "fk_room_usages_1: reservation_id"
   employees |o--o{ room_usages : "fk_room_usages_2: started_by"
   employees |o--o{ room_usages : "fk_room_usages_3: ended_by"
   rooms ||--o{ room_weekly_hours : "fk_room_weekly_hours_1: room_id"

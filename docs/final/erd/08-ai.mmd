@@ -1,0 +1,37 @@
+erDiagram
+  ai_threads {
+    bigint_unsigned id PK
+  }
+  ai_requests {
+    bigint_unsigned id PK
+    bigint_unsigned thread_id FK
+    enum status
+  }
+  ai_conversations {
+    varchar_64 id PK
+  }
+  ai_messages {
+    bigint_unsigned id PK
+    varchar_64 conversation_id FK
+  }
+  ai_executions {
+    varchar_64 id PK
+    varchar_64 request_ref UK
+    varchar_40 status
+  }
+  ai_work_records {
+    varchar_64 id PK
+  }
+  ai_traces {
+    varchar_64 id PK
+    varchar_40 status
+  }
+  ai_embedding_cache {
+    bigint_unsigned id PK
+  }
+  ai_plan_cache {
+    bigint id PK
+    char_64 question_key UK
+  }
+  ai_conversations ||--o{ ai_messages : "conversation_id"
+  ai_threads ||--o{ ai_requests : "thread_id"
