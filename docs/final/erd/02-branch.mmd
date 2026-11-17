@@ -1,0 +1,50 @@
+erDiagram
+  branches {
+    bigint_unsigned id PK
+    varchar_32 code UK
+    enum status
+    bigint_unsigned version
+  }
+  branch_weekly_hours {
+    bigint_unsigned id PK
+    bigint_unsigned branch_id FK
+  }
+  branch_closures {
+    bigint_unsigned id PK
+    bigint_unsigned branch_id FK
+    bigint_unsigned version
+  }
+  announcements {
+    bigint_unsigned id PK
+    enum target
+    enum status
+    bigint_unsigned version
+  }
+  announcement_branches {
+    bigint_unsigned announcement_id PK,FK
+    bigint_unsigned branch_id PK,FK
+  }
+  facility_types {
+    bigint_unsigned id PK
+    varchar_80 name UK
+  }
+  facilities {
+    bigint_unsigned id PK
+    bigint_unsigned branch_id FK
+    bigint_unsigned type_id FK
+    enum status
+    bigint_unsigned version
+  }
+  facility_works {
+    bigint_unsigned id PK
+    bigint_unsigned facility_id FK
+    enum kind
+    enum status
+  }
+  announcements ||--o{ announcement_branches : "announcement_id"
+  branches ||--o{ announcement_branches : "branch_id"
+  branches ||--o{ branch_closures : "branch_id"
+  branches ||--o{ branch_weekly_hours : "branch_id"
+  branches ||--o{ facilities : "branch_id"
+  facility_types ||--o{ facilities : "type_id"
+  facilities ||--o{ facility_works : "facility_id"

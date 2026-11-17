@@ -7,9 +7,10 @@
 실행 스키마의 정본은 Backend의 [`src/main/resources/db/migration/`](../../src/main/resources/db/migration/)이다. MySQL 8.4/InnoDB, `utf8mb4_0900_ai_ci`, UTC 저장을 사용한다. 통합 V1은 기존 V1~V3과 검토된 M3/M4 물리 제약을 빈 DB에 한 번에 생성한다. 업무 기능 전체의 구현 완료를 뜻하지 않는다.
 
 - [개발 DB 전환 방침과 순서](foundation-upgrade.md)
-- [전체 구축 SQL](schema-full.sql): 통합 V1과 이후 마이그레이션(현재 V21)을 적용한 일회용 MySQL에서 추출하고 복원 검증한 대체 설치 경로. 실제 Flyway 이력과 기준 권한 시드가 포함된다. 빈 DB에만 적용한다.
+- [전체 구축 SQL](schema-full.sql): 통합 V1과 이후 마이그레이션(현재 V22)을 적용한 일회용 MySQL에서 추출하고 복원 검증한 대체 설치 경로. 실제 Flyway 이력과 기준 권한·보존 규칙 시드가 포함된다. 빈 DB에만 적용한다. `python scripts/export_schema_snapshot.py`로 ERD와 함께 다시 만든다(Docker 필요).
 - [ERD](erd.mmd): 적용된 DB의 전체 컬럼과 외래 키에서 생성한다. `flyway_schema_history`는 도표에서 제외한다.
 - [M9 집계 실행 계획과 인덱스](sales-aggregation-query-plans.md): 대표 데이터량에서의 매출·이용권·추세·원장 실행 계획, V10 인덱스의 전후 비교, 남은 전체 탐색의 이유(#89).
+- [발표·포트폴리오용 DB 정리](../final/README.md): 요약 ERD, 스키마 변천, 핵심 설계 결정, 인덱스 튜닝, 정합성 장치, 기술 선택, 재현 방법.
 - [당시 검토 초안](proposals/consolidated-v1/README.md): 채택 전의 검토 맥락이며 실행 정본이 아니다.
 
 ## 새 개발 DB 준비

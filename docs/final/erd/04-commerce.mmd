@@ -1,0 +1,111 @@
+erDiagram
+  product_categories {
+    bigint_unsigned id PK
+    varchar_40 code UK
+    enum kind
+    enum status
+    bigint_unsigned version
+  }
+  products {
+    bigint_unsigned id PK
+    varchar_40 code UK
+    enum kind
+    enum sale_status
+    bigint_unsigned version
+    bigint_unsigned category_id FK
+  }
+  product_branches {
+    bigint_unsigned product_id PK,FK
+    bigint_unsigned branch_id PK,FK
+  }
+  product_revisions {
+    bigint_unsigned id PK
+    bigint_unsigned product_id FK
+    enum event_type
+  }
+  payments {
+    bigint_unsigned id PK
+    bigint_unsigned customer_id FK
+    bigint_unsigned branch_id FK
+    bigint_unsigned product_id FK
+    enum purpose
+    enum method
+    bigint_unsigned amount_krw
+    enum status
+    varchar_120 idempotency_key UK
+    bigint_unsigned version
+  }
+  refunds {
+    bigint_unsigned id PK
+    bigint_unsigned payment_id UK,FK
+    bigint_unsigned processing_branch_id FK
+    bigint_unsigned amount_krw
+    varchar_120 idempotency_key UK
+  }
+  passes {
+    bigint_unsigned id PK
+    bigint_unsigned customer_id FK
+    bigint_unsigned product_id FK
+    bigint_unsigned purchase_payment_id UK,FK
+    bigint_unsigned purchase_branch_id FK
+    bigint_unsigned purchase_product_revision_id FK
+    enum kind
+    enum status
+    bigint_unsigned version
+  }
+  pass_balance_events {
+    bigint_unsigned id PK
+    bigint_unsigned pass_id FK
+    bigint_unsigned seat_session_id FK
+    bigint_unsigned correction_id FK
+    enum kind
+    varchar_120 event_key UK
+  }
+  daily_closings {
+    bigint_unsigned id PK
+    bigint_unsigned branch_id FK
+  }
+  daily_closing_adjustments {
+    bigint_unsigned id PK
+    bigint_unsigned closing_id FK
+    bigint_unsigned refund_id UK,FK
+    bigint_unsigned payment_id FK
+    bigint_unsigned amount_krw
+  }
+  branches {
+    bigint_unsigned id PK
+    string domain "지점 운영·시설"
+  }
+  customers {
+    bigint_unsigned id PK
+    string domain "고객·문의"
+  }
+  seat_session_corrections {
+    bigint_unsigned id PK
+    string domain "공간: 좌석·스터디룸·사물함"
+  }
+  seat_sessions {
+    bigint_unsigned id PK
+    string domain "공간: 좌석·스터디룸·사물함"
+  }
+  daily_closings ||--o{ daily_closing_adjustments : "closing_id"
+  refunds ||--o{ daily_closing_adjustments : "refund_id"
+  payments ||--o{ daily_closing_adjustments : "payment_id"
+  branches ||--o{ daily_closings : "branch_id"
+  passes ||--o{ pass_balance_events : "pass_id"
+  seat_sessions |o--o{ pass_balance_events : "seat_session_id"
+  seat_session_corrections |o--o{ pass_balance_events : "correction_id"
+  customers ||--o{ passes : "customer_id"
+  products ||--o{ passes : "product_id"
+  payments ||--o{ passes : "purchase_payment_id,customer_id,purchase_branch_id,product_id"
+  branches ||--o{ passes : "purchase_branch_id"
+  product_revisions ||--o{ passes : "purchase_product_revision_id,product_id"
+  customers ||--o{ payments : "customer_id"
+  branches ||--o{ payments : "branch_id"
+  products |o--o{ payments : "product_id"
+  branches ||--o{ product_branches : "branch_id"
+  products ||--o{ product_branches : "product_id"
+  products |o--o{ product_revisions : "product_id"
+  product_categories ||--o{ products : "category_id"
+  payments ||--o{ refunds : "payment_id"
+  branches ||--o{ refunds : "processing_branch_id"

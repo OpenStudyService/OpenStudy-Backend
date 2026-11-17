@@ -1,0 +1,22 @@
+flowchart LR
+  access["계정·권한·보안<br/>18개 테이블"]
+  branch["지점 운영·시설<br/>8개 테이블"]
+  customer["고객·문의<br/>6개 테이블"]
+  commerce["상품·결제·이용권·정산<br/>10개 테이블"]
+  space["공간: 좌석·스터디룸·사물함<br/>12개 테이블"]
+  workforce["인력: 근무·근태·휴가<br/>10개 테이블"]
+  collab["협업: 채팅·업무<br/>7개 테이블"]
+  ai["AI 분석(DomainLens)<br/>9개 테이블"]
+  access -->|FK 1| collab
+  access -->|FK 1| customer
+  access -->|FK 2| workforce
+  branch -->|FK 4| access
+  branch -->|FK 2| collab
+  branch -->|FK 5| commerce
+  branch -->|FK 2| customer
+  branch -->|FK 4| space
+  branch -->|FK 2| workforce
+  commerce -->|FK 3| space
+  customer -->|FK 2| commerce
+  customer -->|FK 3| space
+  space -->|FK 2| commerce
