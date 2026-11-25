@@ -2,25 +2,45 @@ package com.openstudy.modules.auth.service;
 
 import java.time.Clock;
 import java.util.Set;
+
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
+import lombok.RequiredArgsConstructor;
+import org.springframework.session.Session;
 
 /** Authentication time and effective user activity survive JDBC session reloads. */
+@RequiredArgsConstructor
 public final class SessionBoundaryPolicy {
+
     public static final String AUTHENTICATED_AT = "authenticatedAt";
     public static final String LAST_ACTIVITY_AT = "lastEffectiveActivityAt";
     public static final String SESSION_MODE = "sessionMode";
+
     public static final String WORKSPACE = "WORKSPACE";
     public static final String APPROVAL_ONLY = "APPROVAL_ONLY";
+
     public static final long IDLE_SECONDS = 60 * 60;
     public static final long MAX_SECONDS = 12 * 60 * 60;
+
+    /** Status and token refresh never count as user activity. */
+    private static final Set<String> PASSIVE_PATHS = Set.of(
+            "/api/me",
+            "/api/lookups",
+            "/api/invitations/approval-status",
+            "/api/auth/csrf"
+    );
+
+    private static final Set<String> PASSIVE_METHODS = Set.of("HEAD", "OPTIONS");
+
     private final Clock clock;
 
-    public SessionBoundaryPolicy(Clock clock) { this.clock = clock; }
-
     public void start(HttpSession session, String mode) {
-        if (!WORKSPACE.equals(mode) && !APPROVAL_ONLY.equals(mode)) throw new IllegalArgumentException("Invalid session mode");
-        long now = clock.instant().getEpochSecond();
+        if (!isValidMode(mode)) {
+            throw new IllegalArgumentException("Invalid session mode");
+        }
+
+        long now = nowEpochSecond();
+
         session.setAttribute(AUTHENTICATED_AT, now);
         session.setAttribute(LAST_ACTIVITY_AT, now);
         session.setAttribute(SESSION_MODE, mode);
@@ -28,36 +48,65 @@ public final class SessionBoundaryPolicy {
     }
 
     public String mode(HttpSession session) {
-        Object value = session.getAttribute(SESSION_MODE);
-        return WORKSPACE.equals(value) || APPROVAL_ONLY.equals(value) ? (String) value : null;
+        return toValidMode(session.getAttribute(SESSION_MODE));
     }
 
     public boolean expired(HttpSession session) {
-        return expired(session.getAttribute(AUTHENTICATED_AT), session.getAttribute(LAST_ACTIVITY_AT), mode(session));
+        return isExpired(
+                session.getAttribute(AUTHENTICATED_AT),
+                session.getAttribute(LAST_ACTIVITY_AT),
+                mode(session)
+        );
     }
 
-    public boolean expired(org.springframework.session.Session session) {
-        Object mode = session.getAttribute(SESSION_MODE);
-        return expired(session.getAttribute(AUTHENTICATED_AT), session.getAttribute(LAST_ACTIVITY_AT),
-                WORKSPACE.equals(mode) || APPROVAL_ONLY.equals(mode) ? (String) mode : null);
-    }
-
-    private boolean expired(Object authenticatedAt, Object lastActivityAt, String mode) {
-        if (!(authenticatedAt instanceof Long started) || !(lastActivityAt instanceof Long active)
-                || mode == null) return true;
-        long now = clock.instant().getEpochSecond();
-        return now < started || now < active || now - started >= MAX_SECONDS || now - active >= IDLE_SECONDS;
+    public boolean expired(Session session) {
+        return isExpired(
+                session.getAttribute(AUTHENTICATED_AT),
+                session.getAttribute(LAST_ACTIVITY_AT),
+                toValidMode(session.getAttribute(SESSION_MODE))
+        );
     }
 
     public void recordActivity(HttpSession session) {
-        session.setAttribute(LAST_ACTIVITY_AT, clock.instant().getEpochSecond());
+        session.setAttribute(LAST_ACTIVITY_AT, nowEpochSecond());
     }
 
     public boolean effectiveActivity(HttpServletRequest request) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
-        // Status and token refresh never count as user activity.
-        if (path.equals("/api/me") || path.equals("/api/lookups")
-                || path.equals("/api/invitations/approval-status") || path.equals("/api/auth/csrf")) return false;
-        return !Set.of("HEAD", "OPTIONS").contains(request.getMethod());
+
+        if (PASSIVE_PATHS.contains(path)) {
+            return false;
+        }
+
+        return !PASSIVE_METHODS.contains(request.getMethod());
+    }
+
+    private boolean isExpired(Object authenticatedAt, Object lastActivityAt, String mode) {
+        if (!(authenticatedAt instanceof Long startedAt)
+                || !(lastActivityAt instanceof Long activeAt)
+                || mode == null
+        ) {
+            return true;
+        }
+
+        long now = nowEpochSecond();
+
+        boolean clockWentBack = now < startedAt || now < activeAt;
+        boolean pastMaxLifetime = now - startedAt >= MAX_SECONDS;
+        boolean pastIdleLimit = now - activeAt >= IDLE_SECONDS;
+
+        return clockWentBack || pastMaxLifetime || pastIdleLimit;
+    }
+
+    private static boolean isValidMode(Object mode) {
+        return WORKSPACE.equals(mode) || APPROVAL_ONLY.equals(mode);
+    }
+
+    private static String toValidMode(Object mode) {
+        return isValidMode(mode) ? (String) mode : null;
+    }
+
+    private long nowEpochSecond() {
+        return clock.instant().getEpochSecond();
     }
 }

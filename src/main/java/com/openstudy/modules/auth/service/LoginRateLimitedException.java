@@ -5,6 +5,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 /** Mapped to the common 429 body; scope is for audit only and never reaches the client. */
 public class LoginRateLimitedException extends ResponseStatusException {
+
     private final LoginAttemptLimiter.Scope scope;
     private final boolean firstRejection;
 
@@ -14,8 +15,12 @@ public class LoginRateLimitedException extends ResponseStatusException {
         this.firstRejection = firstRejection;
     }
 
-    public LoginAttemptLimiter.Scope scope() { return scope; }
+    public LoginAttemptLimiter.Scope scope() {
+        return scope;
+    }
 
     /** True only for the first rejection of a key within its window, so a flood writes one audit row. */
-    public boolean firstRejection() { return firstRejection; }
+    public boolean firstRejection() {
+        return firstRejection;
+    }
 }
