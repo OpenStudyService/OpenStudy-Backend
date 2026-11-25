@@ -35,7 +35,7 @@
   - 첫 실행에서는 `ProfileIntegrationTests` 10건이 테스트용 MySQL 컨테이너를 띄울 Docker 환경을 찾지 못해 실패했다. Docker가 응답하는 것을 확인하고 다시 실행해 모두 통과했다.
   - account 통합 테스트(`AccountSecurityIntegrationTests`)와 계약 테스트(`AccountContractTests`)가 포함된다.
 - account 모듈은 다른 모듈에서 참조하지 않는 것을 검색으로 확인했다.
-- 전체 테스트 `./gradlew test`: 1,270개 중 실패 0, 건너뜀 28 (BUILD SUCCESSFUL, 약 18분). 건너뛴 28개는 domainlens·ai 패키지의 조건부 테스트(로컬 모델·실제 AI 호출이 필요한 경우)로, 이번 변경과 무관하다.
+- 전체 테스트 `./gradlew test`: 1,270개 중 실패 0, 건너뜀 28 (BUILD SUCCESSFUL, 약 18분). 건너뛴 28개는 ai·sales 패키지의 AI 관련 조건부 테스트(실제 AI 호출·측정용)로, 이번 변경과 무관하다.
 - 실제 SMTP 발송과 S3 저장소 연동은 검증하지 않았다.
 
 ## 6. 남은 작업 / 보류 사항
