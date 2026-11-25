@@ -1,6 +1,7 @@
 package com.openstudy.modules.employee.service;
 
 import jakarta.persistence.EntityManager;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
@@ -12,41 +13,94 @@ import com.openstudy.modules.employee.repository.EmployeeRepository;
 
 /** Shared write helpers of the employee services: version advance, audit records and display codes. */
 @Component
+@RequiredArgsConstructor
 class EmployeeChanges {
-    private final EmployeeRepository employees;
-    private final EntityManager entityManager;
-    private final ObjectMapper json;
-    private final AuditTrail audit;
 
-    EmployeeChanges(EmployeeRepository employees, EntityManager entityManager, ObjectMapper json, AuditTrail audit) {
-        this.employees = employees; this.entityManager = entityManager; this.json = json; this.audit = audit;
-    }
+    private static final String AUDIT_ENTITY_TYPE = "employee";
+
+    private final EmployeeRepository employeeRepository;
+    private final EntityManager entityManager;
+    private final ObjectMapper objectMapper;
+    private final AuditTrail auditTrail;
 
     /**
      * Every account command advances the version by exactly one, even when no column differs (the former SQL always
      * ran version=version+1). Hibernate only bumps a dirty row, so an unchanged one gets one explicit increment.
      * The refresh re-reads the DB-maintained updated_at.
      */
-    void saved(Employee employee, long versionBefore) {
-        employees.flush();
-        if (employee.getVersion() == versionBefore) employees.incrementVersion(employee.getId());
+    void saveVersion(Employee employee, long versionBefore) {
+        employeeRepository.flush();
+
+        if (employee.getVersion() == versionBefore) {
+            employeeRepository.incrementVersion(employee.getId());
+        }
+
         entityManager.refresh(employee);
     }
 
-    void changed(long actor, Long branch, long target, String action, Object before, Object after, String requestId) {
-        audit.record(AuditEvent.change(actor, branch, "employee", target, action,
-                json.writeValueAsString(before), json.writeValueAsString(after), requestId));
+    void recordChange(
+            long actor,
+            Long branch,
+            long target,
+            String action,
+            Object before,
+            Object after,
+            String requestId
+    ) {
+        AuditEvent event = AuditEvent.change(
+                actor,
+                branch,
+                AUDIT_ENTITY_TYPE,
+                target,
+                action,
+                objectMapper.writeValueAsString(before),
+                objectMapper.writeValueAsString(after),
+                requestId
+        );
+
+        auditTrail.record(event);
     }
 
-    void profileChanged(long actor, Object before, Object after, String requestId) {
-        changed(actor, null, actor, "UPDATE_PROFILE", before, after, requestId);
+    void recordProfileChange(long actor, Object before, Object after, String requestId) {
+        recordChange(actor, null, actor, "UPDATE_PROFILE", before, after, requestId);
     }
 
-    static EmployeeAccount account(Employee e) {
-        return new EmployeeAccount(e.getId(), e.getEmail(), e.getPasswordHash(), e.getName(), e.getNickname(), e.getAvatarUrl(),
-                e.getGlobalRole().name(), e.getStatus().name(), e.getVersion(), e.getCreatedAt(), e.getUpdatedAt());
+    static EmployeeAccount toAccount(Employee employee) {
+        return new EmployeeAccount(
+                employee.getId(),
+                employee.getEmail(),
+                employee.getPasswordHash(),
+                employee.getName(),
+                employee.getNickname(),
+                employee.getAvatarUrl(),
+                employee.getGlobalRole().name(),
+                employee.getStatus().name(),
+                employee.getVersion(),
+                employee.getCreatedAt(),
+                employee.getUpdatedAt()
+        );
     }
 
-    static String status(String db) { return switch(db) { case "ACTIVE" -> "활성"; case "PENDING" -> "승인 대기"; case "SUSPENDED" -> "이용 제한"; case "LEFT" -> "비활성"; default -> throw new IllegalStateException(); }; }
-    static String membershipStatus(String db) { return switch(db) { case "ACTIVE" -> "활성"; case "PENDING" -> "승인 대기"; case "REVOKED" -> "회수"; default -> throw new IllegalStateException(); }; }
+    static String toRoleLabel(String role) {
+        return "MANAGER".equals(role) ? "admin" : "staff";
+    }
+
+    static String toStatusLabel(String status) {
+        return switch (status) {
+            case "ACTIVE" -> "활성";
+            case "PENDING" -> "승인 대기";
+            case "SUSPENDED" -> "이용 제한";
+            case "LEFT" -> "비활성";
+            default -> throw new IllegalStateException();
+        };
+    }
+
+    static String toMembershipStatusLabel(String status) {
+        return switch (status) {
+            case "ACTIVE" -> "활성";
+            case "PENDING" -> "승인 대기";
+            case "REVOKED" -> "회수";
+            default -> throw new IllegalStateException();
+        };
+    }
 }

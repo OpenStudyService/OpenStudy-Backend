@@ -82,33 +82,33 @@ class EmployeeManagementIntegrationTests {
     }
     @Test void membershipPutChecksBothVersionsPreservesOtherBranchAndWritesCredentialFreeAudit() {
         var body=membershipBody(staff,first,"staff","활성",List.of("members:write"));
-        var result=employees.membership(owner,staff,first,"all",body,"audit-request");
+        var result=employees.updateMembership(owner,staff,first,"all",body,"audit-request");
         assertThat(result.employeeVersion()).isEqualTo(2); assertThat(result.membership().version()).isEqualTo(2);
         var untouched=employees.get(owner,staff,"all").memberships().stream().filter(m->m.branchId().equals(Long.toString(second))).findFirst().orElseThrow();
         assertThat(untouched.version()).isEqualTo(1); assertThat(untouched.permissions()).isEmpty();
-        assertThatThrownBy(()->employees.membership(owner,staff,first,"all",body,"stale")).isInstanceOf(ApiException.class).satisfies(e->assertThat(((ApiException)e).error("x").code()).isEqualTo("VERSION_CONFLICT"));
+        assertThatThrownBy(()->employees.updateMembership(owner,staff,first,"all",body,"stale")).isInstanceOf(ApiException.class).satisfies(e->assertThat(((ApiException)e).error("x").code()).isEqualTo("VERSION_CONFLICT"));
         var staleMembership=membershipBody(staff,first,"staff","활성",List.of()); staleMembership.put("version",1L);
-        assertThatThrownBy(()->employees.membership(owner,staff,first,"all",staleMembership,"stale-member")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->employees.updateMembership(owner,staff,first,"all",staleMembership,"stale-member")).isInstanceOf(ApiException.class);
         String audit=jdbc.queryForObject("SELECT CONCAT(before_json,after_json) FROM audit_events WHERE request_id='audit-request'",String.class);
         assertThat(audit).contains("members:write","employeeVersion").doesNotContain(hash,"password","token");
         assertThat(jdbc.queryForObject("SELECT actor_employee_id FROM audit_events WHERE request_id='audit-request'",Long.class)).isEqualTo(owner);
     }
     @Test void managerMayEditOnlyOtherStaffAndStaffCannotReceiveAdminOnlyGrants() {
-        assertThatThrownBy(()->employees.membership(manager,manager,first,"all",membershipBody(manager,first,"admin","활성",List.of()),"self")).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(()->employees.updateMembership(manager,manager,first,"all",membershipBody(manager,first,"admin","활성",List.of()),"self")).isInstanceOf(AccessDeniedException.class);
         long another=person("EMPLOYEE","ACTIVE"); membership(another,first,"MANAGER","ACTIVE");
-        assertThatThrownBy(()->employees.membership(manager,another,first,"all",membershipBody(another,first,"staff","활성",List.of()),"demote")).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(()->employees.membership(manager,staff,first,"all",membershipBody(staff,first,"admin","활성",List.of()),"promote")).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(()->employees.membership(owner,staff,first,"all",membershipBody(staff,first,"staff","활성",List.of("people:manage")),"invalid-grant")).isInstanceOf(ApiException.class);
-        assertThatThrownBy(()->employees.membership(owner,staff,first,"all",membershipBody(staff,first,"staff","활성",List.of("unknown:write")),"unknown-grant")).isInstanceOf(ApiException.class);
-        assertThat(employees.membership(manager,staff,first,"all",membershipBody(staff,first,"staff","활성",List.of("operations:write")),"staff-edit").membership().permissions()).containsExactly("operations:write");
-        assertThat(employees.membership(manager,staff,first,"all",membershipBody(staff,first,"staff","활성",List.of("operations:write","customers:cross-branch-read")),"cross-branch-grant").membership().permissions()).containsExactlyInAnyOrder("operations:write","customers:cross-branch-read");
-        assertThat(employees.membership(owner,staff,first,"all",membershipBody(staff,first,"admin","활성",List.of("people:manage")),"owner-promote").membership().role()).isEqualTo("admin");
+        assertThatThrownBy(()->employees.updateMembership(manager,another,first,"all",membershipBody(another,first,"staff","활성",List.of()),"demote")).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(()->employees.updateMembership(manager,staff,first,"all",membershipBody(staff,first,"admin","활성",List.of()),"promote")).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(()->employees.updateMembership(owner,staff,first,"all",membershipBody(staff,first,"staff","활성",List.of("people:manage")),"invalid-grant")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->employees.updateMembership(owner,staff,first,"all",membershipBody(staff,first,"staff","활성",List.of("unknown:write")),"unknown-grant")).isInstanceOf(ApiException.class);
+        assertThat(employees.updateMembership(manager,staff,first,"all",membershipBody(staff,first,"staff","활성",List.of("operations:write")),"staff-edit").membership().permissions()).containsExactly("operations:write");
+        assertThat(employees.updateMembership(manager,staff,first,"all",membershipBody(staff,first,"staff","활성",List.of("operations:write","customers:cross-branch-read")),"cross-branch-grant").membership().permissions()).containsExactlyInAnyOrder("operations:write","customers:cross-branch-read");
+        assertThat(employees.updateMembership(owner,staff,first,"all",membershipBody(staff,first,"admin","활성",List.of("people:manage")),"owner-promote").membership().role()).isEqualTo("admin");
     }
     @Test void pendingOrRevokedMembershipCannotBypassInvitation() {
         jdbc.update("UPDATE branch_memberships SET status='PENDING' WHERE employee_id=? AND branch_id=?",staff,first);
-        assertThatThrownBy(()->employees.membership(owner,staff,first,"all",membershipBody(staff,first,"staff","활성",List.of()),"pending")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->employees.updateMembership(owner,staff,first,"all",membershipBody(staff,first,"staff","활성",List.of()),"pending")).isInstanceOf(ApiException.class);
         jdbc.update("UPDATE branch_memberships SET status='REVOKED' WHERE employee_id=? AND branch_id=?",staff,first);
-        assertThatThrownBy(()->employees.membership(owner,staff,first,"all",membershipBody(staff,first,"staff","활성",List.of()),"revoked")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->employees.updateMembership(owner,staff,first,"all",membershipBody(staff,first,"staff","활성",List.of()),"revoked")).isInstanceOf(ApiException.class);
         long pending=person("EMPLOYEE","PENDING");
         assertThatThrownBy(()->employees.update(owner,pending,Map.of("version",1,"status","활성"),"pending-account")).isInstanceOf(ApiException.class);
     }
@@ -119,7 +119,7 @@ class EmployeeManagementIntegrationTests {
         var preset=presets.create(owner,Map.of("name","검증-"+UUID.randomUUID(),"role","staff","permissions",List.of("members:write")),UUID.randomUUID().toString(),"create-preset");
         long id=Long.parseLong(preset.id()); createdPresets.add(id);
         var body=membershipBody(staff,first,"staff","활성",List.of("members:write","operations:write")); body.put("presetId",preset.id());
-        employees.membership(owner,staff,first,"all",body,"copy-preset");
+        employees.updateMembership(owner,staff,first,"all",body,"copy-preset");
         presets.update(owner,id,Map.of("version",1,"name",preset.name(),"permissions",List.of()),"update-preset");
         assertThat(employees.get(owner,staff,"all").memberships().getFirst().permissions()).containsExactly("members:write","operations:write");
         var defaultPreset=system.getFirst();
@@ -138,7 +138,7 @@ class EmployeeManagementIntegrationTests {
     @Test void concurrentSavesWithSameVersionsHaveOneWinnerAndOneConflict() throws Exception {
         var body=membershipBody(staff,first,"staff","활성",List.of("members:write")); var start=new CountDownLatch(1);
         try(var pool=Executors.newFixedThreadPool(2)) {
-            Callable<String> save=()-> { start.await(10,TimeUnit.SECONDS); try { employees.membership(owner,staff,first,"all",body,"concurrent"); return "saved"; } catch(ApiException e) { return e.error("x").code(); } };
+            Callable<String> save=()-> { start.await(10,TimeUnit.SECONDS); try { employees.updateMembership(owner,staff,first,"all",body,"concurrent"); return "saved"; } catch(ApiException e) { return e.error("x").code(); } };
             var one=pool.submit(save); var two=pool.submit(save); start.countDown();
             assertThat(List.of(one.get(15,TimeUnit.SECONDS),two.get(15,TimeUnit.SECONDS))).containsExactlyInAnyOrder("saved","VERSION_CONFLICT");
         }
@@ -151,7 +151,7 @@ class EmployeeManagementIntegrationTests {
         var start=new CountDownLatch(1);
         try(var pool=Executors.newFixedThreadPool(2)) {
             var one=pool.submit(()-> { if(!start.await(10,TimeUnit.SECONDS)) throw new IllegalStateException("timeout"); return presets.update(owner,id,Map.of("version",1,"name",preset.name(),"permissions",List.of()),"race-preset-edit"); });
-            var two=pool.submit(()-> { if(!start.await(10,TimeUnit.SECONDS)) throw new IllegalStateException("timeout"); return employees.membership(owner,staff,first,"all",body,"race-preset-copy"); });
+            var two=pool.submit(()-> { if(!start.await(10,TimeUnit.SECONDS)) throw new IllegalStateException("timeout"); return employees.updateMembership(owner,staff,first,"all",body,"race-preset-copy"); });
             start.countDown(); assertThat(one.get(15,TimeUnit.SECONDS).permissions()).isEmpty();
             assertThat(two.get(15,TimeUnit.SECONDS).membership().permissions()).containsExactly("operations:write");
         }
