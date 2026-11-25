@@ -28,7 +28,10 @@
 ## 5. 검증 결과
 
 - `./gradlew compileJava compileTestJava`: 통과.
-- 전체 테스트와 slow 테스트 결과는 아래에 덧붙인다.
+- bootstrap 변경이라 AGENTS.md에 따라 slow 테스트를 함께 실행했다.
+  - `./gradlew slowTest`: 36개 중 실패 0, 건너뜀 0 (`OwnerBootstrapTests` 포함, 약 8분).
+- `./gradlew test`: 1,270개 중 실패 0, 건너뜀 28 (BUILD SUCCESSFUL, 약 18분). 건너뛴 28개는 ai·sales 패키지의 AI 관련 조건부 테스트다.
+- 실제 운영 DB에 대한 OWNER 초기화 실행은 검증하지 않았다(테스트는 Testcontainers MySQL에서 수행).
 
 ## 6. 남은 작업 / 보류 사항
 
