@@ -72,7 +72,7 @@ public class CurrentUserService {
                 ? "승인 대기"
                 : "활성";
 
-        var user = CurrentUser.User.builder()
+        CurrentUser.User user = CurrentUser.User.builder()
                 .id(Long.toString(account.id()))
                 .branchId(memberships.isEmpty() ? "all" : memberships.getFirst().branchId())
                 .version(ApiVersion.fromDatabase(account.version()))
