@@ -4,14 +4,21 @@ import java.util.Map;
 
 /** Explicit, client-safe errors. Never construct messages from SQL or upstream exception text. */
 public class ApiException extends RuntimeException {
+
     private final int status;
     private final String code;
     private final Map<String, String> fieldErrors;
     private final Long latestVersion;
     private final String reloadUrl;
 
-    private ApiException(int status, String code, String message, Map<String, String> fields,
-            Long latestVersion, String reloadUrl) {
+    private ApiException(
+            int status,
+            String code,
+            String message,
+            Map<String, String> fields,
+            Long latestVersion,
+            String reloadUrl
+    ) {
         super(message);
         this.status = status;
         this.code = code;
@@ -39,7 +46,6 @@ public class ApiException extends RuntimeException {
         return new ApiException(422, code, message, null, null, null);
     }
 
-    /** A 404 that does not say whether the item exists for someone else, e.g. another employee's AI conversation. */
     /** A refusal with its own code, e.g. SELF_RESET_FORBIDDEN; a bare refusal stays the common 403 FORBIDDEN. */
     public static ApiException forbidden(String code, String message) {
         return new ApiException(403, code, message, null, null, null);
@@ -50,6 +56,10 @@ public class ApiException extends RuntimeException {
         return new ApiException(404, code, message, null, null, null);
     }
 
+    /**
+     * A 404 that does not say whether the item exists for someone else,
+     * e.g. another employee's AI conversation.
+     */
     public static ApiException notFound(String message) {
         return new ApiException(404, "NOT_FOUND", message, null, null, null);
     }
@@ -59,15 +69,30 @@ public class ApiException extends RuntimeException {
     }
 
     public static ApiException versionConflict(long latestVersion, String reloadUrl) {
-        if (latestVersion < 1 || latestVersion > 9_007_199_254_740_991L
-                || reloadUrl == null || !reloadUrl.startsWith("/api/") || reloadUrl.contains("\r") || reloadUrl.contains("\n")) {
+        boolean validVersion = latestVersion >= 1 && latestVersion <= 9_007_199_254_740_991L;
+        boolean validReloadUrl = reloadUrl != null
+                && reloadUrl.startsWith("/api/")
+                && !reloadUrl.contains("\r")
+                && !reloadUrl.contains("\n");
+
+        if (!validVersion || !validReloadUrl) {
             throw new IllegalArgumentException("Invalid conflict metadata");
         }
-        return new ApiException(409, "VERSION_CONFLICT", "최신 정보를 확인한 뒤 다시 저장해 주세요.",
-                null, latestVersion, reloadUrl);
+
+        return new ApiException(
+                409,
+                "VERSION_CONFLICT",
+                "최신 정보를 확인한 뒤 다시 저장해 주세요.",
+                null,
+                latestVersion,
+                reloadUrl
+        );
     }
 
-    public int status() { return status; }
+    public int status() {
+        return status;
+    }
+
     public ApiError error(String requestId) {
         return new ApiError(code, getMessage(), requestId, fieldErrors, latestVersion, reloadUrl);
     }
