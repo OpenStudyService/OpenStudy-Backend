@@ -56,19 +56,19 @@ class PasswordResetDeliveryUnitTests {
     }
 
     void pending(int attempts, String accountStatus) {
-        when(repository.candidates(any(), anyInt())).thenReturn(List.of(7L));
+        when(repository.findCandidateIds(any(), anyInt())).thenReturn(List.of(7L));
         when(repository.lock(7)).thenReturn(Optional.of(row("PENDING", attempts, null, null, null)));
-        when(repository.account(5)).thenReturn(Optional.of(new Account(5, "user@example.com", "직원", accountStatus, false, "h")));
+        when(repository.findAccount(5)).thenReturn(Optional.of(new Account(5, "user@example.com", "직원", accountStatus, false, "h")));
     }
 
     @Test void aClaimMakesATokenAndStoresOnlyItsHashForOneHour() {
         pending(0, "ACTIVE");
         var attempt = delivery.claimNext("worker-1").orElseThrow();
-        assertThat(Passwords.wellFormedToken(attempt.token())).isTrue();
+        assertThat(Passwords.isWellFormedToken(attempt.token())).isTrue();
         assertThat(attempt.toString()).doesNotContain(attempt.token(), "user@example.com");
         var hash = ArgumentCaptor.forClass(byte[].class);
         verify(repository).claim(eq(7L), hash.capture(), eq(NOW.plus(Duration.ofHours(1))), eq("worker-1"), eq(NOW.plusSeconds(60)));
-        assertThat(hash.getValue()).isEqualTo(Passwords.hash(attempt.token()));
+        assertThat(hash.getValue()).isEqualTo(Passwords.hashToken(attempt.token()));
     }
 
     @Test void anInactiveAccountIsRevokedAndExhaustedAttemptsFail() {
@@ -86,10 +86,10 @@ class PasswordResetDeliveryUnitTests {
     }
 
     @Test void aLostLeaseGoesBackToPendingWithoutItsToken() {
-        when(repository.candidates(any(), anyInt())).thenReturn(List.of(7L));
+        when(repository.findCandidateIds(any(), anyInt())).thenReturn(List.of(7L));
         when(repository.lock(7)).thenReturn(Optional.of(row("SENDING", 1, new byte[32], "gone", NOW.minusSeconds(1))));
         assertThat(delivery.claimNext("w")).isEmpty();
-        verify(repository).retry(7, NOW.plusSeconds(30), "LEASE_EXPIRED");
+        verify(repository).scheduleRetry(7, NOW.plusSeconds(30), "LEASE_EXPIRED");
     }
 
     PasswordResetDelivery.Attempt claimed() {
@@ -98,7 +98,7 @@ class PasswordResetDeliveryUnitTests {
     }
 
     void current(PasswordResetDelivery.Attempt attempt, int attempts) {
-        when(repository.lock(7)).thenReturn(Optional.of(row("SENDING", attempts, Passwords.hash(attempt.token()), "worker-1",
+        when(repository.lock(7)).thenReturn(Optional.of(row("SENDING", attempts, Passwords.hashToken(attempt.token()), "worker-1",
                 attempt.leaseUntil())));
     }
 
@@ -106,23 +106,23 @@ class PasswordResetDeliveryUnitTests {
         var attempt = claimed();
         current(attempt, 1);
         delivery.succeeded(attempt);
-        verify(repository).sent(7);
+        verify(repository).markSent(7);
 
         // Replaced meanwhile by a new request: nothing happens.
         when(repository.lock(7)).thenReturn(Optional.of(row("REVOKED", 1, null, null, null)));
         delivery.succeeded(attempt);
-        verify(repository).sent(anyLong());
+        verify(repository).markSent(anyLong());
     }
 
     @Test void aFailedSendRetriesUntilTheAttemptsRunOut() {
         var attempt = claimed();
         current(attempt, 1);
         delivery.failed(attempt);
-        verify(repository).retry(7, NOW.plusSeconds(30), "SMTP_FAILED");
+        verify(repository).scheduleRetry(7, NOW.plusSeconds(30), "SMTP_FAILED");
         current(attempt, 3);
         delivery.failed(attempt);
         verify(repository).close(7, "FAILED", "ATTEMPTS_EXHAUSTED");
-        verify(repository, never()).sent(anyLong());
+        verify(repository, never()).markSent(anyLong());
     }
 
     @Test void theWorkerSendsEachClaimAndRecordsTheOutcome() {
@@ -130,7 +130,7 @@ class PasswordResetDeliveryUnitTests {
         var worker = new PasswordResetWorker(delivery, (email, name, token) -> sent.add(email), SETTINGS);
         pending(0, "ACTIVE");
         // The second claim finds nothing more to do.
-        when(repository.candidates(any(), anyInt())).thenReturn(List.of(7L)).thenReturn(List.of());
+        when(repository.findCandidateIds(any(), anyInt())).thenReturn(List.of(7L)).thenReturn(List.of());
         when(repository.lock(7)).thenReturn(Optional.of(row("PENDING", 0, null, null, null)));
         assertThat(worker.runOnce()).isEqualTo(1);
         assertThat(sent).containsExactly("user@example.com");
