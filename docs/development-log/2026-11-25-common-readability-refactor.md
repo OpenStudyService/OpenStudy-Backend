@@ -32,7 +32,8 @@
 
 - `./gradlew compileJava compileTestJava`: 통과.
 - common `src/main`에 `var`, 중괄호 없는 `if`·`for`, 한 줄 메서드 본문이 남아 있지 않은 것을 검색으로 확인했다.
-- 공통 영역이므로 전체 테스트를 실행했다. 결과는 아래에 기록한다.
+- 공통 영역이므로 전체 테스트를 실행했다.
+  - `./gradlew test`: 1,270개 중 실패 0, 건너뜀 28 (BUILD SUCCESSFUL, 약 19분). 건너뛴 28개는 ai·sales 패키지의 AI 관련 조건부 테스트다.
 
 ## 6. 남은 작업 / 보류 사항
 
