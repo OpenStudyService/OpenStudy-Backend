@@ -62,14 +62,14 @@ class CsvFileUnitTests {
 
     @Test void textThatASpreadsheetWouldRunIsQuotedAndNumbersStayNumbers() {
         List<Object> formulas = new ArrayList<>(List.of("=SUM(A1)", "+1", "-1", "@cmd", "\tx", "\rx", "a,b", "say \"hi\"", "plain"));
-        assertThat(formulas.stream().map(CsvFile::text).toList()).containsExactly("'=SUM(A1)", "'+1", "'-1", "'@cmd", "'\tx",
+        assertThat(formulas.stream().map(CsvFile::toCell).toList()).containsExactly("'=SUM(A1)", "'+1", "'-1", "'@cmd", "'\tx",
                 "\"'\rx\"", "\"a,b\"", "\"say \"\"hi\"\"\"", "plain");
         // A negative amount in a numeric column is a number, not a formula; the same value as text is guarded.
         var negative = new CsvFile.Table("t", "c", true, AS_OF, COLUMNS, List.of(Arrays.asList("-환불", -3_000L)), 1);
         assertThat(text(CsvFile.write(negative, CREATED))).contains("'-환불,-3000\r\n");
-        assertThat(CsvFile.text(null)).isEmpty();
-        assertThat(CsvFile.text("-")).isEqualTo("-");
-        assertThat(CsvFile.text(AS_OF)).isEqualTo("2026-11-11T09:30:00+09:00");
+        assertThat(CsvFile.toCell(null)).isEmpty();
+        assertThat(CsvFile.toCell("-")).isEqualTo("-");
+        assertThat(CsvFile.toCell(AS_OF)).isEqualTo("2026-11-11T09:30:00+09:00");
     }
 
     @Test void theDownloadIsNamedInSeoulTimeAndNeverCached() {
