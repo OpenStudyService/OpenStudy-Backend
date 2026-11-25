@@ -67,16 +67,16 @@ class AvatarUnitTests {
     // ---- type and keys -----------------------------------------------------------------------------------------------
 
     @Test void theTypeComesFromTheSignatureOnly() {
-        assertThat(AvatarService.format(JPG)).contains(AvatarKeys.Format.JPG);
-        assertThat(AvatarService.format(PNG)).contains(AvatarKeys.Format.PNG);
-        assertThat(AvatarService.format(WEBP)).contains(AvatarKeys.Format.WEBP);
+        assertThat(AvatarService.detectFormat(JPG)).contains(AvatarKeys.Format.JPG);
+        assertThat(AvatarService.detectFormat(PNG)).contains(AvatarKeys.Format.PNG);
+        assertThat(AvatarService.detectFormat(WEBP)).contains(AvatarKeys.Format.WEBP);
         // A text file renamed to .png, a GIF, a RIFF that is not WebP and a too-short file are all refused.
-        assertThat(AvatarService.format("hello.png".getBytes(StandardCharsets.UTF_8))).isEmpty();
-        assertThat(AvatarService.format("GIF89a....".getBytes(StandardCharsets.US_ASCII))).isEmpty();
-        assertThat(AvatarService.format(concat("RIFF".getBytes(StandardCharsets.US_ASCII), bytes(0, 0, 0, 0),
+        assertThat(AvatarService.detectFormat("hello.png".getBytes(StandardCharsets.UTF_8))).isEmpty();
+        assertThat(AvatarService.detectFormat("GIF89a....".getBytes(StandardCharsets.US_ASCII))).isEmpty();
+        assertThat(AvatarService.detectFormat(concat("RIFF".getBytes(StandardCharsets.US_ASCII), bytes(0, 0, 0, 0),
                 "WAVE".getBytes(StandardCharsets.US_ASCII)))).isEmpty();
-        assertThat(AvatarService.format(bytes(0xFF, 0xD8))).isEmpty();
-        assertThat(AvatarService.format(new byte[0])).isEmpty();
+        assertThat(AvatarService.detectFormat(bytes(0xFF, 0xD8))).isEmpty();
+        assertThat(AvatarService.detectFormat(new byte[0])).isEmpty();
     }
 
     @Test void keysStayOnTheServerAndPathsChangeWithThePhoto() {
@@ -148,18 +148,18 @@ class AvatarUnitTests {
     String photoOf(long employee) {
         String key = AvatarKeys.newKey(employee, AvatarKeys.Format.PNG);
         store.put(key, PNG, "image/png");
-        when(repository.avatarKey(employee)).thenReturn(Optional.of(key));
+        when(repository.findAvatarKey(employee)).thenReturn(Optional.of(key));
         return key;
     }
 
     void viewer(long id, boolean owner, List<Membership> mine) {
         when(policy.current(id)).thenReturn(new AuthorizationState(id, owner, "ACTIVE", Map.of(), Map.of()));
-        when(repository.memberships(id)).thenReturn(mine);
+        when(repository.findMemberships(id)).thenReturn(mine);
     }
 
     @Test void selfOwnersAndActiveColleaguesSeeThePhoto() {
         photoOf(7);
-        when(repository.memberships(7)).thenReturn(List.of(new Membership(1, "ACTIVE"), new Membership(2, "REVOKED")));
+        when(repository.findMemberships(7)).thenReturn(List.of(new Membership(1, "ACTIVE"), new Membership(2, "REVOKED")));
         viewer(7, false, List.of(new Membership(1, "ACTIVE"), new Membership(2, "REVOKED")));
         var self = service.view(7, 7);
         assertThat(self.contentType()).isEqualTo("image/png");
@@ -172,7 +172,7 @@ class AvatarUnitTests {
 
     @Test void everythingElseIsTheSame404() {
         photoOf(7);
-        when(repository.memberships(7)).thenReturn(List.of(new Membership(1, "ACTIVE"), new Membership(2, "REVOKED")));
+        when(repository.findMemberships(7)).thenReturn(List.of(new Membership(1, "ACTIVE"), new Membership(2, "REVOKED")));
         // Another branch only, or a branch shared only through a revoked or pending membership.
         viewer(3, false, List.of(new Membership(9, "ACTIVE")));
         assertThrows(ResponseStatusException.class, () -> service.view(3, 7));
@@ -182,13 +182,13 @@ class AvatarUnitTests {
         assertThrows(ResponseStatusException.class, () -> service.view(5, 7));
         // No photo, a legacy value, a missing file, and no employee look the same to an owner.
         viewer(1, true, List.of());
-        when(repository.avatarKey(8)).thenReturn(Optional.empty());
+        when(repository.findAvatarKey(8)).thenReturn(Optional.empty());
         assertThrows(ResponseStatusException.class, () -> service.view(1, 8));
-        when(repository.avatarKey(8)).thenReturn(Optional.of("https://cdn.example.com/a.png"));
+        when(repository.findAvatarKey(8)).thenReturn(Optional.of("https://cdn.example.com/a.png"));
         assertThrows(ResponseStatusException.class, () -> service.view(1, 8));
-        when(repository.avatarKey(8)).thenReturn(Optional.of(AvatarKeys.newKey(8, AvatarKeys.Format.JPG)));
+        when(repository.findAvatarKey(8)).thenReturn(Optional.of(AvatarKeys.newKey(8, AvatarKeys.Format.JPG)));
         assertThrows(ResponseStatusException.class, () -> service.view(1, 8));
-        verify(repository, never()).avatarKey(3);
+        verify(repository, never()).findAvatarKey(3);
     }
 
     // ---- local stores --------------------------------------------------------------------------------------------------

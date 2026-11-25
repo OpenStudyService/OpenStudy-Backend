@@ -110,28 +110,28 @@ class AccountCredentialUnitTests {
     }
 
     @Test void bodiesTakeOnlyTheirStringFields() {
-        assertThat(Passwords.fields(body("token", "x"), java.util.Set.of("token"))).containsEntry("token", "x");
-        assertThat(field(() -> Passwords.fields(body("token", "x", "extra", "y"), java.util.Set.of("token")))).isEqualTo("extra");
-        assertThat(field(() -> Passwords.fields(body("token", 1), java.util.Set.of("token")))).isEqualTo("token");
-        assertThat(field(() -> Passwords.fields(body("token", ""), java.util.Set.of("token")))).isEqualTo("token");
-        assertThat(field(() -> Passwords.fields(null, java.util.Set.of("token")))).isEqualTo("body");
+        assertThat(Passwords.requireStringFields(body("token", "x"), java.util.Set.of("token"))).containsEntry("token", "x");
+        assertThat(field(() -> Passwords.requireStringFields(body("token", "x", "extra", "y"), java.util.Set.of("token")))).isEqualTo("extra");
+        assertThat(field(() -> Passwords.requireStringFields(body("token", 1), java.util.Set.of("token")))).isEqualTo("token");
+        assertThat(field(() -> Passwords.requireStringFields(body("token", ""), java.util.Set.of("token")))).isEqualTo("token");
+        assertThat(field(() -> Passwords.requireStringFields(null, java.util.Set.of("token")))).isEqualTo("body");
     }
 
     @Test void tokensAreRandomUrlSafeAndStoredOnlyAsTheirHash() {
-        String one = Passwords.newToken();
-        String two = Passwords.newToken();
+        String one = Passwords.createToken();
+        String two = Passwords.createToken();
         assertThat(one).isNotEqualTo(two);
-        assertThat(Passwords.wellFormedToken(one)).isTrue();
-        assertThat(Passwords.wellFormedToken(one + "=")).isFalse();
-        assertThat(Passwords.wellFormedToken(null)).isFalse();
-        assertThat(Passwords.hash(one)).hasSize(32).isEqualTo(Passwords.hash(one));
-        assertThat(ENCODER.matches(OLD, ENCODER.encode(Passwords.unknowable()))).isFalse();
+        assertThat(Passwords.isWellFormedToken(one)).isTrue();
+        assertThat(Passwords.isWellFormedToken(one + "=")).isFalse();
+        assertThat(Passwords.isWellFormedToken(null)).isFalse();
+        assertThat(Passwords.hashToken(one)).hasSize(32).isEqualTo(Passwords.hashToken(one));
+        assertThat(ENCODER.matches(OLD, ENCODER.encode(Passwords.createUnknowableSecret()))).isFalse();
     }
 
     @Test void theEmailHintShowsTwoCharactersAndTheDomain() {
-        assertThat(Passwords.emailHint("abcdef@example.com")).isEqualTo("ab***@example.com");
-        assertThat(Passwords.emailHint("ab@example.com")).isEqualTo("a***@example.com");
-        assertThat(Passwords.emailHint("broken")).isEqualTo("***");
+        assertThat(Passwords.toEmailHint("abcdef@example.com")).isEqualTo("ab***@example.com");
+        assertThat(Passwords.toEmailHint("ab@example.com")).isEqualTo("a***@example.com");
+        assertThat(Passwords.toEmailHint("broken")).isEqualTo("***");
     }
 
     // ---- who may reset or unlock whom (M14-D05) ----------------------------------------------------------------------
@@ -163,7 +163,7 @@ class AccountCredentialUnitTests {
     // ---- password change (M14-D02) -----------------------------------------------------------------------------------
 
     @Test void aChangeReplacesTheHashEndsOtherSessionsAndAudits() {
-        when(repository.account(5)).thenReturn(Optional.of(account(5, "ACTIVE", false)));
+        when(repository.findAccount(5)).thenReturn(Optional.of(account(5, "ACTIVE", false)));
         service.changePassword(5, body("currentPassword", OLD, "newPassword", "new-password-2"), "session-a", "req-1");
         var hash = ArgumentCaptor.forClass(String.class);
         verify(repository).updatePassword(eq(5L), hash.capture());
@@ -176,7 +176,7 @@ class AccountCredentialUnitTests {
     }
 
     @Test void aWrongCurrentPasswordIsAuditedCountedAndRefused() {
-        when(repository.account(5)).thenReturn(Optional.of(account(5, "ACTIVE", false)));
+        when(repository.findAccount(5)).thenReturn(Optional.of(account(5, "ACTIVE", false)));
         assertThat(code(() -> service.changePassword(5, body("currentPassword", "wrong-one", "newPassword", "new-password-2"), "s", "r")))
                 .isEqualTo("CURRENT_PASSWORD_MISMATCH");
         verify(repository, never()).updatePassword(anyLong(), any());
@@ -193,7 +193,7 @@ class AccountCredentialUnitTests {
     }
 
     @Test void theSamePasswordAndMalformedInputAreRefused() {
-        when(repository.account(5)).thenReturn(Optional.of(account(5, "ACTIVE", false)));
+        when(repository.findAccount(5)).thenReturn(Optional.of(account(5, "ACTIVE", false)));
         assertThat(code(() -> service.changePassword(5, body("currentPassword", OLD, "newPassword", OLD), "s", "r")))
                 .isEqualTo("PASSWORD_SAME_AS_CURRENT");
         assertThat(field(() -> service.changePassword(5, body("currentPassword", OLD, "newPassword", "short"), "s", "r")))
@@ -205,12 +205,12 @@ class AccountCredentialUnitTests {
     // ---- administrator reset (M14-D01·D02·D05·D11) and unlock (M14-D06) ----------------------------------------------
 
     void managerOfBranchOne() {
-        when(repository.memberships(5)).thenReturn(List.of(new Membership(1, "ACTIVE")));
+        when(repository.findMemberships(5)).thenReturn(List.of(new Membership(1, "ACTIVE")));
         when(policy.permits(any(), eq(1L), any())).thenReturn(true);
     }
 
     @Test void aResetKillsTheOldPasswordAndEverySessionAndQueuesALink() {
-        when(repository.account(5)).thenReturn(Optional.of(account(5, "ACTIVE", false)));
+        when(repository.findAccount(5)).thenReturn(Optional.of(account(5, "ACTIVE", false)));
         managerOfBranchOne();
         var result = service.requestReset(9, 5, "req-2");
         assertThat(result.employeeId()).isEqualTo("5");
@@ -229,7 +229,7 @@ class AccountCredentialUnitTests {
     }
 
     @Test void onlyActiveAccountsAreReset() {
-        when(repository.account(5)).thenReturn(Optional.of(account(5, "SUSPENDED", false)));
+        when(repository.findAccount(5)).thenReturn(Optional.of(account(5, "SUSPENDED", false)));
         managerOfBranchOne();
         assertThat(code(() -> service.requestReset(9, 5, "r"))).isEqualTo("INVALID_STATE");
         verify(repository, never()).updatePassword(anyLong(), any());
@@ -238,7 +238,7 @@ class AccountCredentialUnitTests {
     @Test void withResetMailOffAResetIsRefusedAndChangesNothing() {
         var mailOff = new AccountCredentialService(repository, commands, policy, limiter, ENCODER, audit, JsonMapper.builder().build(),
                 CLOCK, Optional.empty());
-        when(repository.account(5)).thenReturn(Optional.of(account(5, "ACTIVE", false)));
+        when(repository.findAccount(5)).thenReturn(Optional.of(account(5, "ACTIVE", false)));
         managerOfBranchOne();
         var refused = assertThrows(ApiException.class, () -> mailOff.requestReset(9, 5, "r"));
         assertThat(refused.error("t").code()).isEqualTo("PASSWORD_RESET_MAIL_DISABLED");
@@ -250,12 +250,12 @@ class AccountCredentialUnitTests {
     }
 
     @Test void anUnlockClearsTheAccountLimitAndSaysWhetherItWasLocked() {
-        when(repository.account(5)).thenReturn(Optional.of(account(5, "SUSPENDED", false)));
+        when(repository.findAccount(5)).thenReturn(Optional.of(account(5, "SUSPENDED", false)));
         managerOfBranchOne();
-        assertThat(service.unlock(9, 5, "r").wasLocked()).isFalse();
+        assertThat(service.unlockLogin(9, 5, "r").wasLocked()).isFalse();
         for (int i = 0; i < 3; i++) limiter.accountFailure("USER5@example.com ");
         assertThat(limiter.accountExhausted("user5@example.com")).isTrue();
-        var result = service.unlock(9, 5, "r");
+        var result = service.unlockLogin(9, 5, "r");
         assertThat(result.wasLocked()).isTrue();
         assertThat(limiter.accountExhausted("user5@example.com")).isFalse();
     }
@@ -267,36 +267,36 @@ class AccountCredentialUnitTests {
     }
 
     @Test void aLinkIsPreviewedOnlyWhileSentAndUnexpired() {
-        String token = Passwords.newToken();
-        when(repository.account(5)).thenReturn(Optional.of(account(5, "ACTIVE", false)));
+        String token = Passwords.createToken();
+        when(repository.findAccount(5)).thenReturn(Optional.of(account(5, "ACTIVE", false)));
         when(repository.findByHash(any())).thenReturn(Optional.of(row("SENT", NOW.plusSeconds(60))));
-        var preview = service.preview(body("token", token), "10.0.0.1");
+        var preview = service.previewReset(body("token", token), "10.0.0.1");
         assertThat(preview.emailHint()).isEqualTo("us***@example.com");
         assertThat(preview.expiresAt()).isEqualTo(NOW.plusSeconds(60));
         when(repository.findByHash(any())).thenReturn(Optional.of(row("SENT", NOW)));
-        assertThat(code(() -> service.preview(body("token", token), "10.0.0.1"))).isEqualTo("PASSWORD_RESET_LINK_INVALID");
+        assertThat(code(() -> service.previewReset(body("token", token), "10.0.0.1"))).isEqualTo("PASSWORD_RESET_LINK_INVALID");
         when(repository.findByHash(any())).thenReturn(Optional.of(row("USED", null)));
-        assertThat(code(() -> service.preview(body("token", token), "10.0.0.1"))).isEqualTo("PASSWORD_RESET_LINK_INVALID");
-        assertThat(code(() -> service.preview(body("token", "short"), "10.0.0.1"))).isEqualTo("PASSWORD_RESET_LINK_INVALID");
+        assertThat(code(() -> service.previewReset(body("token", token), "10.0.0.1"))).isEqualTo("PASSWORD_RESET_LINK_INVALID");
+        assertThat(code(() -> service.previewReset(body("token", "short"), "10.0.0.1"))).isEqualTo("PASSWORD_RESET_LINK_INVALID");
     }
 
     @Test void completingALinkSetsThePasswordUsesTheLinkAndClearsTheLimit() {
-        String token = Passwords.newToken();
-        when(repository.account(5)).thenReturn(Optional.of(account(5, "ACTIVE", false)));
+        String token = Passwords.createToken();
+        when(repository.findAccount(5)).thenReturn(Optional.of(account(5, "ACTIVE", false)));
         when(repository.lockByHash(any())).thenReturn(Optional.of(row("SENDING", NOW.plusSeconds(60))));
         for (int i = 0; i < 3; i++) limiter.accountFailure("user5@example.com");
-        service.complete(body("token", token, "newPassword", "brand-new-pass1"), "10.0.0.2", "req-3");
+        service.completeReset(body("token", token, "newPassword", "brand-new-pass1"), "10.0.0.2", "req-3");
         var hash = ArgumentCaptor.forClass(String.class);
         verify(repository).updatePassword(eq(5L), hash.capture());
         assertThat(ENCODER.matches("brand-new-pass1", hash.getValue())).isTrue();
-        verify(repository).used(7, NOW);
+        verify(repository).markUsed(7, NOW);
         assertThat(limiter.accountExhausted("user5@example.com")).isFalse();
     }
 
     @Test void aLinkOfAnAccountThatIsNoLongerActiveIsInvalid() {
-        when(repository.account(5)).thenReturn(Optional.of(account(5, "LEFT", false)));
+        when(repository.findAccount(5)).thenReturn(Optional.of(account(5, "LEFT", false)));
         when(repository.lockByHash(any())).thenReturn(Optional.of(row("SENT", NOW.plusSeconds(60))));
-        assertThat(code(() -> service.complete(body("token", Passwords.newToken(), "newPassword", "brand-new-pass1"), "s", "r")))
+        assertThat(code(() -> service.completeReset(body("token", Passwords.createToken(), "newPassword", "brand-new-pass1"), "s", "r")))
                 .isEqualTo("PASSWORD_RESET_LINK_INVALID");
         verify(repository, never()).updatePassword(anyLong(), any());
     }
@@ -304,8 +304,8 @@ class AccountCredentialUnitTests {
     @Test void theLinkEndpointsShareTheLoginSourceLimit() {
         var tight = new LoginAttemptLimiter(CLOCK, 10, 15, 2, 15, 100);
         var limited = new AccountCredentialService(repository, commands, policy, tight, ENCODER, audit, JsonMapper.builder().build(), CLOCK, MAIL_ON);
-        for (int i = 0; i < 2; i++) code(() -> limited.preview(body("token", "short"), "10.0.0.9"));
-        assertThat(assertThrows(ResponseStatusException.class, () -> limited.preview(body("token", "short"), "10.0.0.9"))
+        for (int i = 0; i < 2; i++) code(() -> limited.previewReset(body("token", "short"), "10.0.0.9"));
+        assertThat(assertThrows(ResponseStatusException.class, () -> limited.previewReset(body("token", "short"), "10.0.0.9"))
                 .getStatusCode().value()).isEqualTo(429);
     }
 }
