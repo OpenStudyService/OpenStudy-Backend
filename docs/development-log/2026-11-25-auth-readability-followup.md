@@ -26,7 +26,9 @@
 
 - `./gradlew compileJava compileTestJava`: 통과.
 - auth 모듈 `src/main`에 `var`, 중괄호 없는 `if`·`for`가 남아 있지 않은 것을 검색으로 확인했다.
-- `AccountSessionFilter`는 인증된 모든 요청을 거치므로 전체 테스트를 실행했다. 결과는 아래에 기록한다.
+- `AccountSessionFilter`는 인증된 모든 요청을 거치므로 전체 테스트를 실행했다.
+  - `./gradlew test`: 1,270개 중 실패 0, 건너뜀 28 (BUILD SUCCESSFUL, 약 18분). 건너뛴 28개는 ai·sales 패키지의 AI 관련 조건부 테스트다.
+  - 앞선 실행 한 번은 테스트 실패가 아니라 Gradle이 결과 파일(`build/test-results/test/binary/in-progress-results-generic.bin`)을 찾지 못해 중단됐다. 같은 시각에 IntelliJ의 Gradle 데몬과 앱이 같은 `build` 폴더를 쓰고 있었다. 다시 실행해 위 결과를 얻었다.
 
 ## 6. 남은 작업 / 보류 사항
 
