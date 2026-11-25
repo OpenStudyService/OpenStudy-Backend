@@ -56,7 +56,7 @@
 
 - `./gradlew compileJava compileTestJava`: 통과.
 - employee `src/main`에 `var`, 중괄호 없는 `if`가 남아 있지 않은 것을 검색으로 확인했다.
-- 전체 테스트 결과는 아래에 덧붙인다.
+- `./gradlew test`: 1,270개 중 실패 0, 건너뜀 28 (BUILD SUCCESSFUL, 약 18분). 건너뛴 28개는 ai·sales 패키지의 AI 관련 조건부 테스트다.
 
 ## 6. 남은 작업 / 보류 사항
 
