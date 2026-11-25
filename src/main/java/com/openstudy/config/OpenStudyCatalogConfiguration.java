@@ -3,10 +3,12 @@ package com.openstudy.config;
 import com.openstudy.domainlens.ai.OnnxEmbeddingGateway;
 import com.openstudy.domainlens.api.error.EngineErrorCode;
 import com.openstudy.domainlens.api.error.EngineException;
+import com.openstudy.domainlens.api.ir.Filter;
 import com.openstudy.domainlens.api.retrieval.EmbeddingGateway;
 import com.openstudy.domainlens.api.retrieval.EmbeddingStore;
 import com.openstudy.domainlens.api.spi.MetricImpl;
 import com.openstudy.domainlens.catalog.EmbeddingIndex;
+import com.openstudy.domainlens.catalog.JpaModel;
 import com.openstudy.domainlens.catalog.JpaModelCollector;
 import com.openstudy.domainlens.catalog.SearchDocuments;
 import com.openstudy.domainlens.catalog.SemanticRegistry;
@@ -33,8 +35,12 @@ import org.springframework.context.annotation.Configuration;
 @EnableConfigurationProperties(DomainLensProperties.class)
 @Slf4j
 public class OpenStudyCatalogConfiguration {
+
     public static final String VERSION = "openstudy-v1";
     public static final String METRIC_VERSION = "1";
+
+    private static final String DEFAULT_MODEL_DIRECTORY = ".models/koen-e5-tiny-q8";
+    private static final String UNAVAILABLE_MODEL = "unavailable";
 
     public static final Set<String> POLICY_REFERENCES = Set.of(
             "openstudy.read.ai",
@@ -79,6 +85,35 @@ public class OpenStudyCatalogConfiguration {
             "employee"
     );
 
+    /** Implementation ids of general metrics; every other metric belongs to a registered analysis. */
+    public static final String GENERAL_METRIC_PREFIX = "openstudy.metric.";
+
+    /**
+     * An approved payment as the M9 sales API counts it: every payment that was approved (approved_at set),
+     * including one refunded later. Its refund is a separate item; filtering on APPROVED alone dropped refunded
+     * payments (#97).
+     */
+    static final Filter APPROVED_PAYMENT = new Filter.Leaf(
+            "payment.status",
+            Filter.Operator.IN,
+            List.of("APPROVED", "REFUNDED")
+    );
+
+    /** The time field a resolved period ("이번 달") constrains for each general metric. */
+    public static final Map<String, String> PERIOD_FIELDS = Map.of(
+            "sales.approved_amount_krw", "payment.paid_at",
+            "sales.approved_count", "payment.paid_at",
+            "passes.issued_count", "pass.issued_at",
+            "seats.occupancy_pct", "seat_occupancy_sample.sampled_at"
+    );
+
+    /**
+     * General metrics the live chat answers through the generation path even when a registered analysis's keyword
+     * rule matches the question: "언제 가장 붐벼" goes to the model-planned query, not POC-002.
+     * Without a live model (playback) the registered analysis still answers.
+     */
+    public static final Set<String> GENERATION_FIRST_METRICS = Set.of("seats.occupancy_pct");
+
     @Bean
     @ConditionalOnMissingBean
     public SemanticRegistry openStudySemanticRegistry(EntityManagerFactory factory) {
@@ -94,16 +129,20 @@ public class OpenStudyCatalogConfiguration {
     @Bean(destroyMethod = "close")
     @ConditionalOnMissingBean
     public EmbeddingGateway openStudyEmbeddingGateway(DomainLensProperties properties) {
-        var emb = properties.getEmbedding();
-        Path modelDir = resolvePath(emb.getDirectory(), ".models/koen-e5-tiny-q8");
+        DomainLensProperties.Embedding embedding = properties.getEmbedding();
+        Path modelDirectory = resolvePath(embedding.getDirectory(), DEFAULT_MODEL_DIRECTORY);
+
         // The model is not committed (.gitignore). Without it the app still starts and only AI retrieval is unavailable;
         // a model that is present but broken still fails fast inside OnnxEmbeddingGateway.
-        if (!Files.isDirectory(modelDir)) {
-            log.warn("DomainLens embedding model not found at {}; AI retrieval is disabled until it is installed",
-                    modelDir.toAbsolutePath());
+        if (!Files.isDirectory(modelDirectory)) {
+            log.warn(
+                    "DomainLens embedding model not found at {}; AI retrieval is disabled until it is installed",
+                    modelDirectory.toAbsolutePath()
+            );
             return new UnavailableEmbeddingGateway();
         }
-        return new OnnxEmbeddingGateway(modelDir);
+
+        return new OnnxEmbeddingGateway(modelDirectory);
     }
 
     @Bean
@@ -114,26 +153,47 @@ public class OpenStudyCatalogConfiguration {
             EmbeddingStore store
     ) {
         if (gateway instanceof UnavailableEmbeddingGateway) {
-            return new EmbeddingIndex("unavailable", gateway.model(), gateway.dimensions(), List.of());
+            return new EmbeddingIndex(UNAVAILABLE_MODEL, gateway.model(), gateway.dimensions(), List.of());
         }
+
         return EmbeddingIndex.build(new SearchDocuments().build(registry), gateway, store);
     }
 
     /** Stands in for the local model when it is not installed: every embedding request reports NOT_READY. */
     static final class UnavailableEmbeddingGateway implements EmbeddingGateway, AutoCloseable {
-        @Override public String model() { return "unavailable"; }
-        @Override public int dimensions() { return 0; }
-        @Override public List<List<Double>> embed(List<String> texts) {
+
+        @Override
+        public String model() {
+            return UNAVAILABLE_MODEL;
+        }
+
+        @Override
+        public int dimensions() {
+            return 0;
+        }
+
+        @Override
+        public List<List<Double>> embed(List<String> texts) {
             throw new EngineException(EngineErrorCode.NOT_READY, "Local embedding model is not installed");
         }
-        @Override public void close() { }
+
+        @Override
+        public void close() {
+            // Nothing to release.
+        }
     }
 
     public static SemanticRegistry createRegistry(EntityManagerFactory factory) {
-        var model = new JpaModelCollector().collect(factory);
-        Map<String, String> grains = GRAINS.stream().collect(Collectors.toUnmodifiableMap(g -> g, g -> g));
-        var metrics = metricDefinitions();
-        var implementations = metrics.stream().map(SemanticRegistry.Metric::implementationRef).collect(Collectors.toSet());
+        JpaModel model = new JpaModelCollector().collect(factory);
+
+        Map<String, String> grains = GRAINS.stream()
+                .collect(Collectors.toUnmodifiableMap(grain -> grain, grain -> grain));
+
+        List<SemanticRegistry.Metric> metrics = metricDefinitions();
+        Set<String> implementations = metrics.stream()
+                .map(SemanticRegistry.Metric::implementationRef)
+                .collect(Collectors.toSet());
+
         return new SemanticRegistry(
                 VERSION,
                 model,
@@ -162,7 +222,14 @@ public class OpenStudyCatalogConfiguration {
                         METRIC_VERSION,
                         "KRW",
                         0,
-                        Set.of("payment.paid_at", "payment.status", "payment.branch_id", "branch.name", "refund.amount_krw", "refund.refunded_at")
+                        Set.of(
+                                "payment.paid_at",
+                                "payment.status",
+                                "payment.branch_id",
+                                "branch.name",
+                                "refund.amount_krw",
+                                "refund.refunded_at"
+                        )
                 ),
                 new SemanticRegistry.Metric(
                         "seats.hourly_congestion",
@@ -176,7 +243,12 @@ public class OpenStudyCatalogConfiguration {
                         METRIC_VERSION,
                         "%",
                         1,
-                        Set.of("seat_session.checked_in_at", "seat_session.checked_out_at", "seat_session.seat_id", "branch.name")
+                        Set.of(
+                                "seat_session.checked_in_at",
+                                "seat_session.checked_out_at",
+                                "seat_session.seat_id",
+                                "branch.name"
+                        )
                 ),
                 new SemanticRegistry.Metric(
                         "passes.top_products",
@@ -218,7 +290,13 @@ public class OpenStudyCatalogConfiguration {
                         METRIC_VERSION,
                         "건",
                         0,
-                        Set.of("room_reservation.start_at", "room_reservation.end_at", "room_reservation.status", "room.name", "room.branch_id")
+                        Set.of(
+                                "room_reservation.start_at",
+                                "room_reservation.end_at",
+                                "room_reservation.status",
+                                "room.name",
+                                "room.branch_id"
+                        )
                 ),
                 new SemanticRegistry.Metric(
                         "passes.expiring_soon",
@@ -260,7 +338,13 @@ public class OpenStudyCatalogConfiguration {
                         METRIC_VERSION,
                         "KRW",
                         0,
-                        Set.of("payment.item_type", "payment.paid_at", "payment.status", "refund.amount_krw", "refund.refunded_at")
+                        Set.of(
+                                "payment.item_type",
+                                "payment.paid_at",
+                                "payment.status",
+                                "refund.amount_krw",
+                                "refund.refunded_at"
+                        )
                 ),
                 new SemanticRegistry.Metric(
                         "tasks.urgent_todo",
@@ -274,7 +358,14 @@ public class OpenStudyCatalogConfiguration {
                         METRIC_VERSION,
                         "건",
                         0,
-                        Set.of("work_task.title", "work_task.priority", "work_task.status", "work_task.due_at", "work_task.assignee_employee_id", "branch.name")
+                        Set.of(
+                                "work_task.title",
+                                "work_task.priority",
+                                "work_task.status",
+                                "work_task.due_at",
+                                "work_task.assignee_employee_id",
+                                "branch.name"
+                        )
                 ),
                 new SemanticRegistry.Metric(
                         "attendance.weekly_work_minutes",
@@ -288,7 +379,13 @@ public class OpenStudyCatalogConfiguration {
                         METRIC_VERSION,
                         "분",
                         0,
-                        Set.of("attendance_record.clock_in_at", "attendance_record.clock_out_at", "attendance_record.status", "employee.name", "branch.name")
+                        Set.of(
+                                "attendance_record.clock_in_at",
+                                "attendance_record.clock_out_at",
+                                "attendance_record.status",
+                                "employee.name",
+                                "branch.name"
+                        )
                 ),
                 // #232: general metrics for the generation path. They are not tied to a registered analysis, so the
                 // model may combine them with dimensions and periods; the server runs them as a JPA aggregate.
@@ -348,35 +445,14 @@ public class OpenStudyCatalogConfiguration {
                         METRIC_VERSION,
                         "%",
                         1,
-                        Set.of("seat_occupancy_sample.sampled_at", "seat_occupancy_sample.weekday_kst", "seat_occupancy_sample.hour_kst")
+                        Set.of(
+                                "seat_occupancy_sample.sampled_at",
+                                "seat_occupancy_sample.weekday_kst",
+                                "seat_occupancy_sample.hour_kst"
+                        )
                 )
         );
     }
-
-    /** Implementation ids of general metrics; every other metric belongs to a registered analysis. */
-    public static final String GENERAL_METRIC_PREFIX = "openstudy.metric.";
-    /** A payment counts as sales once it is approved; pending and failed payments never do. */
-    /**
-     * An approved payment as the M9 sales API counts it: every payment that was approved (approved_at set), including
-     * one refunded later. Its refund is a separate item; filtering on APPROVED alone dropped refunded payments (#97).
-     */
-    static final com.openstudy.domainlens.api.ir.Filter APPROVED_PAYMENT =
-            new com.openstudy.domainlens.api.ir.Filter.Leaf("payment.status", com.openstudy.domainlens.api.ir.Filter.Operator.IN,
-                    List.of("APPROVED", "REFUNDED"));
-    /** The time field a resolved period ("이번 달") constrains for each general metric. */
-    public static final Map<String, String> PERIOD_FIELDS = Map.of(
-            "sales.approved_amount_krw", "payment.paid_at",
-            "sales.approved_count", "payment.paid_at",
-            "passes.issued_count", "pass.issued_at",
-            "seats.occupancy_pct", "seat_occupancy_sample.sampled_at"
-    );
-
-    /**
-     * General metrics the live chat answers through the generation path even when a registered analysis's keyword rule
-     * matches the question: "언제 가장 붐벼" goes to the model-planned query, not POC-002. Without a live model
-     * (playback) the registered analysis still answers.
-     */
-    public static final Set<String> GENERATION_FIRST_METRICS = Set.of("seats.occupancy_pct");
 
     public static boolean general(SemanticRegistry.Metric metric) {
         return metric.implementationRef().startsWith(GENERAL_METRIC_PREFIX);
@@ -384,11 +460,7 @@ public class OpenStudyCatalogConfiguration {
 
     public static List<MetricImpl> metricImplementations() {
         return metricDefinitions().stream()
-                .map(m -> (MetricImpl) new MetricImpl() {
-                    @Override public String id() { return m.implementationRef(); }
-                    @Override public String version() { return m.version(); }
-                    @Override public String grain() { return m.grain(); }
-                })
+                .map(OpenStudyCatalogConfiguration::toMetricImpl)
                 .toList();
     }
 
@@ -397,7 +469,14 @@ public class OpenStudyCatalogConfiguration {
                 new SemanticRegistry.Term(
                         "openstudy.term.branchSales",
                         "sales.net_sales_krw",
-                        List.of("지점별 매출", "순매출", "승인 매출", "이번 달 매출", "이번 달 지점별 매출을 비교해줘", "지점 매출 비교")
+                        List.of(
+                                "지점별 매출",
+                                "순매출",
+                                "승인 매출",
+                                "이번 달 매출",
+                                "이번 달 지점별 매출을 비교해줘",
+                                "지점 매출 비교"
+                        )
                 ),
                 new SemanticRegistry.Term(
                         "openstudy.term.congestion",
@@ -407,7 +486,13 @@ public class OpenStudyCatalogConfiguration {
                 new SemanticRegistry.Term(
                         "openstudy.term.topPasses",
                         "passes.top_products",
-                        List.of("가장 잘 팔린 이용권", "인기 이용권", "이용권 TOP 5", "판매 건수", "지난달 가장 잘 팔린 이용권 TOP 5를 보여줘")
+                        List.of(
+                                "가장 잘 팔린 이용권",
+                                "인기 이용권",
+                                "이용권 TOP 5",
+                                "판매 건수",
+                                "지난달 가장 잘 팔린 이용권 TOP 5를 보여줘"
+                        )
                 ),
                 new SemanticRegistry.Term(
                         "openstudy.term.realtimeSeats",
@@ -432,12 +517,23 @@ public class OpenStudyCatalogConfiguration {
                 new SemanticRegistry.Term(
                         "openstudy.term.itemTypeSales",
                         "sales.by_item_type",
-                        List.of("이용권 스터디룸 사물함 매출", "상품군별 매출", "어디서 매출이 가장 많이 나왔어", "지난달 이용권, 스터디룸, 사물함 중 어디서 매출이 가장 많이 나왔어")
+                        List.of(
+                                "이용권 스터디룸 사물함 매출",
+                                "상품군별 매출",
+                                "어디서 매출이 가장 많이 나왔어",
+                                "지난달 이용권, 스터디룸, 사물함 중 어디서 매출이 가장 많이 나왔어"
+                        )
                 ),
                 new SemanticRegistry.Term(
                         "openstudy.term.urgentTasks",
                         "tasks.urgent_todo",
-                        List.of("급하게 처리해야 할 업무", "긴급 업무", "기한 지난 업무", "미완료 업무", "지금 급하게 처리해야 할 업무가 뭐야")
+                        List.of(
+                                "급하게 처리해야 할 업무",
+                                "긴급 업무",
+                                "기한 지난 업무",
+                                "미완료 업무",
+                                "지금 급하게 처리해야 할 업무가 뭐야"
+                        )
                 ),
                 new SemanticRegistry.Term(
                         "openstudy.term.weeklyAttendance",
@@ -471,16 +567,43 @@ public class OpenStudyCatalogConfiguration {
 
     public static Path resolvePath(String configured, String relativeFallback) {
         if (configured != null && !configured.isBlank()) {
-            Path p = Path.of(configured);
-            if (Files.exists(p)) return p;
+            Path configuredPath = Path.of(configured);
+            if (Files.exists(configuredPath)) {
+                return configuredPath;
+            }
         }
-        for (Path candidate : List.of(
+
+        List<Path> candidates = List.of(
                 Path.of(relativeFallback),
                 Path.of("OpenStudy-Backend", relativeFallback),
                 Path.of("..", relativeFallback)
-        )) {
-            if (Files.exists(candidate)) return candidate;
+        );
+
+        for (Path candidate : candidates) {
+            if (Files.exists(candidate)) {
+                return candidate;
+            }
         }
+
         return Path.of(relativeFallback);
+    }
+
+    private static MetricImpl toMetricImpl(SemanticRegistry.Metric metric) {
+        return new MetricImpl() {
+            @Override
+            public String id() {
+                return metric.implementationRef();
+            }
+
+            @Override
+            public String version() {
+                return metric.version();
+            }
+
+            @Override
+            public String grain() {
+                return metric.grain();
+            }
+        };
     }
 }
