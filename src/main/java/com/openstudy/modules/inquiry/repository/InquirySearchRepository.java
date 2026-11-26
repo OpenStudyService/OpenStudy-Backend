@@ -22,82 +22,143 @@ import com.openstudy.modules.inquiry.entity.InquiryStatus;
 @Repository
 @RequiredArgsConstructor
 public class InquirySearchRepository {
+
     private static final String FROM = " FROM inquiries i JOIN customers c ON c.id = i.customer_id WHERE ";
+    private static final String COUNT_COLUMNS = "SELECT i.branch_id, COUNT(*), SUM(i.status = 'RECEIVED'), "
+            + "SUM(i.status = 'IN_PROGRESS'), SUM(i.status = 'ANSWERED')";
+    private static final String EVENTS_SQL = """
+            SELECT e.*
+            FROM inquiry_events e
+            WHERE e.inquiry_id = ?
+            ORDER BY e.id DESC
+            LIMIT ? OFFSET ?
+            """;
+
     private final EntityManager entityManager;
 
     public enum Sort {
-        CREATED_AT("i.created_at"), UPDATED_AT("i.updated_at");
+        CREATED_AT("i.created_at"),
+        UPDATED_AT("i.updated_at");
+
         final String column;
-        Sort(String column) { this.column = column; }
+
+        Sort(String column) {
+            this.column = column;
+        }
     }
 
-    public record Filter(Set<Long> branches, String q, InquiryStatus status, Long assignee, Long customer) {}
+    public record Filter(Set<Long> branches, String q, InquiryStatus status, Long assignee, Long customer) {
+    }
 
-    public record Page(List<Inquiry> rows, long total) {}
+    public record Page(List<Inquiry> rows, long total) {
+    }
 
-    public record BranchCounts(long branchId, long total, long received, long inProgress, long answered) {}
+    public record BranchCounts(long branchId, long total, long received, long inProgress, long answered) {
+    }
 
     @SuppressWarnings("unchecked")
     public Page find(Filter filter, Sort sort, boolean descending, long offset, int limit) {
-        if (filter.branches().isEmpty()) return new Page(List.of(), 0);
-        var where = new StringBuilder();
-        var binds = new ArrayList<Object>();
-        where(filter, where, binds);
+        if (filter.branches().isEmpty()) {
+            return new Page(List.of(), 0);
+        }
+
+        StringBuilder where = new StringBuilder();
+        List<Object> binds = new ArrayList<>();
+        appendWhere(filter, where, binds);
+
         String order = descending ? " DESC" : " ASC";
-        Query rows = entityManager.createNativeQuery("SELECT i.*" + FROM + where
-                + " ORDER BY " + sort.column + order + ", i.id" + order + " LIMIT ? OFFSET ?", Inquiry.class);
+        String rowsSql = "SELECT i.*" + FROM + where
+                + " ORDER BY " + sort.column + order + ", i.id" + order + " LIMIT ? OFFSET ?";
+        Query rows = entityManager.createNativeQuery(rowsSql, Inquiry.class);
         Query count = entityManager.createNativeQuery("SELECT COUNT(*)" + FROM + where);
-        bind(rows, binds);
-        bind(count, binds);
+        bindAll(rows, binds);
+        bindAll(count, binds);
         rows.setParameter(binds.size() + 1, limit);
         rows.setParameter(binds.size() + 2, offset);
+
         return new Page(rows.getResultList(), ((Number) count.getSingleResult()).longValue());
     }
 
     @SuppressWarnings("unchecked")
-    public List<BranchCounts> counts(Filter filter) {
-        if (filter.branches().isEmpty()) return List.of();
-        var where = new StringBuilder();
-        var binds = new ArrayList<Object>();
-        where(filter, where, binds);
-        Query query = entityManager.createNativeQuery("SELECT i.branch_id, COUNT(*), SUM(i.status = 'RECEIVED'), "
-                + "SUM(i.status = 'IN_PROGRESS'), SUM(i.status = 'ANSWERED')" + FROM + where + " GROUP BY i.branch_id");
-        bind(query, binds);
-        return ((List<Object[]>) query.getResultList()).stream().map(row -> new BranchCounts(number(row[0]), number(row[1]),
-                number(row[2]), number(row[3]), number(row[4]))).toList();
+    public List<BranchCounts> countByBranch(Filter filter) {
+        if (filter.branches().isEmpty()) {
+            return List.of();
+        }
+
+        StringBuilder where = new StringBuilder();
+        List<Object> binds = new ArrayList<>();
+        appendWhere(filter, where, binds);
+
+        Query query = entityManager.createNativeQuery(COUNT_COLUMNS + FROM + where + " GROUP BY i.branch_id");
+        bindAll(query, binds);
+
+        return ((List<Object[]>) query.getResultList())
+                .stream()
+                .map(row -> new BranchCounts(
+                        toLong(row[0]),
+                        toLong(row[1]),
+                        toLong(row[2]),
+                        toLong(row[3]),
+                        toLong(row[4])
+                ))
+                .toList();
     }
 
     @SuppressWarnings("unchecked")
-    public List<InquiryEvent> events(long inquiry, long offset, int limit) {
-        Query rows = entityManager.createNativeQuery(
-                "SELECT e.* FROM inquiry_events e WHERE e.inquiry_id = ? ORDER BY e.id DESC LIMIT ? OFFSET ?", InquiryEvent.class);
+    public List<InquiryEvent> findEvents(long inquiry, long offset, int limit) {
+        Query rows = entityManager.createNativeQuery(EVENTS_SQL, InquiryEvent.class);
         rows.setParameter(1, inquiry);
         rows.setParameter(2, limit);
         rows.setParameter(3, offset);
+
         return rows.getResultList();
     }
 
-    private static void where(Filter filter, StringBuilder where, List<Object> binds) {
-        var branches = filter.branches().stream().sorted().toList();
-        where.append("i.branch_id IN (").append(String.join(",", Collections.nCopies(branches.size(), "?"))).append(")");
+    private static void appendWhere(Filter filter, StringBuilder where, List<Object> binds) {
+        List<Long> branches = filter.branches()
+                .stream()
+                .sorted()
+                .toList();
+        where.append("i.branch_id IN (")
+                .append(String.join(",", Collections.nCopies(branches.size(), "?")))
+                .append(")");
         binds.addAll(branches);
-        if (filter.status() != null) { where.append(" AND i.status = ?"); binds.add(filter.status().name()); }
-        if (filter.assignee() != null) { where.append(" AND i.assigned_employee_id = ?"); binds.add(filter.assignee()); }
-        if (filter.customer() != null) { where.append(" AND i.customer_id = ?"); binds.add(filter.customer()); }
+
+        if (filter.status() != null) {
+            where.append(" AND i.status = ?");
+            binds.add(filter.status().name());
+        }
+
+        if (filter.assignee() != null) {
+            where.append(" AND i.assigned_employee_id = ?");
+            binds.add(filter.assignee());
+        }
+
+        if (filter.customer() != null) {
+            where.append(" AND i.customer_id = ?");
+            binds.add(filter.customer());
+        }
+
         if (!filter.q().isEmpty()) {
             where.append(" AND (i.subject LIKE ? ESCAPE '!' OR c.name LIKE ? ESCAPE '!')");
-            binds.add("%" + like(filter.q()) + "%");
-            binds.add("%" + like(filter.q()) + "%");
+            binds.add("%" + escapeLike(filter.q()) + "%");
+            binds.add("%" + escapeLike(filter.q()) + "%");
         }
     }
 
-    private static void bind(Query query, List<Object> binds) {
-        for (int index = 0; index < binds.size(); index++) query.setParameter(index + 1, binds.get(index));
+    private static void bindAll(Query query, List<Object> binds) {
+        for (int index = 0; index < binds.size(); index++) {
+            query.setParameter(index + 1, binds.get(index));
+        }
     }
 
-    private static long number(Object value) { return value == null ? 0 : ((Number) value).longValue(); }
+    private static long toLong(Object value) {
+        return value == null ? 0 : ((Number) value).longValue();
+    }
 
-    private static String like(String value) {
-        return value.replace("!", "!!").replace("%", "!%").replace("_", "!_");
+    private static String escapeLike(String value) {
+        return value.replace("!", "!!")
+                .replace("%", "!%")
+                .replace("_", "!_");
     }
 }
