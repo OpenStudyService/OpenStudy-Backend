@@ -25,23 +25,37 @@ import org.hibernate.generator.EventType;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class InquiryEvent {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
     @Column(name = "inquiry_id", nullable = false, updatable = false)
     private long inquiryId;
+
     @Column(name = "actor_employee_id", nullable = false, updatable = false)
     private long actorEmployeeId;
-    @Enumerated(EnumType.STRING) @Column(name = "old_status", length = 30, updatable = false)
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "old_status", length = 30, updatable = false)
     private InquiryStatus oldStatus;
-    @Enumerated(EnumType.STRING) @Column(name = "new_status", nullable = false, length = 30, updatable = false)
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "new_status", nullable = false, length = 30, updatable = false)
     private InquiryStatus newStatus;
+
     @Column(columnDefinition = "text", updatable = false)
     private String message;
-    @Generated(event = EventType.INSERT) @Column(name = "created_at", insertable = false, updatable = false)
+
+    @Generated(event = EventType.INSERT)
+    @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 
     public InquiryEvent(long inquiryId, long actor, InquiryStatus oldStatus, InquiryStatus newStatus, String message) {
-        this.inquiryId = inquiryId; this.actorEmployeeId = actor; this.oldStatus = oldStatus;
-        this.newStatus = newStatus; this.message = message;
+        this.inquiryId = inquiryId;
+        this.actorEmployeeId = actor;
+        this.oldStatus = oldStatus;
+        this.newStatus = newStatus;
+        this.message = message;
     }
 }

@@ -25,65 +25,114 @@ import com.openstudy.modules.inquiry.service.InquiryService;
 
 /** There is deliberately no DELETE and no edit of the subject or body of an inquiry (collaboration-api.md). */
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/inquiries")
 @RequiredArgsConstructor
 public class InquiryController {
+
     private static final Set<String> SORTS = Set.of("createdAt", "updatedAt");
-    private final InquiryService service;
+    private static final String DEFAULT_SORT = "createdAt";
+    private static final Set<String> EVENT_SORTS = Set.of("id");
+    private static final String DEFAULT_EVENT_SORT = "id";
 
-    @GetMapping("/inquiries")
-    public PageResponse<InquiryListItem> list(Authentication actor, @RequestParam(defaultValue = "all") String scope,
-            @RequestParam(defaultValue = "1") long page, @RequestParam(defaultValue = "20") int pageSize,
-            @RequestParam(required = false) String q, @RequestParam(required = false) String status,
-            @RequestParam(required = false) String assigneeId, @RequestParam(required = false) String customerId,
-            @RequestParam(required = false) String sort, @RequestParam(required = false) String direction) {
-        return service.list(actor(actor), scope, ListQuery.parse(page, pageSize, q, sort, direction, SORTS, "createdAt"),
-                InquiryFilters.parse(status, assigneeId, customerId));
+    private final InquiryService inquiryService;
+
+    @GetMapping
+    public PageResponse<InquiryListItem> listInquiries(
+            Authentication actor,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String assigneeId,
+            @RequestParam(required = false) String customerId,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String direction
+    ) {
+        ListQuery query = ListQuery.parse(page, pageSize, q, sort, direction, SORTS, DEFAULT_SORT);
+        InquiryFilters filters = InquiryFilters.parse(status, assigneeId, customerId);
+
+        return inquiryService.list(actorId(actor), scope, query, filters);
     }
 
-    @GetMapping("/inquiries/summary")
-    public InquirySummary summary(Authentication actor, @RequestParam(defaultValue = "all") String scope,
-            @RequestParam(required = false) String q, @RequestParam(required = false) String assigneeId,
-            @RequestParam(required = false) String customerId) {
-        return service.summary(actor(actor), scope, q, InquiryFilters.parse(null, assigneeId, customerId));
+    @GetMapping("/summary")
+    public InquirySummary getInquirySummary(
+            Authentication actor,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String assigneeId,
+            @RequestParam(required = false) String customerId
+    ) {
+        InquiryFilters filters = InquiryFilters.parse(null, assigneeId, customerId);
+
+        return inquiryService.summary(actorId(actor), scope, q, filters);
     }
 
-    @GetMapping("/inquiries/{id}")
-    public InquiryDetail get(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope) {
-        return service.get(actor(actor), id, scope);
+    @GetMapping("/{id}")
+    public InquiryDetail getInquiry(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope
+    ) {
+        return inquiryService.get(actorId(actor), id, scope);
     }
 
-    @PostMapping("/inquiries")
-    public ResponseEntity<InquiryDetail> create(Authentication actor, @RequestParam(defaultValue = "all") String scope,
-            @RequestHeader(name = "Idempotency-Key", required = false) String key, @RequestBody Map<String, Object> body) {
-        var result = service.create(actor(actor), scope, key, body);
+    @PostMapping
+    public ResponseEntity<InquiryDetail> createInquiry(
+            Authentication actor,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestHeader(name = "Idempotency-Key", required = false) String key,
+            @RequestBody Map<String, Object> body
+    ) {
+        InquiryDetail result = inquiryService.create(actorId(actor), scope, key, body);
+
         return ResponseEntity.created(URI.create("/api/inquiries/" + result.id())).body(result);
     }
 
-    @GetMapping("/inquiries/{id}/events")
-    public PageResponse<InquiryEventView> events(Authentication actor, @PathVariable long id,
-            @RequestParam(defaultValue = "all") String scope, @RequestParam(defaultValue = "1") long page,
-            @RequestParam(defaultValue = "20") int pageSize) {
-        return service.history(actor(actor), id, scope, ListQuery.parse(page, pageSize, null, null, null, Set.of("id"), "id"));
+    @GetMapping("/{id}/events")
+    public PageResponse<InquiryEventView> listInquiryEvents(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") int pageSize
+    ) {
+        ListQuery query = ListQuery.parse(page, pageSize, null, null, null, EVENT_SORTS, DEFAULT_EVENT_SORT);
+
+        return inquiryService.listEvents(actorId(actor), id, scope, query);
     }
 
-    @PostMapping("/inquiries/{id}/assignee")
-    public InquiryDetail assignee(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope,
-            @RequestBody Map<String, Object> body) {
-        return service.changeAssignee(actor(actor), id, scope, body);
+    @PostMapping("/{id}/assignee")
+    public InquiryDetail changeInquiryAssignee(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestBody Map<String, Object> body
+    ) {
+        return inquiryService.changeAssignee(actorId(actor), id, scope, body);
     }
 
-    @PostMapping("/inquiries/{id}/answer")
-    public InquiryDetail answer(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope,
-            @RequestBody Map<String, Object> body) {
-        return service.answer(actor(actor), id, scope, body);
+    @PostMapping("/{id}/answer")
+    public InquiryDetail answerInquiry(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestBody Map<String, Object> body
+    ) {
+        return inquiryService.answer(actorId(actor), id, scope, body);
     }
 
-    @PostMapping("/inquiries/{id}/status")
-    public InquiryDetail status(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope,
-            @RequestBody Map<String, Object> body) {
-        return service.changeStatus(actor(actor), id, scope, body);
+    @PostMapping("/{id}/status")
+    public InquiryDetail changeInquiryStatus(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestBody Map<String, Object> body
+    ) {
+        return inquiryService.changeStatus(actorId(actor), id, scope, body);
     }
 
-    private static long actor(Authentication authentication) { return Long.parseLong(authentication.getName()); }
+    private static long actorId(Authentication authentication) {
+        return Long.parseLong(authentication.getName());
+    }
 }
