@@ -4,6 +4,7 @@ import java.time.Instant;
 
 /** Transient handoff after the claim commits. Never serialize or persist this object. */
 public final class DeliveryAttempt {
+
     private final long invitationId;
     private final long jobId;
     private final long revision;
@@ -13,8 +14,16 @@ public final class DeliveryAttempt {
     private final String token;
     private final Instant leaseUntil;
 
-    DeliveryAttempt(long invitationId, long jobId, long revision, String workerId, String email,
-            String name, String token, Instant leaseUntil) {
+    DeliveryAttempt(
+            long invitationId,
+            long jobId,
+            long revision,
+            String workerId,
+            String email,
+            String name,
+            String token,
+            Instant leaseUntil
+    ) {
         this.invitationId = invitationId;
         this.jobId = jobId;
         this.revision = revision;
@@ -25,14 +34,37 @@ public final class DeliveryAttempt {
         this.leaseUntil = leaseUntil;
     }
 
-    public long invitationId() { return invitationId; }
-    public long jobId() { return jobId; }
-    public long revision() { return revision; }
-    public String workerId() { return workerId; }
-    public String email() { return email; }
-    public String name() { return name; }
-    public String token() { return token; }
-    public Instant leaseUntil() { return leaseUntil; }
+    public long invitationId() {
+        return invitationId;
+    }
+
+    public long jobId() {
+        return jobId;
+    }
+
+    public long revision() {
+        return revision;
+    }
+
+    public String workerId() {
+        return workerId;
+    }
+
+    public String email() {
+        return email;
+    }
+
+    public String name() {
+        return name;
+    }
+
+    public String token() {
+        return token;
+    }
+
+    public Instant leaseUntil() {
+        return leaseUntil;
+    }
 
     @Override
     public String toString() {

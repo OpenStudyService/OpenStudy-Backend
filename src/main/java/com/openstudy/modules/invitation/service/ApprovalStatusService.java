@@ -2,10 +2,13 @@ package com.openstudy.modules.invitation.service;
 
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.openstudy.modules.auth.service.SessionBoundaryPolicy;
 import com.openstudy.modules.branch.service.SessionBranchService;
+import com.openstudy.modules.employee.dto.EmployeeAccount;
 import com.openstudy.modules.employee.service.EmployeeAccountService;
 import com.openstudy.modules.invitation.dto.ApprovalStatus;
 import com.openstudy.modules.invitation.entity.EmployeeInvitation;
@@ -13,36 +16,56 @@ import com.openstudy.modules.invitation.entity.InvitationStatus;
 import com.openstudy.modules.invitation.repository.ApprovalStatusRepository;
 
 @Service
+@RequiredArgsConstructor
 public class ApprovalStatusService {
+
     /** Invitations the employee has already accepted; PENDING/EXPIRED never carry an accepting employee. */
-    private static final EnumSet<InvitationStatus> ACCEPTED = EnumSet.of(InvitationStatus.ACCEPTED,
-            InvitationStatus.APPROVED, InvitationStatus.REJECTED, InvitationStatus.CANCELLED);
-    private final EmployeeAccountService employees;
-    private final ApprovalStatusRepository repository;
-    private final SessionBranchService branches;
-    public ApprovalStatusService(EmployeeAccountService employees, ApprovalStatusRepository repository,
-            SessionBranchService branches) {
-        this.employees = employees;
-        this.repository = repository;
-        this.branches = branches;
-    }
+    private static final EnumSet<InvitationStatus> ACCEPTED = EnumSet.of(
+            InvitationStatus.ACCEPTED,
+            InvitationStatus.APPROVED,
+            InvitationStatus.REJECTED,
+            InvitationStatus.CANCELLED
+    );
+
+    private final EmployeeAccountService employeeAccountService;
+    private final ApprovalStatusRepository approvalStatusRepository;
+    private final SessionBranchService sessionBranchService;
 
     @Transactional(readOnly = true)
     public ApprovalStatus current(long employeeId, String sessionMode) {
-        var account = employees.byId(employeeId);
-        return new ApprovalStatus("PENDING".equals(account.status()) ? "승인 대기" : "활성", acceptedBy(employeeId),
-                "ACTIVE".equals(account.status()) && SessionBoundaryPolicy.APPROVAL_ONLY.equals(sessionMode));
+        EmployeeAccount account = employeeAccountService.byId(employeeId);
+        String accountStatus = "PENDING".equals(account.status()) ? "승인 대기" : "활성";
+        List<ApprovalStatus.Item> invitations = findAcceptedBy(employeeId);
+        boolean requiresLogin = "ACTIVE".equals(account.status())
+                && SessionBoundaryPolicy.APPROVAL_ONLY.equals(sessionMode);
+
+        return new ApprovalStatus(accountStatus, invitations, requiresLogin);
     }
 
-    private List<ApprovalStatus.Item> acceptedBy(long employeeId) {
-        var invitations = repository.findByAcceptedEmployeeIdAndAcceptedAtIsNotNullAndStatusInOrderByIdAsc(employeeId, ACCEPTED);
+    private List<ApprovalStatus.Item> findAcceptedBy(long employeeId) {
+        List<EmployeeInvitation> invitations = approvalStatusRepository
+                .findByAcceptedEmployeeIdAndAcceptedAtIsNotNullAndStatusInOrderByIdAsc(employeeId, ACCEPTED);
+        List<Long> branchIds = invitations.stream()
+                .map(EmployeeInvitation::getBranchId)
+                .distinct()
+                .toList();
+
         // The invitee has no branch access yet, so names come from the session contract, not authorized branch reads.
-        var names = branches.names(invitations.stream().map(EmployeeInvitation::getBranchId).distinct().toList());
-        return invitations.stream().map(i -> new ApprovalStatus.Item(Long.toString(i.getId()), Long.toString(i.getBranchId()),
-                names.get(i.getBranchId()), status(i.getStatus()), i.getRejectionReason(), i.getUpdatedAt().toString())).toList();
+        Map<Long, String> branchNames = sessionBranchService.names(branchIds);
+
+        return invitations.stream()
+                .map(invitation -> new ApprovalStatus.Item(
+                        Long.toString(invitation.getId()),
+                        Long.toString(invitation.getBranchId()),
+                        branchNames.get(invitation.getBranchId()),
+                        toStatusLabel(invitation.getStatus()),
+                        invitation.getRejectionReason(),
+                        invitation.getUpdatedAt().toString()
+                ))
+                .toList();
     }
 
-    private static String status(InvitationStatus status) {
+    private static String toStatusLabel(InvitationStatus status) {
         return switch (status) {
             case ACCEPTED -> "승인 대기";
             case APPROVED -> "활성";

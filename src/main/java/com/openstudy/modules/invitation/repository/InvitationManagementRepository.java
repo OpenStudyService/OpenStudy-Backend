@@ -2,16 +2,19 @@ package com.openstudy.modules.invitation.repository;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.ObjectMapper;
 import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
+import com.openstudy.common.idempotency.IdempotencyRecord;
 import com.openstudy.common.idempotency.IdempotencyStore;
 import com.openstudy.common.persistence.DuplicateKeys;
 import com.openstudy.common.web.ApiVersion;
@@ -20,6 +23,7 @@ import com.openstudy.modules.branch.service.SessionBranchService;
 import com.openstudy.modules.invitation.dto.Invitation;
 import com.openstudy.modules.invitation.entity.EmployeeInvitation;
 import com.openstudy.modules.invitation.entity.InitialRole;
+import com.openstudy.modules.invitation.entity.InvitationSendJob;
 import com.openstudy.modules.invitation.entity.InvitationStatus;
 
 /**
@@ -29,109 +33,166 @@ import com.openstudy.modules.invitation.entity.InvitationStatus;
  * Grants are stored as permission ids and branch names come from the branch module (JPA-03).</p>
  */
 @Repository
+@RequiredArgsConstructor
 public class InvitationManagementRepository {
-    private static final String CREATE = "createInvitation";
-    private static final Set<InvitationStatus> ACTIVE = EnumSet.of(InvitationStatus.PENDING, InvitationStatus.ACCEPTED);
-    private final InvitationRepository invitations;
-    private final InvitationSendJobRepository jobs;
-    private final PermissionCatalog permissions;
-    private final SessionBranchService branches;
-    private final ObjectMapper json;
-    private final AuditTrail audit;
-    private final IdempotencyStore requests;
 
-    public InvitationManagementRepository(InvitationRepository invitations, InvitationSendJobRepository jobs,
-            PermissionCatalog permissions, SessionBranchService branches, ObjectMapper json, AuditTrail audit,
-            IdempotencyStore requests) {
-        this.invitations = invitations;
-        this.jobs = jobs;
-        this.permissions = permissions;
-        this.branches = branches;
-        this.json = json;
-        this.audit = audit;
-        this.requests = requests;
+    private static final String CREATE_OPERATION = "createInvitation";
+    private static final String AUDIT_ENTITY_TYPE = "invitations";
+    private static final int CREATED_STATUS = 201;
+    private static final int FIRST_REVISION = 1;
+    private static final Set<InvitationStatus> ACTIVE = EnumSet.of(InvitationStatus.PENDING, InvitationStatus.ACCEPTED);
+
+    private final InvitationRepository invitationRepository;
+    private final InvitationSendJobRepository invitationSendJobRepository;
+    private final PermissionCatalog permissionCatalog;
+    private final SessionBranchService sessionBranchService;
+    private final ObjectMapper objectMapper;
+    private final AuditTrail auditTrail;
+    private final IdempotencyStore idempotencyStore;
+
+    public record Stored(
+            long id,
+            long branch,
+            String email,
+            String role,
+            String state,
+            long revision,
+            long version,
+            Instant expiresAt,
+            Long acceptedEmployeeId,
+            Invitation view
+    ) {
     }
 
-    public record Stored(long id, long branch, String email, String role, String state, long revision,
-            long version, Instant expiresAt, Long acceptedEmployeeId, Invitation view) {}
+    /** Server-side view of a link holder's invitation. The token hash never leaves this layer. */
+    public record Link(
+            long id,
+            long branch,
+            String branchName,
+            String name,
+            String email,
+            String role,
+            String state,
+            Instant expiresAt,
+            byte[] tokenHash
+    ) {
+    }
 
     /** Locked: the invitation FOR UPDATE, then its grant rows and current-revision job FOR SHARE, as before. */
     public Optional<Stored> find(long id, boolean lock, Instant now) {
-        var found = lock ? invitations.findForUpdateById(id) : invitations.findById(id);
-        if (found.isEmpty()) return Optional.empty();
-        var row = found.get();
-        var grantIds = lock ? invitations.lockedPermissionIds(id).stream().map(Number::longValue).toList()
-                : invitations.permissionIds(id);
-        var grants = permissions.codes(grantIds);
-        var delivery = lock ? jobs.findSharedByInvitationIdAndRevision(id, row.getRevision())
-                : jobs.findByInvitationIdAndRevision(id, row.getRevision());
+        Optional<EmployeeInvitation> found = lock
+                ? invitationRepository.findForUpdateById(id)
+                : invitationRepository.findById(id);
+
+        if (found.isEmpty()) {
+            return Optional.empty();
+        }
+
+        EmployeeInvitation row = found.get();
+        List<Long> grantIds = lock
+                ? invitationRepository.findPermissionIdsForShare(id).stream().map(Number::longValue).toList()
+                : invitationRepository.findPermissionIds(id);
+        List<String> grants = permissionCatalog.codes(grantIds);
+        Optional<InvitationSendJob> delivery = lock
+                ? invitationSendJobRepository.findSharedByInvitationIdAndRevision(id, row.getRevision())
+                : invitationSendJobRepository.findByInvitationIdAndRevision(id, row.getRevision());
+
         String state = row.getStatus().name();
-        var result = new Invitation(Long.toString(id), ApiVersion.fromDatabase(row.getVersion()), row.getCreatedAt(),
-                row.getUpdatedAt(), Long.toString(row.getBranchId()), row.getInviteeName(), row.getInviteeEmail(),
-                row.getInitialRole() == InitialRole.MANAGER ? "admin" : "staff", grants,
-                status("PENDING".equals(state) && !now.isBefore(row.getExpiresAt()) ? "EXPIRED" : state),
-                delivery(delivery.map(job -> job.getStatus().name()).orElse("SKIPPED")), row.getExpiresAt(),
-                row.getAcceptedEmployeeId() == null ? null : row.getAcceptedEmployeeId().toString(), row.getRejectionReason());
-        return Optional.of(new Stored(id, row.getBranchId(), row.getInviteeEmail(), row.getInitialRole().name(), state,
-                row.getRevision(), row.getVersion(), row.getExpiresAt(), row.getAcceptedEmployeeId(), result));
+        Invitation view = toView(row, grants, delivery, state, now);
+
+        return Optional.of(new Stored(
+                id,
+                row.getBranchId(),
+                row.getInviteeEmail(),
+                row.getInitialRole().name(),
+                state,
+                row.getRevision(),
+                row.getVersion(),
+                row.getExpiresAt(),
+                row.getAcceptedEmployeeId(),
+                view
+        ));
     }
 
     public List<Long> ids(Set<Long> branches) {
-        if (branches.isEmpty()) return List.of();
-        return invitations.findIdsByBranchIdIn(branches);
+        if (branches.isEmpty()) {
+            return List.of();
+        }
+
+        return invitationRepository.findIdsByBranchIdIn(branches);
     }
 
     public void lock(long id) {
-        invitations.findForUpdateById(id);
+        invitationRepository.findForUpdateById(id);
     }
 
     public void lockCandidates(long branch, String email) {
-        invitations.findForUpdateByBranchIdAndInviteeEmailAndStatusInOrderByIdAsc(branch, email, ACTIVE);
+        invitationRepository.findForUpdateByBranchIdAndInviteeEmailAndStatusInOrderByIdAsc(branch, email, ACTIVE);
     }
 
     public List<Stored> active(long branch, String email, Instant now) {
-        return invitations.findForUpdateByBranchIdAndInviteeEmailAndStatusInOrderByIdAsc(branch, email, ACTIVE).stream()
-                .map(invitation -> find(invitation.getId(), true, now).orElseThrow()).toList();
+        return invitationRepository.findForUpdateByBranchIdAndInviteeEmailAndStatusInOrderByIdAsc(branch, email, ACTIVE)
+                .stream()
+                .map(invitation -> find(invitation.getId(), true, now).orElseThrow())
+                .toList();
     }
 
     /** Unknown permission codes are skipped, as the former INSERT ... SELECT by code skipped them. */
-    public long create(long actor, long branch, String name, String email, String role, Long preset,
-            List<String> permissionCodes, Instant expires) {
+    public long create(
+            long actor,
+            long branch,
+            String name,
+            String email,
+            String role,
+            Long preset,
+            List<String> permissionCodes,
+            Instant expires
+    ) {
         // The service maps a duplicate active invitation (uk_employee_invitations_1) to DUPLICATE_INVITATION.
-        var invitation = DuplicateKeys.translate(() -> invitations.saveAndFlush(EmployeeInvitation.create(branch, name, email,
-                InitialRole.valueOf(role), preset, permissions.ids(permissionCodes), expires, actor)));
+        EmployeeInvitation invitation = DuplicateKeys.translate(() -> invitationRepository.saveAndFlush(
+                EmployeeInvitation.create(
+                        branch,
+                        name,
+                        email,
+                        InitialRole.valueOf(role),
+                        preset,
+                        permissionCatalog.ids(permissionCodes),
+                        expires,
+                        actor
+                )
+        ));
         long id = invitation.getId();
-        jobs.enqueue(id, 1);
+        invitationSendJobRepository.enqueue(id, FIRST_REVISION);
+
         return id;
     }
 
     public void expire(long actor, Stored invitation) {
-        invitations.expireBy(invitation.id(), actor);
-        jobs.skipOpenJobs(invitation.id());
+        invitationRepository.expireBy(invitation.id(), actor);
+        invitationSendJobRepository.skipOpenJobs(invitation.id());
     }
 
     public void reissue(long actor, Stored invitation, Instant expires) {
-        jobs.skipOpenJobs(invitation.id());
-        invitations.reissue(invitation.id(), actor, expires);
-        jobs.enqueue(invitation.id(), Math.toIntExact(invitation.revision() + 1));
+        invitationSendJobRepository.skipOpenJobs(invitation.id());
+        invitationRepository.reissue(invitation.id(), actor, expires);
+        invitationSendJobRepository.enqueue(invitation.id(), Math.toIntExact(invitation.revision() + 1));
     }
 
     public void cancel(long actor, long id) {
-        invitations.cancel(id, actor);
-        jobs.skipOpenJobs(id);
+        invitationRepository.cancel(id, actor);
+        invitationSendJobRepository.skipOpenJobs(id);
     }
 
     public void reject(long actor, long id, String reason) {
-        invitations.reject(id, actor, reason);
-        jobs.skipOpenJobs(id);
+        invitationRepository.reject(id, actor, reason);
+        invitationSendJobRepository.skipOpenJobs(id);
     }
 
-    /** Server-side view of a link holder's invitation. The token hash never leaves this layer. */
-    public record Link(long id, long branch, String branchName, String name, String email, String role,
-            String state, Instant expiresAt, byte[] tokenHash) {}
-
     public Optional<Link> link(byte[] tokenHash) {
-        return invitations.findIdsByTokenHash(tokenHash).stream().findFirst().flatMap(id -> link(id, false));
+        return invitationRepository.findIdsByTokenHash(tokenHash)
+                .stream()
+                .findFirst()
+                .flatMap(id -> link(id, false));
     }
 
     /**
@@ -139,49 +200,137 @@ public class InvitationManagementRepository {
      * AuthorizedCommands, so the name now comes from the branch module's session contract without a join.
      */
     public Optional<Link> link(long id, boolean lock) {
-        return (lock ? invitations.findForUpdateById(id) : invitations.findById(id)).map(i -> new Link(i.getId(), i.getBranchId(),
-                branches.names(List.of(i.getBranchId())).get(i.getBranchId()), i.getInviteeName(), i.getInviteeEmail(),
-                i.getInitialRole().name(), i.getStatus().name(), i.getExpiresAt(), i.getTokenHash()));
+        Optional<EmployeeInvitation> found = lock
+                ? invitationRepository.findForUpdateById(id)
+                : invitationRepository.findById(id);
+
+        return found.map(this::toLink);
     }
 
     public void accept(long employee, long id) {
-        invitations.accept(id, employee);
-        jobs.skipOpenJobs(id);
+        invitationRepository.accept(id, employee);
+        invitationSendJobRepository.skipOpenJobs(id);
     }
 
     public void approve(long actor, long id) {
-        invitations.approve(id, actor);
+        invitationRepository.approve(id, actor);
     }
 
-    public void changed(long actor, long branch, long id, String action, Invitation before, Invitation after, String requestId) {
-        audit.record(AuditEvent.change(actor, branch, "invitations", id, action,
-                before == null ? null : json.writeValueAsString(before), json.writeValueAsString(after), requestId));
+    public void changed(
+            long actor,
+            long branch,
+            long id,
+            String action,
+            Invitation before,
+            Invitation after,
+            String requestId
+    ) {
+        String beforeJson = before == null ? null : objectMapper.writeValueAsString(before);
+        AuditEvent event = AuditEvent.change(
+                actor,
+                branch,
+                AUDIT_ENTITY_TYPE,
+                id,
+                action,
+                beforeJson,
+                objectMapper.writeValueAsString(after),
+                requestId
+        );
+
+        auditTrail.record(event);
     }
 
     public Optional<Invitation> replay(long actor, long branch, String key, Object input, Instant now) {
-        var stored = requests.lock(actor, CREATE, Long.toString(branch), key);
-        if (stored.isEmpty()) return Optional.empty();
-        var prior = stored.get();
-        if (!now.isBefore(prior.getExpiresAt())) {
-            requests.discard(prior);
+        Optional<IdempotencyRecord> stored = idempotencyStore.lock(actor, CREATE_OPERATION, Long.toString(branch), key);
+
+        if (stored.isEmpty()) {
             return Optional.empty();
         }
+
+        IdempotencyRecord prior = stored.get();
+
+        if (!now.isBefore(prior.getExpiresAt())) {
+            idempotencyStore.discard(prior);
+            return Optional.empty();
+        }
+
         if (!MessageDigest.isEqual(hash(input), prior.getRequestHash())) {
             throw ApiException.conflict("IDEMPOTENCY_CONFLICT", "같은 키에 다른 입력을 사용할 수 없습니다.");
         }
-        return Optional.of(json.readValue(prior.getResponseJson(), Invitation.class));
+
+        return Optional.of(objectMapper.readValue(prior.getResponseJson(), Invitation.class));
     }
 
     public void remember(long actor, long branch, String key, Object input, Invitation response, Instant expires) {
-        requests.complete(actor, CREATE, Long.toString(branch), key, hash(input), 201, json.writeValueAsString(response), expires);
+        idempotencyStore.complete(
+                actor,
+                CREATE_OPERATION,
+                Long.toString(branch),
+                key,
+                hash(input),
+                CREATED_STATUS,
+                objectMapper.writeValueAsString(response),
+                expires
+        );
+    }
+
+    private Link toLink(EmployeeInvitation invitation) {
+        long branchId = invitation.getBranchId();
+        String branchName = sessionBranchService.names(List.of(branchId)).get(branchId);
+
+        return new Link(
+                invitation.getId(),
+                branchId,
+                branchName,
+                invitation.getInviteeName(),
+                invitation.getInviteeEmail(),
+                invitation.getInitialRole().name(),
+                invitation.getStatus().name(),
+                invitation.getExpiresAt(),
+                invitation.getTokenHash()
+        );
     }
 
     private byte[] hash(Object input) {
-        try { return MessageDigest.getInstance("SHA-256").digest(json.writeValueAsString(input).getBytes(StandardCharsets.UTF_8)); }
-        catch (java.security.NoSuchAlgorithmException exception) { throw new IllegalStateException(exception); }
+        byte[] json = objectMapper.writeValueAsString(input).getBytes(StandardCharsets.UTF_8);
+
+        try {
+            return MessageDigest.getInstance("SHA-256").digest(json);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 
-    private static String status(String state) {
+    private static Invitation toView(
+            EmployeeInvitation row,
+            List<String> grants,
+            Optional<InvitationSendJob> delivery,
+            String state,
+            Instant now
+    ) {
+        boolean expired = "PENDING".equals(state) && !now.isBefore(row.getExpiresAt());
+        String deliveryState = delivery.map(job -> job.getStatus().name()).orElse("SKIPPED");
+        String employeeId = row.getAcceptedEmployeeId() == null ? null : row.getAcceptedEmployeeId().toString();
+
+        return new Invitation(
+                Long.toString(row.getId()),
+                ApiVersion.fromDatabase(row.getVersion()),
+                row.getCreatedAt(),
+                row.getUpdatedAt(),
+                Long.toString(row.getBranchId()),
+                row.getInviteeName(),
+                row.getInviteeEmail(),
+                row.getInitialRole() == InitialRole.MANAGER ? "admin" : "staff",
+                grants,
+                toStatusLabel(expired ? "EXPIRED" : state),
+                toDeliveryLabel(deliveryState),
+                row.getExpiresAt(),
+                employeeId,
+                row.getRejectionReason()
+        );
+    }
+
+    private static String toStatusLabel(String state) {
         return switch (state) {
             case "PENDING" -> "초대 대기";
             case "ACCEPTED" -> "승인 대기";
@@ -193,7 +342,7 @@ public class InvitationManagementRepository {
         };
     }
 
-    private static String delivery(String state) {
+    private static String toDeliveryLabel(String state) {
         return switch (state) {
             case "PENDING" -> "발송 대기";
             case "PROCESSING" -> "발송 중";
