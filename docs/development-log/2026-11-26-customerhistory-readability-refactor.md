@@ -40,7 +40,7 @@
   - 고객 ID 유효 여부를 `validCustomerId`로 이름 붙였다.
   - 거부 감사 기록 인자를 한 줄에 하나씩 썼다.
 - `CustomerSpaceHistoryService`: `var`를 실제 타입으로 바꾸고 응답 조립을 줄바꿈했다.
-- `CustomerHistoryController`: 클래스 경로를 `/api`로 두고 메서드에 `/customers/{id}/...`를 붙였다. 최종 경로는 같다.
+- `CustomerHistoryController`: 클래스 경로는 두 메서드의 공통 접두사인 `/api/customers/{id}`를 유지했다. 처음에는 `/api`로 줄이고 메서드마다 `/customers/{id}/...`를 붙였지만, 규칙(공통 접두사는 클래스에)에 어긋나 되돌렸다. 최종 경로는 같다.
 - DTO 레코드 세 개: 구성 요소를 줄바꿈했다.
 
 ## 5. 검증 결과

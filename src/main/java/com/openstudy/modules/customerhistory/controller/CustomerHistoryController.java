@@ -18,7 +18,7 @@ import com.openstudy.modules.customerhistory.service.CrossBranchSummaryService;
 import com.openstudy.modules.customerhistory.service.CustomerSpaceHistoryService;
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/customers/{id}")
 @RequiredArgsConstructor
 public class CustomerHistoryController {
 
@@ -26,7 +26,7 @@ public class CustomerHistoryController {
     private final CustomerSpaceHistoryService customerSpaceHistoryService;
 
     /** A POST so that the reason stays out of the URL; the answer is a read, so 200. */
-    @PostMapping("/customers/{id}/cross-branch-summary")
+    @PostMapping("/cross-branch-summary")
     public CrossBranchSummary getCrossBranchSummary(
             Authentication actor,
             @PathVariable long id,
@@ -36,7 +36,7 @@ public class CustomerHistoryController {
         return crossBranchSummaryService.summarize(actorId(actor), id, body, ApiRequestFilter.requestId(request));
     }
 
-    @GetMapping("/customers/{id}/space-history")
+    @GetMapping("/space-history")
     public SpaceHistory getCustomerSpaceHistory(
             Authentication actor,
             @PathVariable long id,
