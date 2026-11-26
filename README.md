@@ -52,7 +52,7 @@ src/main/java/com/openstudy/
 ```
 
 - 모듈 사이에는 공개한 service 진입점과 DTO만 사용하고, 다른 모듈의 entity·repository 접근과 순환 의존을 금지합니다. 아키텍처 테스트로 경계를 검사합니다.
-- 상세: [디렉터리 설계](docs/architecture/directory-structure.md), [권한 정책](docs/architecture/authorization-policies.md), [설계 결정](docs/design-decisions/README.md)
+- 상세: [디렉터리 설계](docs/architecture/directory-structure.md), [권한 정책](docs/architecture/authorization-policies.md), [코드 가독성 규칙](docs/architecture/code-readability.md), [설계 결정](docs/design-decisions/README.md)
 
 ### 데이터 정합성
 
