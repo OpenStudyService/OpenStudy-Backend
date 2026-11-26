@@ -21,20 +21,31 @@ import com.openstudy.modules.customerhistory.service.CustomerSpaceHistoryService
 @RequestMapping("/api/customers/{id}")
 @RequiredArgsConstructor
 public class CustomerHistoryController {
-    private final CrossBranchSummaryService summaries;
-    private final CustomerSpaceHistoryService histories;
+
+    private final CrossBranchSummaryService crossBranchSummaryService;
+    private final CustomerSpaceHistoryService customerSpaceHistoryService;
 
     /** A POST so that the reason stays out of the URL; the answer is a read, so 200. */
     @PostMapping("/cross-branch-summary")
-    public CrossBranchSummary summary(Authentication actor, @PathVariable long id, @RequestBody Map<String, Object> body,
-            HttpServletRequest request) {
-        return summaries.summary(actor(actor), id, body, ApiRequestFilter.requestId(request));
+    public CrossBranchSummary getCrossBranchSummary(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        return crossBranchSummaryService.summarize(actorId(actor), id, body, ApiRequestFilter.requestId(request));
     }
 
     @GetMapping("/space-history")
-    public SpaceHistory spaceHistory(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope) {
-        return histories.history(actor(actor), id, scope);
+    public SpaceHistory getCustomerSpaceHistory(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope
+    ) {
+        return customerSpaceHistoryService.findHistory(actorId(actor), id, scope);
     }
 
-    private static long actor(Authentication authentication) { return Long.parseLong(authentication.getName()); }
+    private static long actorId(Authentication authentication) {
+        return Long.parseLong(authentication.getName());
+    }
 }

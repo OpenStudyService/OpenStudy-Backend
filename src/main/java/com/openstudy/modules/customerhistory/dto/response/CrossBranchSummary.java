@@ -5,4 +5,10 @@ import java.util.List;
 import com.openstudy.modules.ticket.dto.CrossBranchPass;
 
 /** Contract schema {@code CrossBranchSummary}: the whole answer, so anything added here widens what POL-01 allows. */
-public record CrossBranchSummary(String customerId, List<CrossBranchPass> passes, List<CrossBranchUsage> usages, Instant asOf) {}
+public record CrossBranchSummary(
+        String customerId,
+        List<CrossBranchPass> passes,
+        List<CrossBranchUsage> usages,
+        Instant asOf
+) {
+}

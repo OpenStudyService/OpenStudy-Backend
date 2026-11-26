@@ -1,6 +1,7 @@
 package com.openstudy.modules.customerhistory.service;
 
 import java.util.LinkedHashMap;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -18,18 +19,41 @@ import com.openstudy.modules.authorization.service.AuthorizationService;
 @Service
 @RequiredArgsConstructor
 public class CrossBranchDenialTrail {
-    private final AuditTrail audit;
-    private final AuthorizationService policy;
-    private final ObjectMapper json;
 
-    /** Both IDs come from the client: one that the columns cannot hold is kept as text, so it cannot turn the 403 into a 500. */
+    private final AuditTrail auditTrail;
+    private final AuthorizationService authorizationService;
+    private final ObjectMapper objectMapper;
+
+    /**
+     * Both IDs come from the client: one that the columns cannot hold is kept as text, so it cannot turn the 403 into
+     * a 500.
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void record(long actor, long customerId, long branch, String requestId) {
-        var unmatched = new LinkedHashMap<String, String>();
-        if (customerId < 1) unmatched.put("customerId", Long.toString(customerId));
-        boolean knownBranch = policy.branchExists(branch);
-        if (!knownBranch) unmatched.put("branchId", Long.toString(branch));
-        audit.record(AuditEvent.denied(actor, knownBranch ? branch : null, CrossBranchSummaryService.ENTITY, customerId < 1 ? null : customerId,
-                "CROSS_BRANCH_SUMMARY_DENIED", unmatched.isEmpty() ? null : json.writeValueAsString(unmatched), requestId));
+        Map<String, String> unmatched = new LinkedHashMap<>();
+        boolean validCustomerId = customerId >= 1;
+
+        if (!validCustomerId) {
+            unmatched.put("customerId", Long.toString(customerId));
+        }
+
+        boolean knownBranch = authorizationService.branchExists(branch);
+
+        if (!knownBranch) {
+            unmatched.put("branchId", Long.toString(branch));
+        }
+
+        String unmatchedJson = unmatched.isEmpty() ? null : objectMapper.writeValueAsString(unmatched);
+        AuditEvent event = AuditEvent.denied(
+                actor,
+                knownBranch ? branch : null,
+                CrossBranchSummaryService.AUDIT_ENTITY_TYPE,
+                validCustomerId ? customerId : null,
+                "CROSS_BRANCH_SUMMARY_DENIED",
+                unmatchedJson,
+                requestId
+        );
+
+        auditTrail.record(event);
     }
 }
