@@ -25,44 +25,81 @@ import com.openstudy.modules.customer.service.CustomerService;
 
 /** There is deliberately no DELETE mapping: customers are deactivated, never removed (FR-MEM-06). */
 @RestController
-@RequestMapping("/api/customers")
+@RequestMapping("/api")
 @RequiredArgsConstructor
 public class CustomerController {
-    private final CustomerService service;
 
-    @GetMapping
-    public PageResponse<CustomerListItem> list(Authentication actor, @RequestParam(defaultValue = "all") String scope,
-            @RequestParam(defaultValue = "1") long page, @RequestParam(defaultValue = "20") int pageSize,
-            @RequestParam(required = false) String q, @RequestParam(required = false) String sort,
-            @RequestParam(required = false) String direction, @RequestParam(required = false) String status) {
-        return service.list(actor(actor), scope, ListQuery.parse(page, pageSize, q, sort, direction,
-                Sort.keys(), "registeredAt"), status);
+    private static final String DEFAULT_SORT = "registeredAt";
+
+    private final CustomerService customerService;
+
+    @GetMapping("/customers")
+    public PageResponse<CustomerListItem> listCustomers(
+            Authentication actor,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String direction,
+            @RequestParam(required = false) String status
+    ) {
+        ListQuery query = ListQuery.parse(page, pageSize, q, sort, direction, Sort.keys(), DEFAULT_SORT);
+
+        return customerService.list(actorId(actor), scope, query, status);
     }
 
-    @GetMapping("/{id}")
-    public CustomerDetail get(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope) {
-        return service.get(actor(actor), id, scope);
+    @GetMapping("/customers/{id}")
+    public CustomerDetail getCustomer(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope
+    ) {
+        return customerService.get(actorId(actor), id, scope);
     }
 
-    @PostMapping
-    public ResponseEntity<CustomerDetail> create(Authentication actor, @RequestParam(defaultValue = "all") String scope,
+    @PostMapping("/customers")
+    public ResponseEntity<CustomerDetail> createCustomer(
+            Authentication actor,
+            @RequestParam(defaultValue = "all") String scope,
             @RequestHeader(name = "Idempotency-Key", required = false) String key,
-            @RequestBody Map<String, Object> body, HttpServletRequest request) {
-        var result = service.create(actor(actor), scope, key, body, ApiRequestFilter.requestId(request));
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        CustomerDetail result = customerService.create(
+                actorId(actor),
+                scope,
+                key,
+                body,
+                ApiRequestFilter.requestId(request)
+        );
+
         return ResponseEntity.created(URI.create("/api/customers/" + result.id())).body(result);
     }
 
-    @PatchMapping("/{id}")
-    public CustomerDetail update(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope,
-            @RequestBody Map<String, Object> body, HttpServletRequest request) {
-        return service.update(actor(actor), id, scope, body, ApiRequestFilter.requestId(request));
+    @PatchMapping("/customers/{id}")
+    public CustomerDetail updateCustomer(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        return customerService.update(actorId(actor), id, scope, body, ApiRequestFilter.requestId(request));
     }
 
-    @PostMapping("/{id}/status")
-    public CustomerDetail status(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope,
-            @RequestBody Map<String, Object> body, HttpServletRequest request) {
-        return service.changeStatus(actor(actor), id, scope, body, ApiRequestFilter.requestId(request));
+    @PostMapping("/customers/{id}/status")
+    public CustomerDetail changeCustomerStatus(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        return customerService.changeStatus(actorId(actor), id, scope, body, ApiRequestFilter.requestId(request));
     }
 
-    private static long actor(Authentication authentication) { return Long.parseLong(authentication.getName()); }
+    private static long actorId(Authentication authentication) {
+        return Long.parseLong(authentication.getName());
+    }
 }

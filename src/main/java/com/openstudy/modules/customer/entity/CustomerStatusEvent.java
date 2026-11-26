@@ -20,23 +20,41 @@ import org.hibernate.generator.EventType;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class CustomerStatusEvent {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
     @Column(name = "customer_id", nullable = false, updatable = false)
     private long customerId;
+
     @Column(name = "previous_status", nullable = false, length = 30, updatable = false)
     private String previousStatus;
+
     @Column(name = "new_status", nullable = false, length = 30, updatable = false)
     private String newStatus;
+
     @Column(nullable = false, length = 500, updatable = false)
     private String reason;
+
     @Column(name = "actor_employee_id", nullable = false, updatable = false)
     private long actorEmployeeId;
-    @Generated(event = EventType.INSERT) @Column(name = "changed_at", insertable = false, updatable = false)
+
+    @Generated(event = EventType.INSERT)
+    @Column(name = "changed_at", insertable = false, updatable = false)
     private Instant changedAt;
 
-    public CustomerStatusEvent(long customerId, CustomerStatus previous, CustomerStatus next, String reason, long actor) {
-        this.customerId = customerId; this.previousStatus = previous.name(); this.newStatus = next.name();
-        this.reason = reason; this.actorEmployeeId = actor;
+    public CustomerStatusEvent(
+            long customerId,
+            CustomerStatus previous,
+            CustomerStatus next,
+            String reason,
+            long actor
+    ) {
+        this.customerId = customerId;
+        this.previousStatus = previous.name();
+        this.newStatus = next.name();
+        this.reason = reason;
+        this.actorEmployeeId = actor;
     }
 }

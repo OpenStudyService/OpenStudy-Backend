@@ -7,5 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import com.openstudy.modules.customer.entity.CustomerStatusEvent;
 
 public interface CustomerStatusEventRepository extends JpaRepository<CustomerStatusEvent, Long> {
+
     List<CustomerStatusEvent> findByCustomerIdOrderByIdAsc(long customerId);
 }
