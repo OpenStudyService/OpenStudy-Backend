@@ -54,6 +54,9 @@
 - `./gradlew compileJava compileTestJava`: 통과.
 - customerhistory·passhistory `src/main`에 `var`, 중괄호 없는 `if`·`for`, 120자를 넘는 코드 줄(주석 제외)이 남아 있지 않은 것을 확인했다.
 - `./gradlew test --tests "com.openstudy.modules.passhistory.*" --tests "com.openstudy.modules.customerhistory.*"`: 80개 통과, 실패 0.
+- `./gradlew test -PtestForks=2`: 1,270개 중 실패 0, 건너뜀 52 (BUILD SUCCESSFUL, 약 44분).
+  - 별도 git worktree에서 실행했다. 커밋하지 않는 로컬 임베딩 모델(`.models/koen-e5-tiny-q8`)이 worktree에 없어 `DOMAINLENS_EMBEDDING_DIRECTORY`로 원래 체크아웃의 모델을 지정했다.
+  - 기준(건너뜀 28)보다 24개 많은 건너뜀은 작업 디렉터리의 `.models` 경로를 직접 확인하는 AI 조건부 테스트다. 이 모듈과 관계없는 환경 차이이며, 이번 실행에서는 확인하지 못했다.
 
 ## 6. 남은 작업 / 보류 사항
 
