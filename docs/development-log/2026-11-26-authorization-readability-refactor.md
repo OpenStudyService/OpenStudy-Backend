@@ -57,7 +57,8 @@
 
 - `./gradlew compileJava compileTestJava`: 통과.
 - authorization `src/main`에 `var`, 중괄호 없는 `if`·`for`, 120자를 넘는 코드 줄(주석 제외)이 남아 있지 않은 것을 확인했다.
-- 인터셉터와 명령 잠금은 모든 API에 영향을 주므로 전체 테스트를 실행했다. 결과는 아래에 덧붙인다.
+- 인터셉터와 명령 잠금은 모든 API에 영향을 주므로 전체 테스트를 실행했다.
+  - `./gradlew test`: 1,270개 중 실패 0, 건너뜀 28 (BUILD SUCCESSFUL, 약 18분). 건너뛴 28개는 ai·sales 패키지의 AI 관련 조건부 테스트다.
 
 ## 6. 남은 작업 / 보류 사항
 
