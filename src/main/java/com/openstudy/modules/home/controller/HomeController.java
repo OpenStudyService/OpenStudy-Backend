@@ -12,14 +12,19 @@ import com.openstudy.modules.home.service.HomeSummaryService;
 
 /** The operations home (aggregation-api.md "운영 홈 요약"). The screen re-reads it on entry and on request (ADR-COM-001). */
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/home")
 @RequiredArgsConstructor
 public class HomeController {
-    private final HomeSummaryService service;
 
-    @GetMapping("/home/summary")
-    public HomeSummary summary(Authentication actor, @RequestParam(defaultValue = "all") String scope,
-            @RequestParam(required = false) String mine, @RequestParam(required = false) String assigneeId) {
-        return service.summary(Long.parseLong(actor.getName()), scope, mine, assigneeId);
+    private final HomeSummaryService homeSummaryService;
+
+    @GetMapping("/summary")
+    public HomeSummary getHomeSummary(
+            Authentication actor,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestParam(required = false) String mine,
+            @RequestParam(required = false) String assigneeId
+    ) {
+        return homeSummaryService.getSummary(Long.parseLong(actor.getName()), scope, mine, assigneeId);
     }
 }
