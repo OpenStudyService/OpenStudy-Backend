@@ -25,7 +25,7 @@ import com.openstudy.modules.customer.service.CustomerService;
 
 /** There is deliberately no DELETE mapping: customers are deactivated, never removed (FR-MEM-06). */
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/customers")
 @RequiredArgsConstructor
 public class CustomerController {
 
@@ -33,7 +33,7 @@ public class CustomerController {
 
     private final CustomerService customerService;
 
-    @GetMapping("/customers")
+    @GetMapping
     public PageResponse<CustomerListItem> listCustomers(
             Authentication actor,
             @RequestParam(defaultValue = "all") String scope,
@@ -49,7 +49,7 @@ public class CustomerController {
         return customerService.list(actorId(actor), scope, query, status);
     }
 
-    @GetMapping("/customers/{id}")
+    @GetMapping("/{id}")
     public CustomerDetail getCustomer(
             Authentication actor,
             @PathVariable long id,
@@ -58,7 +58,7 @@ public class CustomerController {
         return customerService.get(actorId(actor), id, scope);
     }
 
-    @PostMapping("/customers")
+    @PostMapping
     public ResponseEntity<CustomerDetail> createCustomer(
             Authentication actor,
             @RequestParam(defaultValue = "all") String scope,
@@ -77,7 +77,7 @@ public class CustomerController {
         return ResponseEntity.created(URI.create("/api/customers/" + result.id())).body(result);
     }
 
-    @PatchMapping("/customers/{id}")
+    @PatchMapping("/{id}")
     public CustomerDetail updateCustomer(
             Authentication actor,
             @PathVariable long id,
@@ -88,7 +88,7 @@ public class CustomerController {
         return customerService.update(actorId(actor), id, scope, body, ApiRequestFilter.requestId(request));
     }
 
-    @PostMapping("/customers/{id}/status")
+    @PostMapping("/{id}/status")
     public CustomerDetail changeCustomerStatus(
             Authentication actor,
             @PathVariable long id,

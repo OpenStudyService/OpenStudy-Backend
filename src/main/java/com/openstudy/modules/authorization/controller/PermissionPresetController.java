@@ -12,7 +12,7 @@ import com.openstudy.modules.authorization.dto.PermissionPreset;
 import com.openstudy.modules.authorization.service.PermissionPresetService;
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/permission-presets")
 @RequiredArgsConstructor
 public class PermissionPresetController {
 
@@ -21,7 +21,7 @@ public class PermissionPresetController {
 
     private final PermissionPresetService permissionPresetService;
 
-    @GetMapping("/permission-presets")
+    @GetMapping
     public PageResponse<PermissionPreset> listPermissionPresets(
             Authentication actor,
             @RequestParam(defaultValue = "1") long page,
@@ -35,7 +35,7 @@ public class PermissionPresetController {
         return permissionPresetService.list(actorId(actor), query);
     }
 
-    @PostMapping("/permission-presets")
+    @PostMapping
     public ResponseEntity<PermissionPreset> createPermissionPreset(
             Authentication actor,
             @RequestBody Map<String, Object> body,
@@ -52,7 +52,7 @@ public class PermissionPresetController {
         return ResponseEntity.status(HttpStatus.CREATED).body(result);
     }
 
-    @PatchMapping("/permission-presets/{id}")
+    @PatchMapping("/{id}")
     public PermissionPreset updatePermissionPreset(
             Authentication actor,
             @PathVariable long id,

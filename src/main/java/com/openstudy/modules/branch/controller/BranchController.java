@@ -21,7 +21,7 @@ import tools.jackson.databind.ObjectMapper;
 import jakarta.validation.Validator;
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/branches")
 @RequiredArgsConstructor
 public class BranchController {
 
@@ -34,7 +34,7 @@ public class BranchController {
     private final ObjectMapper objectMapper;
     private final Validator validator;
 
-    @GetMapping("/branches")
+    @GetMapping
     public PageResponse<Branch> listBranches(
             Authentication actor,
             @RequestParam(defaultValue = ALL_SCOPE) String scope,
@@ -50,7 +50,7 @@ public class BranchController {
         return branchService.list(actorId(actor), scope, query, status);
     }
 
-    @GetMapping("/branches/{id}")
+    @GetMapping("/{id}")
     public Branch getBranch(
             Authentication actor,
             @PathVariable long id,
@@ -61,7 +61,7 @@ public class BranchController {
         return branchService.get(actorId(actor), id);
     }
 
-    @PostMapping("/branches")
+    @PostMapping
     public ResponseEntity<Branch> createBranch(
             Authentication actor,
             @RequestHeader(value = "Idempotency-Key", required = false) String key,
@@ -73,7 +73,7 @@ public class BranchController {
         return ResponseEntity.created(URI.create("/api/branches/" + result.id())).body(result);
     }
 
-    @PatchMapping("/branches/{id}")
+    @PatchMapping("/{id}")
     public Branch updateBranch(
             Authentication actor,
             @PathVariable long id,
@@ -87,7 +87,7 @@ public class BranchController {
         return branchService.update(actorId(actor), id, update, ApiRequestFilter.requestId(request));
     }
 
-    @PostMapping("/branches/{id}/status")
+    @PostMapping("/{id}/status")
     public Branch changeBranchStatus(
             Authentication actor,
             @PathVariable long id,

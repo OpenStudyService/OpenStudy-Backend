@@ -22,7 +22,7 @@ import com.openstudy.modules.invitation.dto.Invitation;
 import com.openstudy.modules.invitation.service.InvitationManagementService;
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/invitations")
 @RequiredArgsConstructor
 public class InvitationManagementController {
 
@@ -31,7 +31,7 @@ public class InvitationManagementController {
 
     private final InvitationManagementService invitationManagementService;
 
-    @GetMapping("/invitations")
+    @GetMapping
     public PageResponse<Invitation> listInvitations(
             Authentication actor,
             @RequestParam(defaultValue = "all") String scope,
@@ -47,7 +47,7 @@ public class InvitationManagementController {
         return invitationManagementService.list(actorId(actor), scope, query, status);
     }
 
-    @GetMapping("/invitations/{id}")
+    @GetMapping("/{id}")
     public Invitation getInvitation(
             Authentication actor,
             @PathVariable long id,
@@ -56,7 +56,7 @@ public class InvitationManagementController {
         return invitationManagementService.get(actorId(actor), id, scope);
     }
 
-    @PostMapping("/invitations")
+    @PostMapping
     public ResponseEntity<Invitation> createInvitation(
             Authentication actor,
             @RequestParam(defaultValue = "all") String scope,
@@ -75,7 +75,7 @@ public class InvitationManagementController {
         return ResponseEntity.created(URI.create("/api/invitations/" + result.id())).body(result);
     }
 
-    @PostMapping("/invitations/{id}/reissue")
+    @PostMapping("/{id}/reissue")
     public Invitation reissueInvitation(
             Authentication actor,
             @PathVariable long id,
@@ -88,7 +88,7 @@ public class InvitationManagementController {
         return invitationManagementService.reissue(actorId(actor), id, scope, body, requestId);
     }
 
-    @PostMapping("/invitations/{id}/cancel")
+    @PostMapping("/{id}/cancel")
     public Invitation cancelInvitation(
             Authentication actor,
             @PathVariable long id,
@@ -99,7 +99,7 @@ public class InvitationManagementController {
         return invitationManagementService.cancel(actorId(actor), id, scope, body, ApiRequestFilter.requestId(request));
     }
 
-    @PostMapping("/invitations/{id}/reject")
+    @PostMapping("/{id}/reject")
     public Invitation rejectInvitation(
             Authentication actor,
             @PathVariable long id,
@@ -110,7 +110,7 @@ public class InvitationManagementController {
         return invitationManagementService.reject(actorId(actor), id, scope, body, ApiRequestFilter.requestId(request));
     }
 
-    @PostMapping("/invitations/{id}/approve")
+    @PostMapping("/{id}/approve")
     public Invitation approveInvitation(
             Authentication actor,
             @PathVariable long id,
