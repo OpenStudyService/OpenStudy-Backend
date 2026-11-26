@@ -42,7 +42,7 @@
 
 - `./gradlew compileJava compileTestJava`: 통과.
 - employee·branch·authorization·invitation·customer 모듈 테스트와 architecture(계약) 테스트: 221개 모두 통과.
-- 전체 테스트 결과는 아래에 덧붙인다.
+- 전체 테스트(`./gradlew test`)는 실행하지 않았다. 매핑 어노테이션만 바뀌고 로직 변경이 없어서, 영향받는 모듈과 계약 테스트로 충분하다고 판단했다(사용자 결정).
 
 ## 6. 남은 작업 / 보류 사항
 
