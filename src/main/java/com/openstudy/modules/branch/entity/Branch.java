@@ -19,6 +19,9 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 import org.hibernate.annotations.Generated;
 import org.hibernate.generator.EventType;
 
@@ -37,73 +40,107 @@ import org.hibernate.generator.EventType;
         rowPolicy = "openstudy.branchScope",
         fieldPolicy = "openstudy.field.public"
 )
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Branch {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @SemanticField(id = "branch.id", name = "지점 ID", role = "ID", allowedOps = {"EQ", "NE", "IN"})
     private Long id;
+
     @Column(nullable = false, length = 32)
     @SemanticField(id = "branch.code", name = "지점 코드", role = "CODE", allowedOps = {"EQ", "NE", "IN"})
     private String code;
+
     @Column(nullable = false, length = 120)
-    @SemanticField(id = "branch.name", name = "지점명", role = "LABEL", aliases = {"지점", "지점별", "지점 이름", "매장명"}, allowedOps = {"EQ", "NE", "IN"})
+    @SemanticField(
+            id = "branch.name",
+            name = "지점명",
+            role = "LABEL",
+            aliases = {"지점", "지점별", "지점 이름", "매장명"},
+            allowedOps = {"EQ", "NE", "IN"}
+    )
     private String name;
+
     @Column(nullable = false, length = 300)
     private String address;
+
     @Column(length = 30)
     @SemanticField(id = "branch.phone", name = "지점 전화번호", exposed = false)
     private String phone;
-    @Enumerated(EnumType.STRING) @Column(nullable = false)
-    @SemanticField(id = "branch.status", name = "지점 운영 상태", role = "STATUS", allowedValues = {"ACTIVE", "INACTIVE"}, allowedOps = {"EQ", "NE", "IN"})
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    @SemanticField(
+            id = "branch.status",
+            name = "지점 운영 상태",
+            role = "STATUS",
+            allowedValues = {"ACTIVE", "INACTIVE"},
+            allowedOps = {"EQ", "NE", "IN"}
+    )
     private BranchStatus status;
+
     // Both timestamps are DB-maintained (DEFAULT / ON UPDATE CURRENT_TIMESTAMP(6)).
-    @Generated(event = EventType.INSERT) @Column(name = "created_at", insertable = false, updatable = false)
+    @Generated(event = EventType.INSERT)
+    @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
-    @Generated(event = {EventType.INSERT, EventType.UPDATE}) @Column(name = "updated_at", insertable = false, updatable = false)
+
+    @Generated(event = {EventType.INSERT, EventType.UPDATE})
+    @Column(name = "updated_at", insertable = false, updatable = false)
     private Instant updatedAt;
+
     @Version
     private long version;
+
     @Column(name = "created_by")
     private Long createdBy;
+
     @Column(name = "updated_by")
     private Long updatedBy;
+
     @OneToMany(mappedBy = "branch", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("weekday")
+    @Getter(AccessLevel.NONE)
     private List<BranchWeeklyHour> weeklyHours = new ArrayList<>();
 
-    protected Branch() {}
-
     public Branch(String code, String name, String address, String phone, BranchStatus status, Long actor) {
-        this.code = code; this.name = name; this.address = address; this.phone = phone; this.status = status;
-        this.createdBy = actor; this.updatedBy = actor;
+        this.code = code;
+        this.name = name;
+        this.address = address;
+        this.phone = phone;
+        this.status = status;
+        this.createdBy = actor;
+        this.updatedBy = actor;
     }
 
     public void update(String name, String address, String phone) {
-        this.name = name; this.address = address; this.phone = phone;
+        this.name = name;
+        this.address = address;
+        this.phone = phone;
     }
 
-    public void changeStatus(BranchStatus status) { this.status = status; }
+    public void changeStatus(BranchStatus status) {
+        this.status = status;
+    }
 
     /**
      * Sets one weekday in place. Rows are updated rather than deleted and re-inserted: Hibernate flushes inserts
      * before orphan deletes, which would collide with the (branch_id, weekday) unique key.
      */
     public void setWeeklyHour(int weekday, boolean closed, Integer opensMinute, Integer closesMinute) {
-        for (var hour : weeklyHours) {
-            if (hour.getWeekday() == weekday) { hour.change(closed, opensMinute, closesMinute); return; }
+        for (BranchWeeklyHour hour : weeklyHours) {
+            if (hour.getWeekday() == weekday) {
+                hour.change(closed, opensMinute, closesMinute);
+                return;
+            }
         }
+
         weeklyHours.add(new BranchWeeklyHour(this, weekday, closed, opensMinute, closesMinute));
     }
 
-    public Long getId() { return id; }
-    public String getCode() { return code; }
-    public String getName() { return name; }
-    public String getAddress() { return address; }
-    public String getPhone() { return phone; }
-    public BranchStatus getStatus() { return status; }
-    public Instant getCreatedAt() { return createdAt; }
-    public Instant getUpdatedAt() { return updatedAt; }
-    public long getVersion() { return version; }
-    public Long getCreatedBy() { return createdBy; }
-    public Long getUpdatedBy() { return updatedBy; }
-    public List<BranchWeeklyHour> getWeeklyHours() { return List.copyOf(weeklyHours); }
+    /** A copy: weekly hours change only through {@link #setWeeklyHour}. */
+    public List<BranchWeeklyHour> getWeeklyHours() {
+        return List.copyOf(weeklyHours);
+    }
 }

@@ -25,32 +25,46 @@ import org.hibernate.generator.EventType;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class BranchClosure {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
     @Column(name = "branch_id", nullable = false, updatable = false)
     private long branchId;
+
     @Column(name = "closed_on", nullable = false, updatable = false)
     private LocalDate closedOn;
+
     @Column(length = 200)
     private String note;
+
     @Column(name = "created_by", nullable = false, updatable = false)
     private long createdBy;
-    @Generated(event = EventType.INSERT) @Column(name = "created_at", insertable = false, updatable = false)
+
+    @Generated(event = EventType.INSERT)
+    @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
-    @Generated(event = {EventType.INSERT, EventType.UPDATE}) @Column(name = "updated_at", insertable = false, updatable = false)
+
+    @Generated(event = {EventType.INSERT, EventType.UPDATE})
+    @Column(name = "updated_at", insertable = false, updatable = false)
     private Instant updatedAt;
+
     /** Exposed to clients as version + 1 and checked on every change. */
     @Version
     private long version;
 
     public static BranchClosure of(long branchId, LocalDate closedOn, String note, long createdBy) {
-        var closure = new BranchClosure();
+        BranchClosure closure = new BranchClosure();
         closure.branchId = branchId;
         closure.closedOn = closedOn;
         closure.note = note;
         closure.createdBy = createdBy;
+
         return closure;
     }
 
-    public void rewrite(String note) { this.note = note; }
+    public void rewrite(String note) {
+        this.note = note;
+    }
 }

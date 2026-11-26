@@ -2,10 +2,12 @@ package com.openstudy.modules.branch.service;
 
 import java.util.*;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import jakarta.persistence.EntityManager;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,6 +16,7 @@ import tools.jackson.databind.ObjectMapper;
 import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
+import com.openstudy.common.idempotency.IdempotencyRecord;
 import com.openstudy.common.idempotency.IdempotencyStore;
 import com.openstudy.common.web.*;
 import com.openstudy.modules.authorization.dto.BranchAction;
@@ -25,92 +28,189 @@ import com.openstudy.modules.branch.entity.BranchStatus;
 import com.openstudy.modules.branch.repository.BranchRepository;
 
 @Service
+@RequiredArgsConstructor
 public class BranchService {
-    private static final String CREATE="branches:create";
-    private final BranchRepository repository;
+
+    private static final String CREATE_OPERATION = "branches:create";
+    private static final String CREATE_SCOPE = "all";
+    private static final String AUDIT_ENTITY_TYPE = "branches";
+    private static final String CODE_PREFIX = "BR-";
+    private static final int CODE_RANDOM_LENGTH = 29;
+    private static final int MIN_KEY_LENGTH = 16;
+    private static final int MAX_KEY_LENGTH = 128;
+    private static final int CREATED_STATUS = 201;
+    private static final Duration KEY_RETENTION = Duration.ofHours(24);
+    private static final int DAYS_PER_WEEK = 7;
+    private static final int LAST_OPENING_MINUTE = 1439;
+    private static final int LAST_CLOSING_MINUTE = 2880;
+
+    private final BranchRepository branchRepository;
     private final EntityManager entityManager;
-    private final AuthorizationService policy;
-    private final AuthorizedCommands commands;
-    private final ObjectMapper json;
-    private final AuditTrail audit;
-    private final IdempotencyStore requests;
+    private final AuthorizationService authorizationService;
+    private final AuthorizedCommands authorizedCommands;
+    private final ObjectMapper objectMapper;
+    private final AuditTrail auditTrail;
+    private final IdempotencyStore idempotencyStore;
     private final Clock clock;
-    public BranchService(BranchRepository repository,EntityManager entityManager,AuthorizationService policy,AuthorizedCommands commands,
-            ObjectMapper json,AuditTrail audit,IdempotencyStore requests,Clock clock) {
-        this.repository=repository;this.entityManager=entityManager;this.policy=policy;this.commands=commands;this.json=json;
-        this.audit=audit;this.requests=requests;this.clock=clock;
+
+    @Transactional(readOnly = true)
+    public PageResponse<Branch> list(long actor, String scope, ListQuery query, String status) {
+        if (status != null) {
+            toDbStatus(status);
+        }
+
+        Set<Long> allowed = authorizationService.scope(actor, scope, BranchAction.READ);
+        String keyword = query.q().toLowerCase(Locale.ROOT);
+
+        List<Branch> rows = branchRepository.findAllWithWeeklyHoursByOrderByIdAsc()
+                .stream()
+                .filter(branch -> allowed.contains(branch.getId()))
+                .map(BranchViews::toDto)
+                .filter(branch -> status == null || status.equals(branch.status()))
+                .filter(branch -> matchesKeyword(branch, keyword))
+                .toList();
+
+        Comparator<Branch> order = "name".equals(query.sort())
+                ? Comparator.comparing(Branch::name)
+                : Comparator.comparing(Branch::createdAt);
+        Comparator<Branch> tieBreaker = Comparator.comparingLong(branch -> Long.parseLong(branch.id()));
+
+        return PageResponse.fromAuthorized(rows, query, order, tieBreaker);
     }
-    @Transactional(readOnly=true)
-    public PageResponse<Branch> list(long actor,String scope,ListQuery query,String status) {
-        if(status!=null) status(status);
-        Set<Long> allowed=policy.scope(actor,scope,BranchAction.READ);
-        var rows=repository.findAllWithWeeklyHoursByOrderByIdAsc().stream().filter(b->allowed.contains(b.getId())).map(BranchViews::toDto)
-                .filter(b->status==null||status.equals(b.status()))
-                .filter(b->(b.name()+" "+b.address()+" "+b.code()).toLowerCase(Locale.ROOT).contains(query.q().toLowerCase(Locale.ROOT))).toList();
-        Comparator<Branch> field="name".equals(query.sort())?Comparator.comparing(Branch::name):Comparator.comparing(Branch::createdAt);
-        return PageResponse.fromAuthorized(rows,query,field,Comparator.comparingLong(b->Long.parseLong(b.id())));
-    }
-    @Transactional(readOnly=true)
+
+    @Transactional(readOnly = true)
     public List<Branch> lookup(long actor, String scope) {
-        Set<Long> allowed=policy.scope(actor,scope,BranchAction.READ);
-        return repository.findAllWithWeeklyHoursByOrderByIdAsc().stream().filter(b->allowed.contains(b.getId())).map(BranchViews::toDto).toList();
+        Set<Long> allowed = authorizationService.scope(actor, scope, BranchAction.READ);
+
+        return branchRepository.findAllWithWeeklyHoursByOrderByIdAsc()
+                .stream()
+                .filter(branch -> allowed.contains(branch.getId()))
+                .map(BranchViews::toDto)
+                .toList();
     }
-    @Transactional(readOnly=true)
-    public Branch get(long actor,long id) {
+
+    @Transactional(readOnly = true)
+    public Branch get(long actor, long id) {
         // Require access before reading the branch or its schedule; no existence oracle outside scope.
-        policy.require(policy.current(actor),Set.of(id),BranchAction.READ);
-        return BranchViews.toDto(entity(id));
+        authorizationService.require(authorizationService.current(actor), Set.of(id), BranchAction.READ);
+
+        return BranchViews.toDto(findBranch(id));
     }
-    public Branch create(long actor,String key,BranchRequests.Create body,String requestId) {
-        if(key==null||key.length()<16||key.length()>128) throw ApiException.validation("Idempotency-Key","16~128자 키가 필요합니다.");
-        var normalized=new BranchRequests.Create(text(body.name(),"name"),text(body.address(),"address"),body.phone(),hours(body.weeklyHours()),body.status());
-        String databaseStatus=status(body.status());
-        return commands.ownerCommand(actor,()->{
-            byte[] fingerprint=digest(json.writeValueAsString(normalized));
-            var prior=requests.lock(actor,CREATE,"all",key);
-            if(prior.isPresent()) {
-                if(!MessageDigest.isEqual(fingerprint,prior.get().getRequestHash())) throw ApiException.conflict("IDEMPOTENCY_CONFLICT","같은 키로 다른 입력을 저장할 수 없습니다.");
-                return json.readValue(prior.get().getResponseJson(),Branch.class);
+
+    public Branch create(long actor, String key, BranchRequests.Create body, String requestId) {
+        requireValidKey(key);
+
+        BranchRequests.Create normalized = new BranchRequests.Create(
+                requireText(body.name(), "name"),
+                requireText(body.address(), "address"),
+                body.phone(),
+                validateWeeklyHours(body.weeklyHours()),
+                body.status()
+        );
+        String dbStatus = toDbStatus(body.status());
+
+        return authorizedCommands.ownerCommand(actor, () -> {
+            byte[] fingerprint = digest(objectMapper.writeValueAsString(normalized));
+            Optional<IdempotencyRecord> prior = idempotencyStore.lock(actor, CREATE_OPERATION, CREATE_SCOPE, key);
+
+            if (prior.isPresent()) {
+                return replay(prior.get(), fingerprint);
             }
-            String code="BR-"+UUID.randomUUID().toString().replace("-", "").substring(0,29);
+
             // created_by/updated_by stay NULL as before this migration; the actor is recorded in audit_events.
-            var branch=new com.openstudy.modules.branch.entity.Branch(code,normalized.name(),normalized.address(),normalized.phone(),
-                    BranchStatus.valueOf(databaseStatus),null);
-            for(var h:normalized.weeklyHours()) branch.setWeeklyHour(h.weekday(),h.isClosed(),h.opensMinute(),h.closesMinute());
-            repository.saveAndFlush(branch);
+            com.openstudy.modules.branch.entity.Branch branch = new com.openstudy.modules.branch.entity.Branch(
+                    createCode(),
+                    normalized.name(),
+                    normalized.address(),
+                    normalized.phone(),
+                    BranchStatus.valueOf(dbStatus),
+                    null
+            );
+            applyWeeklyHours(branch, normalized.weeklyHours());
+            branchRepository.saveAndFlush(branch);
             entityManager.refresh(branch);
-            var result=BranchViews.toDto(branch);String snapshot=json.writeValueAsString(result);
-            recordChange(actor,branch.getId(),"CREATED",null,snapshot,requestId);
-            requests.complete(actor,CREATE,"all",key,fingerprint,201,snapshot,clock.instant().plus(Duration.ofHours(24)));
+
+            Branch result = BranchViews.toDto(branch);
+            String snapshot = objectMapper.writeValueAsString(result);
+            recordChange(actor, branch.getId(), "CREATED", null, snapshot, requestId);
+            idempotencyStore.complete(
+                    actor,
+                    CREATE_OPERATION,
+                    CREATE_SCOPE,
+                    key,
+                    fingerprint,
+                    CREATED_STATUS,
+                    snapshot,
+                    clock.instant().plus(KEY_RETENTION)
+            );
             return result;
         });
     }
-    public Branch update(long actor,long id,BranchRequests.Update body,String requestId) {
+
+    public Branch update(long actor, long id, BranchRequests.Update body, String requestId) {
         ApiVersion.toDatabase(body.version());
-        if(body.name()==null&&body.address()==null&&body.phone()==null&&body.weeklyHours()==null) throw ApiException.validation("body","변경할 항목이 필요합니다.");
-        var schedule=body.weeklyHours()==null?null:hours(body.weeklyHours());
-        return commands.inBranches(actor,Set.of(id),BranchAction.MANAGE_BRANCH,()->{
-            var branch=entity(id);var before=BranchViews.toDto(branch); checkVersion(before,body.version());
-            long version=branch.getVersion();
-            branch.update(body.name()==null?before.name():text(body.name(),"name"),body.address()==null?before.address():text(body.address(),"address"),
-                    body.phone()==null?before.phone():body.phone());
-            for(var h:schedule==null?before.weeklyHours():schedule) branch.setWeeklyHour(h.weekday(),h.isClosed(),h.opensMinute(),h.closesMinute());
-            var result=saveChange(branch,version);recordChange(actor,id,"UPDATED",json.writeValueAsString(before),json.writeValueAsString(result),requestId);
+
+        boolean nothingToChange = body.name() == null
+                && body.address() == null
+                && body.phone() == null
+                && body.weeklyHours() == null;
+
+        if (nothingToChange) {
+            throw ApiException.validation("body", "변경할 항목이 필요합니다.");
+        }
+
+        List<WeeklyHours> schedule = body.weeklyHours() == null ? null : validateWeeklyHours(body.weeklyHours());
+
+        return authorizedCommands.inBranches(actor, Set.of(id), BranchAction.MANAGE_BRANCH, () -> {
+            com.openstudy.modules.branch.entity.Branch branch = findBranch(id);
+            Branch before = BranchViews.toDto(branch);
+            requireCurrentVersion(before, body.version());
+            long version = branch.getVersion();
+
+            String name = body.name() == null ? before.name() : requireText(body.name(), "name");
+            String address = body.address() == null ? before.address() : requireText(body.address(), "address");
+            String phone = body.phone() == null ? before.phone() : body.phone();
+            branch.update(name, address, phone);
+            applyWeeklyHours(branch, schedule == null ? before.weeklyHours() : schedule);
+
+            Branch result = saveChange(branch, version);
+            String beforeJson = objectMapper.writeValueAsString(before);
+            recordChange(actor, id, "UPDATED", beforeJson, objectMapper.writeValueAsString(result), requestId);
             return result;
         });
     }
-    public Branch changeStatus(long actor,long id,BranchRequests.Status body,String requestId) {
-        ApiVersion.toDatabase(body.version());String state=status(body.status());
-        return commands.inBranches(actor,Set.of(id),BranchAction.MANAGE_BRANCH,()->{
-            var branch=entity(id);var before=BranchViews.toDto(branch);checkVersion(before,body.version());
-            long version=branch.getVersion();branch.changeStatus(BranchStatus.valueOf(state));
-            var result=saveChange(branch,version);recordChange(actor,id,"STATUS_CHANGED",json.writeValueAsString(before),json.writeValueAsString(result),requestId);
+
+    public Branch changeStatus(long actor, long id, BranchRequests.Status body, String requestId) {
+        ApiVersion.toDatabase(body.version());
+        String dbStatus = toDbStatus(body.status());
+
+        return authorizedCommands.inBranches(actor, Set.of(id), BranchAction.MANAGE_BRANCH, () -> {
+            com.openstudy.modules.branch.entity.Branch branch = findBranch(id);
+            Branch before = BranchViews.toDto(branch);
+            requireCurrentVersion(before, body.version());
+            long version = branch.getVersion();
+            branch.changeStatus(BranchStatus.valueOf(dbStatus));
+
+            Branch result = saveChange(branch, version);
+            String beforeJson = objectMapper.writeValueAsString(before);
+            recordChange(actor, id, "STATUS_CHANGED", beforeJson, objectMapper.writeValueAsString(result), requestId);
             return result;
         });
     }
-    private com.openstudy.modules.branch.entity.Branch entity(long id) {
-        return repository.findWithWeeklyHoursById(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND));
+
+    private com.openstudy.modules.branch.entity.Branch findBranch(long id) {
+        return branchRepository.findWithWeeklyHoursById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
     }
+
+    private Branch replay(IdempotencyRecord prior, byte[] fingerprint) {
+        if (!MessageDigest.isEqual(fingerprint, prior.getRequestHash())) {
+            throw ApiException.conflict("IDEMPOTENCY_CONFLICT", "같은 키로 다른 입력을 저장할 수 없습니다.");
+        }
+
+        return objectMapper.readValue(prior.getResponseJson(), Branch.class);
+    }
+
     /**
      * Every accepted command advances the version by exactly one, even when no column differs
      * (the former SQL always ran version=version+1). Hibernate only bumps a dirty branch row, and weekly-hour
@@ -118,41 +218,123 @@ public class BranchService {
      * a FORCE_INCREMENT lock, which Hibernate skips when the entity already holds that lock in the same context.
      * The refresh re-reads the DB-maintained updated_at.
      */
-    private Branch saveChange(com.openstudy.modules.branch.entity.Branch branch,long versionBefore) {
-        repository.flush();
-        if(branch.getVersion()==versionBefore) repository.incrementVersion(branch.getId());
+    private Branch saveChange(com.openstudy.modules.branch.entity.Branch branch, long versionBefore) {
+        branchRepository.flush();
+
+        if (branch.getVersion() == versionBefore) {
+            branchRepository.incrementVersion(branch.getId());
+        }
+
         entityManager.refresh(branch);
         return BranchViews.toDto(branch);
     }
-    private void recordChange(long actor,long id,String action,String before,String after,String requestId) {
-        audit.record(AuditEvent.change(actor,id,"branches",id,action,before,after,requestId));
+
+    private void recordChange(long actor, long id, String action, String before, String after, String requestId) {
+        auditTrail.record(AuditEvent.change(actor, id, AUDIT_ENTITY_TYPE, id, action, before, after, requestId));
     }
-    private static void checkVersion(Branch branch,long supplied) {
-        if(branch.version()!=supplied) throw ApiException.versionConflict(branch.version(),"/api/branches/"+branch.id());
+
+    private static void applyWeeklyHours(com.openstudy.modules.branch.entity.Branch branch, List<WeeklyHours> hours) {
+        for (WeeklyHours hour : hours) {
+            branch.setWeeklyHour(hour.weekday(), hour.isClosed(), hour.opensMinute(), hour.closesMinute());
+        }
     }
-    private static String text(String value,String field) {
-        if(value==null||value.isBlank()) throw ApiException.validation(field,"값을 입력해 주세요."); return value.strip();
+
+    private static boolean matchesKeyword(Branch branch, String keyword) {
+        String searchable = branch.name() + " " + branch.address() + " " + branch.code();
+
+        return searchable.toLowerCase(Locale.ROOT).contains(keyword);
     }
-    private static String status(String status) {
-        return switch(status==null?"":status) {
-            case "운영 중"->"ACTIVE";case "운영 중지"->"SUSPENDED";
-            default->throw ApiException.validation("status","올바른 지점 상태를 선택해 주세요.");
+
+    private static String createCode() {
+        String random = UUID.randomUUID()
+                .toString()
+                .replace("-", "")
+                .substring(0, CODE_RANDOM_LENGTH);
+
+        return CODE_PREFIX + random;
+    }
+
+    private static void requireCurrentVersion(Branch branch, long supplied) {
+        if (branch.version() != supplied) {
+            throw ApiException.versionConflict(branch.version(), "/api/branches/" + branch.id());
+        }
+    }
+
+    private static void requireValidKey(String key) {
+        boolean valid = key != null && key.length() >= MIN_KEY_LENGTH && key.length() <= MAX_KEY_LENGTH;
+
+        if (!valid) {
+            throw ApiException.validation("Idempotency-Key", "16~128자 키가 필요합니다.");
+        }
+    }
+
+    private static String requireText(String value, String field) {
+        if (value == null || value.isBlank()) {
+            throw ApiException.validation(field, "값을 입력해 주세요.");
+        }
+
+        return value.strip();
+    }
+
+    private static String toDbStatus(String status) {
+        return switch (status == null ? "" : status) {
+            case "운영 중" -> "ACTIVE";
+            case "운영 중지" -> "SUSPENDED";
+            default -> throw ApiException.validation("status", "올바른 지점 상태를 선택해 주세요.");
         };
     }
-    private static List<WeeklyHours> hours(List<WeeklyHours> hours) {
-        if(hours==null||hours.size()!=7) throw ApiException.validation("weeklyHours","7개 요일을 모두 지정해 주세요.");
-        Set<Integer> days=new HashSet<>();
-        for(var h:hours) {
-            if(h==null||h.weekday()==null||h.weekday()<1||h.weekday()>7||!days.add(h.weekday())||h.isClosed()==null)
-                throw ApiException.validation("weeklyHours","요일은 1~7까지 중복 없이 지정해 주세요.");
-            if(h.isClosed() ? h.opensMinute()!=null||h.closesMinute()!=null
-                    : h.opensMinute()==null||h.closesMinute()==null||h.opensMinute()<0||h.opensMinute()>1439||h.closesMinute()>2880||h.closesMinute()<=h.opensMinute())
-                throw ApiException.validation("weeklyHours","휴무는 시각 없이, 영업은 시작보다 늦은 종료 분을 지정해 주세요.");
+
+    private static List<WeeklyHours> validateWeeklyHours(List<WeeklyHours> hours) {
+        if (hours == null || hours.size() != DAYS_PER_WEEK) {
+            throw ApiException.validation("weeklyHours", "7개 요일을 모두 지정해 주세요.");
         }
-        return hours.stream().sorted(Comparator.comparing(WeeklyHours::weekday)).toList();
+
+        Set<Integer> days = new HashSet<>();
+
+        for (WeeklyHours hour : hours) {
+            if (!isValidWeekday(hour, days)) {
+                throw ApiException.validation("weeklyHours", "요일은 1~7까지 중복 없이 지정해 주세요.");
+            }
+
+            if (!isValidTimes(hour)) {
+                throw ApiException.validation("weeklyHours", "휴무는 시각 없이, 영업은 시작보다 늦은 종료 분을 지정해 주세요.");
+            }
+        }
+
+        return hours.stream()
+                .sorted(Comparator.comparing(WeeklyHours::weekday))
+                .toList();
     }
+
+    /** Also records the weekday in {@code seen}, so a repeated weekday is invalid. */
+    private static boolean isValidWeekday(WeeklyHours hour, Set<Integer> seen) {
+        return hour != null
+                && hour.weekday() != null
+                && hour.weekday() >= 1
+                && hour.weekday() <= DAYS_PER_WEEK
+                && seen.add(hour.weekday())
+                && hour.isClosed() != null;
+    }
+
+    /** A closed day has no times; an open day closes after it opens, at most the next day's end. */
+    private static boolean isValidTimes(WeeklyHours hour) {
+        if (hour.isClosed()) {
+            return hour.opensMinute() == null && hour.closesMinute() == null;
+        }
+
+        return hour.opensMinute() != null
+                && hour.closesMinute() != null
+                && hour.opensMinute() >= 0
+                && hour.opensMinute() <= LAST_OPENING_MINUTE
+                && hour.closesMinute() <= LAST_CLOSING_MINUTE
+                && hour.closesMinute() > hour.opensMinute();
+    }
+
     private static byte[] digest(String value) {
-        try { return MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)); }
-        catch(java.security.NoSuchAlgorithmException exception) { throw new IllegalStateException(exception); }
+        try {
+            return MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 }
