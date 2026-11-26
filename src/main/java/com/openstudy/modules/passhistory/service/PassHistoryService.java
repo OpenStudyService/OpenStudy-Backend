@@ -162,93 +162,78 @@ public class PassHistoryService {
     }
 
     private static PassHistoryEvent toPurchase(PassLedger pass, PaymentTrail trail, Names names) {
-        return new PassHistoryEvent(
-                trail.approvedAt(),
-                PURCHASE,
-                toId(pass.id()),
-                pass.productName(),
-                0,
-                0,
-                null,
-                toId(pass.purchaseBranchId()),
-                toId(pass.paymentId()),
-                null,
-                null,
-                names.toActor(trail.soldBy())
-        );
+        return newEvent(pass)
+                .at(trail.approvedAt())
+                .type(PURCHASE)
+                .branchId(toId(pass.purchaseBranchId()))
+                .paymentId(toId(pass.paymentId()))
+                .actor(names.toActor(trail.soldBy()))
+                .build();
     }
 
     private static PassHistoryEvent toRefund(PassLedger pass, PaymentTrail trail, Names names) {
         PaymentTrail.RefundTrail refund = trail.refund();
 
-        return new PassHistoryEvent(
-                refund.refundedAt(),
-                REFUND,
-                toId(pass.id()),
-                pass.productName(),
-                0,
-                0,
-                null,
-                toId(refund.branchId()),
-                toId(pass.paymentId()),
-                null,
-                refund.reason(),
-                names.toActor(refund.refundedBy())
-        );
+        return newEvent(pass)
+                .at(refund.refundedAt())
+                .type(REFUND)
+                .branchId(toId(refund.branchId()))
+                .paymentId(toId(pass.paymentId()))
+                .reason(refund.reason())
+                .actor(names.toActor(refund.refundedBy()))
+                .build();
     }
 
     /** Adjustments happen only at the purchase branch (M5-D04), which is inside the scope for every pass here. */
     private static PassHistoryEvent toAdjustment(PassLedger pass, PassLedger.Entry entry, Names names) {
-        return new PassHistoryEvent(
-                entry.at(),
-                ADJUST,
-                toId(pass.id()),
-                pass.productName(),
-                entry.deltaMinutes(),
-                entry.deltaKrw(),
-                null,
-                toId(pass.purchaseBranchId()),
-                null,
-                null,
-                entry.reason(),
-                names.toActor(entry.actorId())
-        );
+        return newEvent(pass)
+                .at(entry.at())
+                .type(ADJUST)
+                .deltaMinutes(entry.deltaMinutes())
+                .deltaKrw(entry.deltaKrw())
+                .branchId(toId(pass.purchaseBranchId()))
+                .reason(entry.reason())
+                .actor(names.toActor(entry.actorId()))
+                .build();
     }
 
-    /** {@code use} is null when nothing was deducted: a period pass, a zero-minute stay, an expired or empty balance. */
+    /** A stay in the requested scope: the shared stay fields plus minutes used, seat session, reason and handler. */
     private static PassHistoryEvent toStay(PassLedger pass, SeatUsage stay, PassLedger.Entry use, Names names) {
-        return new PassHistoryEvent(
-                stay.checkedOutAt(),
-                USE,
-                toId(pass.id()),
-                pass.productName(),
-                use == null ? 0 : use.deltaMinutes(),
-                use == null ? 0 : use.deltaKrw(),
-                stay.usedMinutes(),
-                toId(stay.branchId()),
-                null,
-                toId(stay.id()),
-                stay.reason(),
-                names.toActor(stay.actorId())
-        );
+        return newStayEvent(pass, stay, use)
+                .usedMinutes(stay.usedMinutes())
+                .seatSessionId(toId(stay.id()))
+                .reason(stay.reason())
+                .actor(names.toActor(stay.actorId()))
+                .build();
     }
 
     /** Branch, time and deltas, and nothing else: no minutes used, no seat session reference, no handler, no reason. */
     private static PassHistoryEvent toForeignStay(PassLedger pass, SeatUsage stay, PassLedger.Entry use) {
-        return new PassHistoryEvent(
-                stay.checkedOutAt(),
-                USE,
-                toId(pass.id()),
-                pass.productName(),
-                use == null ? 0 : use.deltaMinutes(),
-                use == null ? 0 : use.deltaKrw(),
-                null,
-                toId(stay.branchId()),
-                null,
-                null,
-                null,
-                null
-        );
+        return newStayEvent(pass, stay, use).build();
+    }
+
+    /**
+     * The fields every stay shows, in or outside the scope. {@code use} is null when nothing was deducted: a period pass,
+     * a zero-minute stay, an expired or empty balance.
+     */
+    private static PassHistoryEvent.PassHistoryEventBuilder newStayEvent(
+            PassLedger pass,
+            SeatUsage stay,
+            PassLedger.Entry use
+    ) {
+        return newEvent(pass)
+                .at(stay.checkedOutAt())
+                .type(USE)
+                .deltaMinutes(use == null ? 0 : use.deltaMinutes())
+                .deltaKrw(use == null ? 0 : use.deltaKrw())
+                .branchId(toId(stay.branchId()));
+    }
+
+    /** The pass every event names. */
+    private static PassHistoryEvent.PassHistoryEventBuilder newEvent(PassLedger pass) {
+        return PassHistoryEvent.builder()
+                .passId(toId(pass.id()))
+                .productName(pass.productName());
     }
 
     private static PassLedgerCheck toCheck(PassLedger pass) {
