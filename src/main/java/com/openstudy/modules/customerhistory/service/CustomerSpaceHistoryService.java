@@ -4,8 +4,10 @@ import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.openstudy.modules.authorization.dto.AuthorizationState;
 import com.openstudy.modules.authorization.dto.BranchAction;
 import com.openstudy.modules.authorization.service.AuthorizationService;
+import com.openstudy.modules.customer.dto.response.CustomerSummary;
 import com.openstudy.modules.customer.service.CustomerService;
 import com.openstudy.modules.customerhistory.dto.response.SpaceHistory;
 import com.openstudy.modules.locker.service.LockerAssignmentService;
@@ -19,16 +21,22 @@ import com.openstudy.modules.reservation.service.RoomReservationService;
 @Service
 @RequiredArgsConstructor
 public class CustomerSpaceHistoryService {
-    private final CustomerService customers;
-    private final RoomReservationService reservations;
-    private final LockerAssignmentService assignments;
-    private final AuthorizationService policy;
+
+    private final CustomerService customerService;
+    private final RoomReservationService roomReservationService;
+    private final LockerAssignmentService lockerAssignmentService;
+    private final AuthorizationService authorizationService;
 
     @Transactional(readOnly = true)
-    public SpaceHistory history(long actor, long id, String scope) {
-        var state = policy.current(actor);
-        var customer = customers.requireVisible(state, id, scope);
-        Set<Long> selected = policy.scope(state, scope, BranchAction.READ);
-        return new SpaceHistory(customer.id(), reservations.ofCustomer(state, id, selected), assignments.ofCustomer(state, id, selected));
+    public SpaceHistory findHistory(long actor, long id, String scope) {
+        AuthorizationState state = authorizationService.current(actor);
+        CustomerSummary customer = customerService.requireVisible(state, id, scope);
+        Set<Long> selected = authorizationService.scope(state, scope, BranchAction.READ);
+
+        return new SpaceHistory(
+                customer.id(),
+                roomReservationService.ofCustomer(state, id, selected),
+                lockerAssignmentService.ofCustomer(state, id, selected)
+        );
     }
 }
