@@ -11,7 +11,7 @@ import com.openstudy.modules.employee.dto.ManagedEmployee.MembershipResult;
 import com.openstudy.modules.employee.service.EmployeeManagementService;
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/employees")
 @RequiredArgsConstructor
 public class EmployeeManagementController {
 
@@ -20,7 +20,7 @@ public class EmployeeManagementController {
 
     private final EmployeeManagementService employeeManagementService;
 
-    @GetMapping("/employees")
+    @GetMapping
     public PageResponse<ManagedEmployee> listEmployees(
             Authentication actor,
             @RequestParam(defaultValue = "all") String scope,
@@ -36,7 +36,7 @@ public class EmployeeManagementController {
         return employeeManagementService.list(actorId(actor), scope, query, status);
     }
 
-    @GetMapping("/employees/{id}")
+    @GetMapping("/{id}")
     public ManagedEmployee getEmployee(
             Authentication actor,
             @PathVariable long id,
@@ -45,7 +45,7 @@ public class EmployeeManagementController {
         return employeeManagementService.get(actorId(actor), id, scope);
     }
 
-    @PatchMapping("/employees/{id}")
+    @PatchMapping("/{id}")
     public ManagedEmployee updateEmployee(
             Authentication actor,
             @PathVariable long id,
@@ -55,7 +55,7 @@ public class EmployeeManagementController {
         return employeeManagementService.update(actorId(actor), id, body, ApiRequestFilter.requestId(request));
     }
 
-    @PutMapping("/employees/{employeeId}/memberships/{branchId}")
+    @PutMapping("/{employeeId}/memberships/{branchId}")
     public MembershipResult updateMembership(
             Authentication actor,
             @PathVariable long employeeId,

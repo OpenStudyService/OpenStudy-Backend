@@ -20,7 +20,7 @@ import com.openstudy.modules.invitation.service.InvitationAcceptanceService;
 
 /** Public link endpoints. The token travels in the JSON body only, never in a URL or Referer. */
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/invitations")
 @RequiredArgsConstructor
 public class InvitationAcceptanceController {
 
@@ -30,7 +30,7 @@ public class InvitationAcceptanceController {
     private final InvitationAcceptanceService invitationAcceptanceService;
     private final SessionBoundaryPolicy sessionBoundaryPolicy;
 
-    @PostMapping("/invitations/preview")
+    @PostMapping("/preview")
     public ResponseEntity<InvitationPreview> previewInvitation(@RequestBody Map<String, Object> body) {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
@@ -38,7 +38,7 @@ public class InvitationAcceptanceController {
                 .body(invitationAcceptanceService.preview(body));
     }
 
-    @PostMapping("/invitations/accept")
+    @PostMapping("/accept")
     public ResponseEntity<AcceptanceResult> acceptInvitation(
             Authentication authentication,
             @RequestBody Map<String, Object> body,
