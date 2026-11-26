@@ -69,7 +69,7 @@
 - `./gradlew compileJava compileTestJava`: 통과.
 - invitation `src/main`에 `var`, 중괄호 없는 `if`·`for`, 120자를 넘는 코드 줄(주석 제외)이 남아 있지 않은 것을 확인했다.
 - `./gradlew test --tests "com.openstudy.modules.invitation.*"`: 54개 모두 통과.
-- 전체 테스트 결과는 아래에 덧붙인다.
+- `./gradlew test`: 1,270개 중 실패 0, 건너뜀 28 (BUILD SUCCESSFUL, 약 20분). 건너뛴 28개는 ai·sales 패키지의 AI 관련 조건부 테스트다.
 - 실제 SMTP 서버로의 발송은 검증하지 않았다(테스트는 가짜 전송 객체를 쓴다).
 
 ## 6. 남은 작업 / 보류 사항
