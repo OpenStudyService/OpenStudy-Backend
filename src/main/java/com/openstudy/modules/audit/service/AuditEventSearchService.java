@@ -1,6 +1,7 @@
 package com.openstudy.modules.audit.service;
 
 import java.time.Clock;
+import java.util.List;
 import java.util.Map;
 
 import lombok.RequiredArgsConstructor;
@@ -23,48 +24,81 @@ import com.openstudy.modules.authorization.service.AuthorizationService;
 @Service
 @RequiredArgsConstructor
 public class AuditEventSearchService {
-    private final AuditEventSearchRepository repository;
-    private final AuthorizationService policy;
-    private final ObjectMapper json;
+
+    private final AuditEventSearchRepository auditEventSearchRepository;
+    private final AuthorizationService authorizationService;
+    private final ObjectMapper objectMapper;
     private final Clock clock;
 
     @Transactional(readOnly = true)
     public AuditEventViews.Page search(long actor, Map<String, String[]> query) {
         requireOwner(actor);
-        var criteria = AuditSearchCriteria.parse(query, clock);
-        var page = repository.search(criteria);
-        var items = page.rows().stream().map(AuditEventSearchService::item).toList();
-        return new AuditEventViews.Page(items, new PageResponse.Meta(criteria.page(), criteria.pageSize(), page.total()),
-                new AuditEventViews.Period(criteria.from(), criteria.to()));
+
+        AuditSearchCriteria criteria = AuditSearchCriteria.parse(query, clock);
+        AuditEventSearchRepository.Page page = auditEventSearchRepository.search(criteria);
+        List<AuditEventViews.Item> items = page.rows()
+                .stream()
+                .map(AuditEventSearchService::toItem)
+                .toList();
+        PageResponse.Meta meta = new PageResponse.Meta(criteria.page(), criteria.pageSize(), page.total());
+
+        return new AuditEventViews.Page(items, meta, new AuditEventViews.Period(criteria.from(), criteria.to()));
     }
 
     @Transactional(readOnly = true)
     public AuditEventViews.Detail get(long actor, long id) {
         requireOwner(actor);
-        var row = repository.find(id).orElseThrow(() -> ApiException.notFound("감사 기록을 찾을 수 없습니다."));
-        return new AuditEventViews.Detail(Long.toString(row.id()), row.occurredAt(), row.action(), row.result(), row.entityType(),
-                id(row.entityId()), row.reason(), row.requestId(), ref(row.actorId(), row.actorName()),
-                ref(row.branchId(), row.branchName()), row.hasChanges(), snapshot(row.beforeJson()), snapshot(row.afterJson()));
+
+        AuditEventSearchRepository.Row row = auditEventSearchRepository.find(id)
+                .orElseThrow(() -> ApiException.notFound("감사 기록을 찾을 수 없습니다."));
+
+        return new AuditEventViews.Detail(
+                Long.toString(row.id()),
+                row.occurredAt(),
+                row.action(),
+                row.result(),
+                row.entityType(),
+                toId(row.entityId()),
+                row.reason(),
+                row.requestId(),
+                toRef(row.actorId(), row.actorName()),
+                toRef(row.branchId(), row.branchName()),
+                row.hasChanges(),
+                toMaskedSnapshot(row.beforeJson()),
+                toMaskedSnapshot(row.afterJson())
+        );
     }
 
     private void requireOwner(long actor) {
-        policy.requireOwner(policy.current(actor));
+        authorizationService.requireOwner(authorizationService.current(actor));
     }
 
-    private JsonNode snapshot(String stored) {
-        return stored == null ? null : AuditSnapshotMasking.mask(json.readTree(stored));
+    private JsonNode toMaskedSnapshot(String stored) {
+        return stored == null ? null : AuditSnapshotMasking.mask(objectMapper.readTree(stored));
     }
 
-    private static AuditEventViews.Item item(AuditEventSearchRepository.Row row) {
-        return new AuditEventViews.Item(Long.toString(row.id()), row.occurredAt(), row.action(), row.result(), row.entityType(),
-                id(row.entityId()), row.reason(), row.requestId(), ref(row.actorId(), row.actorName()),
-                ref(row.branchId(), row.branchName()), row.hasChanges());
+    private static AuditEventViews.Item toItem(AuditEventSearchRepository.Row row) {
+        return new AuditEventViews.Item(
+                Long.toString(row.id()),
+                row.occurredAt(),
+                row.action(),
+                row.result(),
+                row.entityType(),
+                toId(row.entityId()),
+                row.reason(),
+                row.requestId(),
+                toRef(row.actorId(), row.actorName()),
+                toRef(row.branchId(), row.branchName()),
+                row.hasChanges()
+        );
     }
 
     /** A removed actor or branch keeps its ID (ON DELETE SET NULL clears it); an unknown name shows as empty. */
-    private static AuditEventViews.Ref ref(Long id, String name) {
+    private static AuditEventViews.Ref toRef(Long id, String name) {
         return id == null ? null : new AuditEventViews.Ref(Long.toString(id), name == null ? "" : name);
     }
 
-    private static String id(Long value) { return value == null ? null : Long.toString(value); }
+    private static String toId(Long value) {
+        return value == null ? null : Long.toString(value);
+    }
 }
