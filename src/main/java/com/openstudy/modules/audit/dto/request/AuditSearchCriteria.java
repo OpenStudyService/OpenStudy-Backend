@@ -17,33 +17,69 @@ import com.openstudy.common.exception.ApiException;
  * accepted, each at most once. The period is Asia/Seoul days, both ends included: none given is the last seven days with
  * today, one given fills the other to a seven-day range, and more than 92 days is PERIOD_TOO_LONG.
  */
-public record AuditSearchCriteria(LocalDate from, LocalDate to, String entityType, Long entityId, String action,
-        Long actorEmployeeId, Long branchId, String result, String requestId, long page, int pageSize) {
+public record AuditSearchCriteria(
+        LocalDate from,
+        LocalDate to,
+        String entityType,
+        Long entityId,
+        String action,
+        Long actorEmployeeId,
+        Long branchId,
+        String result,
+        String requestId,
+        long page,
+        int pageSize
+) {
+
     public static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
     public static final int DEFAULT_DAYS = 7;
     public static final int MAX_DAYS = 92;
-    public static final Set<String> PARAMETERS = Set.of("from", "to", "entityType", "entityId", "action", "actorEmployeeId",
-            "branchId", "result", "requestId", "page", "pageSize");
+    public static final Set<String> PARAMETERS = Set.of(
+            "from",
+            "to",
+            "entityType",
+            "entityId",
+            "action",
+            "actorEmployeeId",
+            "branchId",
+            "result",
+            "requestId",
+            "page",
+            "pageSize"
+    );
+
     private static final Set<String> RESULTS = Set.of("SUCCESS", "DENIED", "FAILED");
     private static final Pattern ID = Pattern.compile("[1-9][0-9]{0,18}");
     private static final long MAX_PAGE = 9_007_199_254_740_991L;
+    private static final int DEFAULT_PAGE_SIZE = 20;
+    private static final int MAX_PAGE_SIZE = 100;
+    private static final int DATE_LENGTH = 10;
+    private static final int MAX_ENTITY_TYPE_LENGTH = 80;
+    private static final int MAX_ACTION_LENGTH = 80;
+    private static final int MAX_RESULT_LENGTH = 7;
+    private static final int MAX_REQUEST_ID_LENGTH = 128;
 
     /** First instant of {@code from} (inclusive) in UTC. */
-    public Instant start() { return from.atStartOfDay(SEOUL).toInstant(); }
+    public Instant start() {
+        return from.atStartOfDay(SEOUL).toInstant();
+    }
 
     /** First instant of the day after {@code to} (exclusive) in UTC. */
-    public Instant end() { return to.plusDays(1).atStartOfDay(SEOUL).toInstant(); }
+    public Instant end() {
+        return to.plusDays(1).atStartOfDay(SEOUL).toInstant();
+    }
 
-    public long offset() { return (page - 1) * pageSize; }
+    public long offset() {
+        return (page - 1) * pageSize;
+    }
 
     public static AuditSearchCriteria parse(Map<String, String[]> query, Clock clock) {
-        for (var entry : query.entrySet()) {
-            if (!PARAMETERS.contains(entry.getKey())) throw ApiException.validation(entry.getKey(), "허용되지 않은 검색 조건입니다.");
-            if (entry.getValue().length != 1) throw ApiException.validation(entry.getKey(), "검색 조건은 한 번만 입력해 주세요.");
-        }
+        requireKnownSingleParameters(query);
+
         LocalDate today = LocalDate.ofInstant(clock.instant(), SEOUL);
-        LocalDate from = date(query, "from");
-        LocalDate to = date(query, "to");
+        LocalDate from = parseDate(query, "from");
+        LocalDate to = parseDate(query, "to");
+
         if (from == null && to == null) {
             to = today;
             from = today.minusDays(DEFAULT_DAYS - 1);
@@ -52,48 +88,107 @@ public record AuditSearchCriteria(LocalDate from, LocalDate to, String entityTyp
         } else if (from == null) {
             from = to.minusDays(DEFAULT_DAYS - 1);
         }
-        if (to.isBefore(from)) throw ApiException.validation("to", "종료일은 시작일 이후여야 합니다.");
-        if (ChronoUnit.DAYS.between(from, to) + 1 > MAX_DAYS)
+
+        if (to.isBefore(from)) {
+            throw ApiException.validation("to", "종료일은 시작일 이후여야 합니다.");
+        }
+
+        if (ChronoUnit.DAYS.between(from, to) + 1 > MAX_DAYS) {
             throw ApiException.invalid("PERIOD_TOO_LONG", "기간은 최대 92일입니다.", "to", "기간을 줄여 주세요.");
-        String entityType = text(query, "entityType", 80);
-        Long entityId = id(query, "entityId");
-        if (entityId != null && entityType == null)
+        }
+
+        String entityType = readText(query, "entityType", MAX_ENTITY_TYPE_LENGTH);
+        Long entityId = parseId(query, "entityId");
+
+        if (entityId != null && entityType == null) {
             throw ApiException.validation("entityId", "대상 ID는 대상 유형과 함께 입력해 주세요.");
-        String result = text(query, "result", 7);
-        if (result != null && !RESULTS.contains(result)) throw ApiException.validation("result", "결과는 SUCCESS, DENIED, FAILED 중 하나입니다.");
-        long page = number(query, "page", 1, 1, MAX_PAGE);
-        int pageSize = (int) number(query, "pageSize", 20, 1, 100);
-        return new AuditSearchCriteria(from, to, entityType, entityId, text(query, "action", 80), id(query, "actorEmployeeId"),
-                id(query, "branchId"), result, text(query, "requestId", 128), page, pageSize);
+        }
+
+        String result = readText(query, "result", MAX_RESULT_LENGTH);
+
+        if (result != null && !RESULTS.contains(result)) {
+            throw ApiException.validation("result", "결과는 SUCCESS, DENIED, FAILED 중 하나입니다.");
+        }
+
+        long page = parseNumber(query, "page", 1, 1, MAX_PAGE);
+        int pageSize = (int) parseNumber(query, "pageSize", DEFAULT_PAGE_SIZE, 1, MAX_PAGE_SIZE);
+
+        return new AuditSearchCriteria(
+                from,
+                to,
+                entityType,
+                entityId,
+                readText(query, "action", MAX_ACTION_LENGTH),
+                parseId(query, "actorEmployeeId"),
+                parseId(query, "branchId"),
+                result,
+                readText(query, "requestId", MAX_REQUEST_ID_LENGTH),
+                page,
+                pageSize
+        );
     }
 
-    private static String value(Map<String, String[]> query, String name) {
+    private static void requireKnownSingleParameters(Map<String, String[]> query) {
+        for (Map.Entry<String, String[]> entry : query.entrySet()) {
+            if (!PARAMETERS.contains(entry.getKey())) {
+                throw ApiException.validation(entry.getKey(), "허용되지 않은 검색 조건입니다.");
+            }
+
+            if (entry.getValue().length != 1) {
+                throw ApiException.validation(entry.getKey(), "검색 조건은 한 번만 입력해 주세요.");
+            }
+        }
+    }
+
+    private static String readValue(Map<String, String[]> query, String name) {
         String[] values = query.get(name);
+
         return values == null ? null : values[0];
     }
 
-    private static LocalDate date(Map<String, String[]> query, String name) {
-        String value = value(query, name);
-        if (value == null) return null;
+    private static LocalDate parseDate(Map<String, String[]> query, String name) {
+        String value = readValue(query, name);
+
+        if (value == null) {
+            return null;
+        }
+
         try {
-            if (value.length() != 10) throw new DateTimeParseException("length", value, 0);
+            if (value.length() != DATE_LENGTH) {
+                throw new DateTimeParseException("length", value, 0);
+            }
+
             return LocalDate.parse(value);
         } catch (DateTimeParseException exception) {
             throw ApiException.validation(name, "날짜는 YYYY-MM-DD 형식이어야 합니다.");
         }
     }
 
-    private static String text(Map<String, String[]> query, String name, int max) {
-        String value = value(query, name);
-        if (value == null) return null;
-        if (value.isEmpty() || value.length() > max) throw ApiException.validation(name, "1~" + max + "자로 입력해 주세요.");
+    private static String readText(Map<String, String[]> query, String name, int max) {
+        String value = readValue(query, name);
+
+        if (value == null) {
+            return null;
+        }
+
+        if (value.isEmpty() || value.length() > max) {
+            throw ApiException.validation(name, "1~" + max + "자로 입력해 주세요.");
+        }
+
         return value;
     }
 
-    private static Long id(Map<String, String[]> query, String name) {
-        String value = value(query, name);
-        if (value == null) return null;
-        if (!ID.matcher(value).matches()) throw ApiException.validation(name, "ID 형식이 아닙니다.");
+    private static Long parseId(Map<String, String[]> query, String name) {
+        String value = readValue(query, name);
+
+        if (value == null) {
+            return null;
+        }
+
+        if (!ID.matcher(value).matches()) {
+            throw ApiException.validation(name, "ID 형식이 아닙니다.");
+        }
+
         try {
             return Long.parseLong(value);
         } catch (NumberFormatException exception) {
@@ -101,12 +196,20 @@ public record AuditSearchCriteria(LocalDate from, LocalDate to, String entityTyp
         }
     }
 
-    private static long number(Map<String, String[]> query, String name, long fallback, long min, long max) {
-        String value = value(query, name);
-        if (value == null) return fallback;
+    private static long parseNumber(Map<String, String[]> query, String name, long fallback, long min, long max) {
+        String value = readValue(query, name);
+
+        if (value == null) {
+            return fallback;
+        }
+
         try {
             long parsed = Long.parseLong(value);
-            if (parsed < min || parsed > max) throw new NumberFormatException();
+
+            if (parsed < min || parsed > max) {
+                throw new NumberFormatException();
+            }
+
             return parsed;
         } catch (NumberFormatException exception) {
             throw ApiException.validation(name, min + "~" + max + " 사이의 숫자여야 합니다.");
