@@ -27,42 +27,75 @@ import com.openstudy.modules.notice.service.NoticeService;
 
 /** There is deliberately no DELETE and no read receipt for a notice (collaboration-api.md). The list order is fixed. */
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/notices")
 @RequiredArgsConstructor
 public class NoticeController {
-    private final NoticeService service;
 
-    @GetMapping("/notices")
-    public PageResponse<NoticeListItem> list(Authentication actor, @RequestParam(defaultValue = "all") String scope,
-            @RequestParam(defaultValue = "1") long page, @RequestParam(defaultValue = "20") int pageSize,
-            @RequestParam(required = false) String q, @RequestParam(required = false) String status) {
-        return service.list(actor(actor), scope, ListQuery.parse(page, pageSize, q, null, null, Set.of("id"), "id"), status);
+    private static final Set<String> SORT_FIELDS = Set.of("id");
+    private static final String DEFAULT_SORT = "id";
+
+    private final NoticeService noticeService;
+
+    @GetMapping
+    public PageResponse<NoticeListItem> listNotices(
+            Authentication actor,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String status
+    ) {
+        ListQuery query = ListQuery.parse(page, pageSize, q, null, null, SORT_FIELDS, DEFAULT_SORT);
+
+        return noticeService.list(actorId(actor), scope, query, status);
     }
 
-    @PostMapping("/notices")
-    public ResponseEntity<NoticeDetail> create(Authentication actor, @RequestParam(defaultValue = "all") String scope,
-            @RequestHeader(name = "Idempotency-Key", required = false) String key, @RequestBody Map<String, Object> body,
-            HttpServletRequest request) {
-        var result = service.create(actor(actor), scope, key, body, ApiRequestFilter.requestId(request));
+    @PostMapping
+    public ResponseEntity<NoticeDetail> createNotice(
+            Authentication actor,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestHeader(name = "Idempotency-Key", required = false) String key,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        String requestId = ApiRequestFilter.requestId(request);
+        NoticeDetail result = noticeService.create(actorId(actor), scope, key, body, requestId);
+
         return ResponseEntity.created(URI.create("/api/notices/" + result.id())).body(result);
     }
 
-    @GetMapping("/notices/{id}")
-    public NoticeDetail get(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope) {
-        return service.get(actor(actor), id, scope);
+    @GetMapping("/{id}")
+    public NoticeDetail getNotice(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope
+    ) {
+        return noticeService.get(actorId(actor), id, scope);
     }
 
-    @PatchMapping("/notices/{id}")
-    public NoticeDetail update(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope,
-            @RequestBody Map<String, Object> body, HttpServletRequest request) {
-        return service.update(actor(actor), id, scope, body, ApiRequestFilter.requestId(request));
+    @PatchMapping("/{id}")
+    public NoticeDetail updateNotice(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        return noticeService.update(actorId(actor), id, scope, body, ApiRequestFilter.requestId(request));
     }
 
-    @PostMapping("/notices/{id}/status")
-    public NoticeDetail status(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope,
-            @RequestBody Map<String, Object> body, HttpServletRequest request) {
-        return service.changeStatus(actor(actor), id, scope, body, ApiRequestFilter.requestId(request));
+    @PostMapping("/{id}/status")
+    public NoticeDetail changeNoticeStatus(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        return noticeService.changeStatus(actorId(actor), id, scope, body, ApiRequestFilter.requestId(request));
     }
 
-    private static long actor(Authentication authentication) { return Long.parseLong(authentication.getName()); }
+    private static long actorId(Authentication authentication) {
+        return Long.parseLong(authentication.getName());
+    }
 }
