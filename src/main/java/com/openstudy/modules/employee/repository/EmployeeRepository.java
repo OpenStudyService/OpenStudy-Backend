@@ -15,6 +15,7 @@ import com.openstudy.modules.employee.entity.Employee;
 import com.openstudy.modules.employee.entity.GlobalRole;
 
 public interface EmployeeRepository extends JpaRepository<Employee, Long> {
+
     /** email uses a case-insensitive collation (utf8mb4_0900_as_ci), so the database decides equality as before. */
     Optional<Employee> findByEmail(String email);
 
@@ -33,34 +34,91 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
      * Active employees who can be chosen in the given branches. JPA-01 native exception: the membership EXISTS
      * check reads the authorization module's table (JPA-03), so it stays SQL instead of mapping it here.
      */
-    @Query(value = "SELECT e.id,e.name FROM employees e WHERE e.status='ACTIVE' AND "
-            + "(e.global_role='OWNER' OR EXISTS (SELECT 1 FROM branch_memberships m WHERE m.employee_id=e.id "
-            + "AND m.status='ACTIVE' AND m.branch_id IN (:branches))) ORDER BY e.id", nativeQuery = true)
-    List<Object[]> lookup(@Param("branches") Collection<Long> branches);
+    @Query(value = """
+            SELECT e.id, e.name
+            FROM employees e
+            WHERE e.status = 'ACTIVE'
+              AND (
+                  e.global_role = 'OWNER'
+                  OR EXISTS (
+                      SELECT 1
+                      FROM branch_memberships m
+                      WHERE m.employee_id = e.id
+                        AND m.status = 'ACTIVE'
+                        AND m.branch_id IN (:branches)
+                  )
+              )
+            ORDER BY e.id
+            """, nativeQuery = true)
+    List<Object[]> findLookups(@Param("branches") Collection<Long> branches);
 
     /** Branch staff who can hold work there: both the account and this branch's membership must be active. */
-    @Query(value = "SELECT e.id,e.name FROM employees e JOIN branch_memberships m ON m.employee_id=e.id "
-            + "WHERE e.status='ACTIVE' AND m.status='ACTIVE' AND m.branch_id=:branch ORDER BY e.name,e.id", nativeQuery = true)
-    List<Object[]> assignees(@Param("branch") long branch);
+    @Query(value = """
+            SELECT e.id, e.name
+            FROM employees e
+            JOIN branch_memberships m ON m.employee_id = e.id
+            WHERE e.status = 'ACTIVE'
+              AND m.status = 'ACTIVE'
+              AND m.branch_id = :branch
+            ORDER BY e.name, e.id
+            """, nativeQuery = true)
+    List<Object[]> findAssignees(@Param("branch") long branch);
 
-    @Query(value = "SELECT EXISTS(SELECT 1 FROM employees e JOIN branch_memberships m ON m.employee_id=e.id "
-            + "WHERE e.id=:employee AND e.status='ACTIVE' AND m.status='ACTIVE' AND m.branch_id=:branch)", nativeQuery = true)
-    Number assignable(@Param("employee") long employee, @Param("branch") long branch);
+    @Query(value = """
+            SELECT EXISTS (
+                SELECT 1
+                FROM employees e
+                JOIN branch_memberships m ON m.employee_id = e.id
+                WHERE e.id = :employee
+                  AND e.status = 'ACTIVE'
+                  AND m.status = 'ACTIVE'
+                  AND m.branch_id = :branch
+            )
+            """, nativeQuery = true)
+    Number existsAssignable(@Param("employee") long employee, @Param("branch") long branch);
 
     /**
      * Who may take part in a channel (M7-D07): an active OWNER, or an active employee with an active membership at the
      * channel's branch; for a channel addressed to everyone (null branch) at any branch.
      */
-    @Query(value = "SELECT e.id,e.name FROM employees e WHERE e.status='ACTIVE' AND (e.global_role='OWNER' OR EXISTS "
-            + "(SELECT 1 FROM branch_memberships m WHERE m.employee_id=e.id AND m.status='ACTIVE' "
-            + "AND (:branch IS NULL OR m.branch_id=:branch))) ORDER BY e.name,e.id", nativeQuery = true)
-    List<Object[]> channelCandidates(@Param("branch") Long branch);
+    @Query(value = """
+            SELECT e.id, e.name
+            FROM employees e
+            WHERE e.status = 'ACTIVE'
+              AND (
+                  e.global_role = 'OWNER'
+                  OR EXISTS (
+                      SELECT 1
+                      FROM branch_memberships m
+                      WHERE m.employee_id = e.id
+                        AND m.status = 'ACTIVE'
+                        AND (:branch IS NULL OR m.branch_id = :branch)
+                  )
+              )
+            ORDER BY e.name, e.id
+            """, nativeQuery = true)
+    List<Object[]> findChannelCandidates(@Param("branch") Long branch);
 
-    /** The same rule as {@link #channelCandidates(Long)} for one employee. */
-    @Query(value = "SELECT EXISTS(SELECT 1 FROM employees e WHERE e.id=:employee AND e.status='ACTIVE' AND (e.global_role='OWNER' OR EXISTS "
-            + "(SELECT 1 FROM branch_memberships m WHERE m.employee_id=e.id AND m.status='ACTIVE' "
-            + "AND (:branch IS NULL OR m.branch_id=:branch))))", nativeQuery = true)
-    Number channelEligible(@Param("employee") long employee, @Param("branch") Long branch);
+    /** The same rule as {@link #findChannelCandidates(Long)} for one employee. */
+    @Query(value = """
+            SELECT EXISTS (
+                SELECT 1
+                FROM employees e
+                WHERE e.id = :employee
+                  AND e.status = 'ACTIVE'
+                  AND (
+                      e.global_role = 'OWNER'
+                      OR EXISTS (
+                          SELECT 1
+                          FROM branch_memberships m
+                          WHERE m.employee_id = e.id
+                            AND m.status = 'ACTIVE'
+                            AND (:branch IS NULL OR m.branch_id = :branch)
+                      )
+                  )
+            )
+            """, nativeQuery = true)
+    Number existsChannelEligible(@Param("employee") long employee, @Param("branch") Long branch);
 
     /** Login time only: the account version is not a client-visible change here, so it does not advance. */
     @Modifying
@@ -78,6 +136,6 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
      * The persisted Spring principal is the decimal employee ID.
      */
     @Modifying
-    @Query(value = "DELETE FROM SPRING_SESSION WHERE PRINCIPAL_NAME=:principal", nativeQuery = true)
+    @Query(value = "DELETE FROM SPRING_SESSION WHERE PRINCIPAL_NAME = :principal", nativeQuery = true)
     int deleteSessions(@Param("principal") String principal);
 }
