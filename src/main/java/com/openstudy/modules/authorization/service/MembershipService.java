@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Optional;
 
 import jakarta.persistence.EntityManager;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,6 +14,7 @@ import com.openstudy.modules.authorization.dto.MembershipRecord;
 import com.openstudy.modules.authorization.entity.BranchMembership;
 import com.openstudy.modules.authorization.entity.BranchRole;
 import com.openstudy.modules.authorization.entity.MembershipStatus;
+import com.openstudy.modules.authorization.entity.PermissionDefinition;
 import com.openstudy.modules.authorization.repository.BranchMembershipRepository;
 import com.openstudy.modules.authorization.repository.PermissionDefinitionRepository;
 
@@ -23,82 +25,120 @@ import com.openstudy.modules.authorization.repository.PermissionDefinitionReposi
  */
 @Service
 @Transactional(propagation = Propagation.MANDATORY)
+@RequiredArgsConstructor
 public class MembershipService {
-    private final BranchMembershipRepository memberships;
-    private final PermissionDefinitionRepository definitions;
-    private final EntityManager entityManager;
 
-    public MembershipService(BranchMembershipRepository memberships, PermissionDefinitionRepository definitions,
-            EntityManager entityManager) {
-        this.memberships = memberships;
-        this.definitions = definitions;
-        this.entityManager = entityManager;
-    }
+    private final BranchMembershipRepository branchMembershipRepository;
+    private final PermissionDefinitionRepository permissionDefinitionRepository;
+    private final EntityManager entityManager;
 
     /** Active memberships with their grants, for the current-user response. */
     @Transactional(propagation = Propagation.SUPPORTS, readOnly = true)
     public List<MembershipRecord> active(long employeeId) {
-        return memberships.findByEmployeeIdAndStatusOrderByBranchIdAsc(employeeId, MembershipStatus.ACTIVE).stream()
-                .map(m -> record(m, m.getPermissionCodes())).toList();
+        return branchMembershipRepository
+                .findByEmployeeIdAndStatusOrderByBranchIdAsc(employeeId, MembershipStatus.ACTIVE)
+                .stream()
+                .map(membership -> toRecord(membership, membership.getPermissionCodes()))
+                .toList();
     }
 
     /** Every membership of the employee. Locked: membership rows FOR UPDATE, then their grant rows FOR SHARE. */
     @Transactional(propagation = Propagation.SUPPORTS)
     public List<MembershipRecord> all(long employeeId, boolean lock) {
-        if (!lock) return memberships.findByEmployeeIdOrderByBranchIdAsc(employeeId).stream()
-                .map(m -> record(m, m.getPermissionCodes())).toList();
-        return memberships.findForUpdateByEmployeeIdOrderByBranchIdAsc(employeeId).stream()
-                .map(m -> record(m, memberships.lockedPermissionCodes(m.getId()))).toList();
+        if (!lock) {
+            return branchMembershipRepository.findByEmployeeIdOrderByBranchIdAsc(employeeId)
+                    .stream()
+                    .map(membership -> toRecord(membership, membership.getPermissionCodes()))
+                    .toList();
+        }
+
+        return branchMembershipRepository.findForUpdateByEmployeeIdOrderByBranchIdAsc(employeeId)
+                .stream()
+                .map(membership -> toRecord(
+                        membership,
+                        branchMembershipRepository.findPermissionCodesForShare(membership.getId())
+                ))
+                .toList();
     }
 
     /** Locks the (employee, branch) membership row, or its gap when there is none; grants are not read. */
     public Optional<MembershipRecord> lock(long employeeId, long branchId) {
-        return memberships.findForUpdateByEmployeeIdAndBranchId(employeeId, branchId).map(m -> record(m, List.of()));
+        return branchMembershipRepository.findForUpdateByEmployeeIdAndBranchId(employeeId, branchId)
+                .map(membership -> toRecord(membership, List.of()));
     }
 
     /** Returns whether a PENDING membership was revoked. */
     public boolean revokePending(long employeeId, long branchId, long actor) {
-        var membership = memberships.findForUpdateByEmployeeIdAndBranchId(employeeId, branchId)
-                .filter(m -> m.getStatus() == MembershipStatus.PENDING);
-        if (membership.isEmpty()) return false;
+        Optional<BranchMembership> membership = branchMembershipRepository
+                .findForUpdateByEmployeeIdAndBranchId(employeeId, branchId)
+                .filter(found -> found.getStatus() == MembershipStatus.PENDING);
+
+        if (membership.isEmpty()) {
+            return false;
+        }
+
         membership.get().revoke(actor);
-        memberships.flush();
+        branchMembershipRepository.flush();
         return true;
     }
 
     /** Reuses a revoked row (Q11) or inserts one. A pending membership never carries effective grants. */
     public void pend(long employeeId, long branchId, String role, long actor) {
-        var existing = memberships.findForUpdateByEmployeeIdAndBranchId(employeeId, branchId);
+        Optional<BranchMembership> existing = branchMembershipRepository
+                .findForUpdateByEmployeeIdAndBranchId(employeeId, branchId);
+        BranchRole branchRole = BranchRole.valueOf(role);
+
         if (existing.isEmpty()) {
-            memberships.saveAndFlush(BranchMembership.pending(employeeId, branchId, BranchRole.valueOf(role), actor));
+            branchMembershipRepository.saveAndFlush(BranchMembership.pending(employeeId, branchId, branchRole, actor));
             return;
         }
-        existing.get().returnToPending(BranchRole.valueOf(role), actor);
-        memberships.flush();
+
+        existing.get().returnToPending(branchRole, actor);
+        branchMembershipRepository.flush();
     }
 
     /** Activates only the invitation's PENDING membership and replaces its grants. */
     public void activatePending(long employeeId, long branchId, long actor, List<String> grants) {
-        var membership = memberships.findForUpdateByEmployeeIdAndBranchIdAndStatus(employeeId, branchId, MembershipStatus.PENDING)
+        BranchMembership membership = branchMembershipRepository
+                .findForUpdateByEmployeeIdAndBranchIdAndStatus(employeeId, branchId, MembershipStatus.PENDING)
                 .orElseThrow(() -> new IllegalStateException("No pending membership to activate"));
-        memberships.activate(membership.getId(), actor);
+
+        branchMembershipRepository.activate(membership.getId(), actor);
         entityManager.refresh(membership);
-        membership.replacePermissions(new LinkedHashSet<>(definitions.findByCodeIn(grants)));
-        memberships.flush();
+        membership.replacePermissions(findDefinitions(grants));
+        branchMembershipRepository.flush();
     }
 
     /** The caller has locked this membership through {@link #all(long, boolean)} and checked its version. */
     public void update(long employeeId, long branchId, long actor, String role, String status, List<String> grants) {
-        var membership = memberships.findForUpdateByEmployeeIdAndBranchId(employeeId, branchId).orElseThrow();
+        BranchMembership membership = branchMembershipRepository
+                .findForUpdateByEmployeeIdAndBranchId(employeeId, branchId)
+                .orElseThrow();
         long version = membership.getVersion();
+
         membership.change(BranchRole.valueOf(role), MembershipStatus.valueOf(status), actor);
-        membership.replacePermissions(new LinkedHashSet<>(definitions.findByCodeIn(grants)));
-        memberships.flush();
-        if (membership.getVersion() == version) memberships.incrementVersion(membership.getId());
+        membership.replacePermissions(findDefinitions(grants));
+        branchMembershipRepository.flush();
+
+        if (membership.getVersion() == version) {
+            branchMembershipRepository.incrementVersion(membership.getId());
+        }
+
         entityManager.refresh(membership);
     }
 
-    private static MembershipRecord record(BranchMembership m, List<String> permissions) {
-        return new MembershipRecord(m.getId(), m.getBranchId(), m.getRole().name(), m.getStatus().name(), permissions, m.getVersion());
+    private LinkedHashSet<PermissionDefinition> findDefinitions(List<String> codes) {
+        return new LinkedHashSet<>(permissionDefinitionRepository.findByCodeIn(codes));
+    }
+
+    private static MembershipRecord toRecord(BranchMembership membership, List<String> permissions) {
+        return new MembershipRecord(
+                membership.getId(),
+                membership.getBranchId(),
+                membership.getRole().name(),
+                membership.getStatus().name(),
+                permissions,
+                membership.getVersion()
+        );
     }
 }

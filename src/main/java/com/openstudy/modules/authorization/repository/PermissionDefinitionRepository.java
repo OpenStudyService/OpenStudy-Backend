@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import com.openstudy.modules.authorization.entity.PermissionDefinition;
 
 public interface PermissionDefinitionRepository extends JpaRepository<PermissionDefinition, Long> {
+
     List<PermissionDefinition> findAllByOrderByCodeAsc();
 
     Optional<PermissionDefinition> findByCode(String code);

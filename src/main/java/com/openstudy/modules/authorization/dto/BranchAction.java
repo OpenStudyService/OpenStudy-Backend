@@ -13,9 +13,15 @@ public enum BranchAction {
     WRITE_SEATS("operations:write", false, false),
     /** M5 seat stop/resume: MANAGER plus operations:write (seat-usage-api.md). */
     MANAGE_SEATS("operations:write", true, false),
-    /** M6 room ledger with its stop and resume: operations:write at the room's branch, also while the branch is stopped. */
+    /**
+     * M6 room ledger with its stop and resume: operations:write at the room's branch, also while the branch is
+     * stopped.
+     */
     WRITE_ROOMS("operations:write", false, false),
-    /** M6 locker ledger with its stop, resume and branch rate: operations:write at the locker's branch, also while the branch is stopped. */
+    /**
+     * M6 locker ledger with its stop, resume and branch rate: operations:write at the locker's branch, also while the
+     * branch is stopped.
+     */
     WRITE_LOCKERS("operations:write", false, false),
     /** M6 cross-branch summary, MANAGER half: the role alone at the serving branch, with no separate grant (M6-D06). */
     SERVE_CROSS_BRANCH_AS_MANAGER(null, true, false),
@@ -46,6 +52,7 @@ public enum BranchAction {
     public final String grant;
     public final boolean administrator;
     public final boolean requiresOperatingBranch;
+
     BranchAction(String grant, boolean administrator, boolean requiresOperatingBranch) {
         this.grant = grant;
         this.administrator = administrator;
