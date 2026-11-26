@@ -15,8 +15,11 @@ import org.springframework.scheduling.annotation.Scheduled;
 @ConditionalOnProperty(name = "openstudy.retention.schedule-enabled", havingValue = "true", matchIfMissing = true)
 @RequiredArgsConstructor
 public class RetentionScheduling {
-    private final RetentionService retention;
+
+    private final RetentionService retentionService;
 
     @Scheduled(cron = "${openstudy.retention.cron:0 0 4 * * *}", zone = "Asia/Seoul")
-    public void runDaily() { retention.runAll(); }
+    public void runDaily() {
+        retentionService.runAll();
+    }
 }
