@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import com.openstudy.modules.notice.entity.Notice;
 
 public interface NoticeRepository extends JpaRepository<Notice, Long> {
+
     /**
      * Parent lock for AuthorizedCommands, taken after the guard/employee/branch locks.
      * JPA-01 native exception: the lock order is part of the contract, so the statement stays explicit.
