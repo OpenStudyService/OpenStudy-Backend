@@ -15,17 +15,24 @@ import com.openstudy.modules.authorization.entity.BranchRole;
 import com.openstudy.modules.authorization.entity.PermissionPreset;
 
 public interface PermissionPresetRepository extends JpaRepository<PermissionPreset, Long> {
+
     @EntityGraph(attributePaths = "permissions")
     List<PermissionPreset> findAllWithPermissionsByOrderByIdAsc();
 
-    /** Locks only the preset row (SELECT ... FOR UPDATE); its grants are read by {@link #lockedPermissionCodes}. */
+    /** Locks only the preset row (SELECT ... FOR UPDATE); its grants are read by {@link #findPermissionCodesForShare}. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<PermissionPreset> findForUpdateById(long id);
 
     /** JPA-01 native exception: the grant rows keep their former FOR SHARE lock alongside the preset's FOR UPDATE. */
-    @Query(value = "SELECT p.code FROM permission_preset_grants g JOIN permission_definitions p ON p.id=g.permission_id "
-            + "WHERE g.preset_id=:id ORDER BY p.code FOR SHARE", nativeQuery = true)
-    List<String> lockedPermissionCodes(@Param("id") long id);
+    @Query(value = """
+            SELECT p.code
+            FROM permission_preset_grants g
+            JOIN permission_definitions p ON p.id=g.permission_id
+            WHERE g.preset_id=:id
+            ORDER BY p.code
+            FOR SHARE
+            """, nativeQuery = true)
+    List<String> findPermissionCodesForShare(@Param("id") long id);
 
     boolean existsByNameAndRole(String name, BranchRole role);
 

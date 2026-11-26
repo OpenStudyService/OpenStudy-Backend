@@ -6,6 +6,7 @@ import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.function.Function;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,20 +23,19 @@ import com.openstudy.modules.authorization.repository.AuthorizationRepository;
  * Current implementation serializes commands using one guard; split only after contention measurements.
  */
 @Service
+@RequiredArgsConstructor
 public class AuthorizedCommands {
-    private final AuthorizationRepository repository;
-    private final AuthorizationService authorization;
-    public AuthorizedCommands(AuthorizationRepository repository, AuthorizationService authorization) {
-        this.repository = repository;
-        this.authorization = authorization;
-    }
+
+    private static final String ACTIVE = "ACTIVE";
+
+    private final AuthorizationRepository authorizationRepository;
+    private final AuthorizationService authorizationService;
 
     @Transactional
     public <T> T ownerCommand(long actor, Supplier<T> command) {
-        repository.lockGuard();
-        repository.lockEmployees();
-        repository.lockBranches();
-        authorization.requireOwner(repository.currentLocked(actor));
+        lockFoundation();
+        authorizationService.requireOwner(authorizationRepository.currentLocked(actor));
+
         return command.get();
     }
 
@@ -46,20 +46,29 @@ public class AuthorizedCommands {
 
     /** Lock an existing product/invitation parent before the membership/grant current read. */
     @Transactional
-    public <T> T inBranches(long actor, Set<Long> serverBranchIds, BranchAction action, Runnable lockBusinessParent,
-            Supplier<T> command) {
+    public <T> T inBranches(
+            long actor,
+            Set<Long> serverBranchIds,
+            BranchAction action,
+            Runnable lockBusinessParent,
+            Supplier<T> command
+    ) {
         return inBranches(actor, serverBranchIds, action, lockBusinessParent, state -> command.get());
     }
 
     @Transactional
-    public <T> T inBranches(long actor, Set<Long> serverBranchIds, BranchAction action, Runnable lockBusinessParent,
-            Function<AuthorizationState, T> command) {
-        repository.lockGuard();
-        repository.lockEmployees();
-        repository.lockBranches();
+    public <T> T inBranches(
+            long actor,
+            Set<Long> serverBranchIds,
+            BranchAction action,
+            Runnable lockBusinessParent,
+            Function<AuthorizationState, T> command
+    ) {
+        lockFoundation();
         lockBusinessParent.run();
-        var state = repository.currentLocked(actor);
-        authorization.require(state, serverBranchIds, action);
+        AuthorizationState state = authorizationRepository.currentLocked(actor);
+        authorizationService.require(state, serverBranchIds, action);
+
         return command.apply(state);
     }
 
@@ -68,14 +77,18 @@ public class AuthorizedCommands {
      * branch and paid at another (M4-D05). The branch set is read after the parent lock, so it is the persisted one.
      */
     @Transactional
-    public <T> T inAnyBranch(long actor, BranchAction action, Runnable lockBusinessParent, Supplier<Set<Long>> serverBranchIds,
-            Function<AuthorizationState, T> command) {
-        repository.lockGuard();
-        repository.lockEmployees();
-        repository.lockBranches();
+    public <T> T inAnyBranch(
+            long actor,
+            BranchAction action,
+            Runnable lockBusinessParent,
+            Supplier<Set<Long>> serverBranchIds,
+            Function<AuthorizationState, T> command
+    ) {
+        lockFoundation();
         lockBusinessParent.run();
-        var state = repository.currentLocked(actor);
-        authorization.requireAny(state, serverBranchIds.get(), action);
+        AuthorizationState state = authorizationRepository.currentLocked(actor);
+        authorizationService.requireAny(state, serverBranchIds.get(), action);
+
         return command.apply(state);
     }
 
@@ -85,15 +98,18 @@ public class AuthorizedCommands {
      * must be immutable; the callback receives it and takes the row lock itself.
      */
     @Transactional
-    public <T> T inRecordBranch(long actor, BranchAction action, Supplier<Optional<Long>> recordBranch,
-            BiFunction<AuthorizationState, Long, T> command) {
-        repository.lockGuard();
-        repository.lockEmployees();
-        repository.lockBranches();
-        var state = repository.currentLocked(actor);
-        if (!"ACTIVE".equals(state.status())) throw AuthorizationService.forbidden();
-        long branch = recordBranch.get().filter(id -> authorization.permits(state, id, action))
+    public <T> T inRecordBranch(
+            long actor,
+            BranchAction action,
+            Supplier<Optional<Long>> recordBranch,
+            BiFunction<AuthorizationState, Long, T> command
+    ) {
+        lockFoundation();
+        AuthorizationState state = requireActive(authorizationRepository.currentLocked(actor));
+        long branch = recordBranch.get()
+                .filter(id -> authorizationService.permits(state, id, action))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+
         return command.apply(state, branch);
     }
 
@@ -104,12 +120,10 @@ public class AuthorizedCommands {
      */
     @Transactional
     public <T> T activeEmployee(long actor, Runnable lockBusinessParent, Function<AuthorizationState, T> command) {
-        repository.lockGuard();
-        repository.lockEmployees();
-        repository.lockBranches();
+        lockFoundation();
         lockBusinessParent.run();
-        var state = repository.currentLocked(actor);
-        if (!"ACTIVE".equals(state.status())) throw AuthorizationService.forbidden();
+        AuthorizationState state = requireActive(authorizationRepository.currentLocked(actor));
+
         return command.apply(state);
     }
 
@@ -119,59 +133,110 @@ public class AuthorizedCommands {
      */
     @Transactional
     public <T> T publicCommand(Runnable lockBusinessParent, Supplier<T> command) {
-        repository.lockGuard();
-        repository.lockEmployees();
-        repository.lockBranches();
+        lockFoundation();
         lockBusinessParent.run();
+
         return command.get();
     }
 
     @Transactional
-    public <T> T membershipChange(long actor, long target, long branch, String requestedRole, String requestedStatus,
-            Supplier<T> command) {
-        repository.lockGuard();
-        repository.lockEmployees();
-        repository.lockBranches();
-        repository.lockMemberships(ids(actor, target), Set.of(branch));
-        authorization.requireMembershipChange(repository.currentLocked(actor), repository.currentLocked(target), branch,
-                requestedRole, requestedStatus);
-        long administrators = repository.activeAdministrators(branch);
+    public <T> T membershipChange(
+            long actor,
+            long target,
+            long branch,
+            String requestedRole,
+            String requestedStatus,
+            Supplier<T> command
+    ) {
+        lockFoundation();
+        authorizationRepository.lockMemberships(toIdSet(actor, target), Set.of(branch));
+        authorizationService.requireMembershipChange(
+                authorizationRepository.currentLocked(actor),
+                authorizationRepository.currentLocked(target),
+                branch,
+                requestedRole,
+                requestedStatus
+        );
+        long administrators = authorizationRepository.activeAdministrators(branch);
+
         T result = command.get();
-        if (administrators > 0 && repository.activeAdministrators(branch) == 0) throw lastAdministrator();
+
+        boolean lostLastAdministrator = administrators > 0 && authorizationRepository.activeAdministrators(branch) == 0;
+
+        if (lostLastAdministrator) {
+            throw lastAdministrator();
+        }
+
         return result;
     }
 
     @Transactional
     public <T> T selfAccountChange(long actor, Supplier<T> command) {
-        repository.lockGuard();
-        repository.lockEmployees();
-        repository.lockBranches();
-        if (!"ACTIVE".equals(repository.currentLocked(actor).status())) throw AuthorizationService.forbidden();
+        lockFoundation();
+        requireActive(authorizationRepository.currentLocked(actor));
+
         return command.get();
     }
 
     @Transactional
     public <T> T accountChange(long actor, long target, Supplier<T> command) {
-        repository.lockGuard();
-        repository.lockEmployees();
         // Lock branches before the full membership projection to preserve parent/child lock order.
-        repository.lockBranches();
-        authorization.requireOwner(repository.currentLocked(actor));
-        var targetState = repository.currentLocked(target);
-        Set<Long> branches = targetState.owner() ? targetState.branches().keySet() : targetState.memberships().keySet();
-        repository.lockMemberships(ids(actor, target), branches);
-        long owners = repository.activeOwners();
+        lockFoundation();
+        authorizationService.requireOwner(authorizationRepository.currentLocked(actor));
+
+        AuthorizationState targetState = authorizationRepository.currentLocked(target);
+        Set<Long> branches = targetState.owner()
+                ? targetState.branches().keySet()
+                : targetState.memberships().keySet();
+        authorizationRepository.lockMemberships(toIdSet(actor, target), branches);
+
+        long owners = authorizationRepository.activeOwners();
         Set<Long> protectedBranches = new HashSet<>();
-        for (long branch : branches) if (repository.activeAdministrators(branch) > 0) protectedBranches.add(branch);
+
+        for (long branch : branches) {
+            if (authorizationRepository.activeAdministrators(branch) > 0) {
+                protectedBranches.add(branch);
+            }
+        }
+
         T result = command.get();
-        if (owners > 0 && repository.activeOwners() == 0) throw lastAdministrator();
-        for (long branch : protectedBranches) if (repository.activeAdministrators(branch) == 0) throw lastAdministrator();
+
+        if (owners > 0 && authorizationRepository.activeOwners() == 0) {
+            throw lastAdministrator();
+        }
+
+        for (long branch : protectedBranches) {
+            if (authorizationRepository.activeAdministrators(branch) == 0) {
+                throw lastAdministrator();
+            }
+        }
+
         return result;
     }
 
-    private static Set<Long> ids(long actor, long target) {
-        Set<Long> result = new HashSet<>(); result.add(actor); result.add(target); return result;
+    /** The common lock order's first three steps: guard, sorted employees, sorted branches. */
+    private void lockFoundation() {
+        authorizationRepository.lockGuard();
+        authorizationRepository.lockEmployees();
+        authorizationRepository.lockBranches();
     }
+
+    private static AuthorizationState requireActive(AuthorizationState state) {
+        if (!ACTIVE.equals(state.status())) {
+            throw AuthorizationService.forbidden();
+        }
+
+        return state;
+    }
+
+    private static Set<Long> toIdSet(long actor, long target) {
+        Set<Long> result = new HashSet<>();
+        result.add(actor);
+        result.add(target);
+
+        return result;
+    }
+
     private static ApiException lastAdministrator() {
         return ApiException.conflict("LAST_ADMIN_REQUIRED", "마지막 활성 관리자는 해제할 수 없습니다.");
     }

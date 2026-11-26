@@ -2,6 +2,8 @@ package com.openstudy.modules.authorization.controller;
 
 import java.util.*;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -10,23 +12,57 @@ import com.openstudy.modules.authorization.dto.PermissionPreset;
 import com.openstudy.modules.authorization.service.PermissionPresetService;
 
 @RestController
-@RequestMapping("/api/permission-presets")
+@RequestMapping("/api")
+@RequiredArgsConstructor
 public class PermissionPresetController {
-    private final PermissionPresetService service;
-    public PermissionPresetController(PermissionPresetService service) { this.service=service; }
-    @GetMapping
-    public PageResponse<PermissionPreset> list(Authentication actor,@RequestParam(defaultValue="1") long page,
-            @RequestParam(defaultValue="20") int pageSize,@RequestParam(required=false) String q,
-            @RequestParam(required=false) String sort,@RequestParam(required=false) String direction) {
-        return service.list(Long.parseLong(actor.getName()),ListQuery.parse(page,pageSize,q,sort,direction,Set.of("createdAt","name"),"createdAt"));
+
+    private static final Set<String> SORT_FIELDS = Set.of("createdAt", "name");
+    private static final String DEFAULT_SORT = "createdAt";
+
+    private final PermissionPresetService permissionPresetService;
+
+    @GetMapping("/permission-presets")
+    public PageResponse<PermissionPreset> listPermissionPresets(
+            Authentication actor,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String direction
+    ) {
+        ListQuery query = ListQuery.parse(page, pageSize, q, sort, direction, SORT_FIELDS, DEFAULT_SORT);
+
+        return permissionPresetService.list(actorId(actor), query);
     }
-    @PostMapping
-    public ResponseEntity<PermissionPreset> create(Authentication actor,@RequestBody Map<String,Object> body,
-            @RequestHeader(name="Idempotency-Key",required=false) String key,HttpServletRequest request) {
-        return ResponseEntity.status(201).body(service.create(Long.parseLong(actor.getName()),body,key,ApiRequestFilter.requestId(request)));
+
+    @PostMapping("/permission-presets")
+    public ResponseEntity<PermissionPreset> createPermissionPreset(
+            Authentication actor,
+            @RequestBody Map<String, Object> body,
+            @RequestHeader(name = "Idempotency-Key", required = false) String key,
+            HttpServletRequest request
+    ) {
+        PermissionPreset result = permissionPresetService.create(
+                actorId(actor),
+                body,
+                key,
+                ApiRequestFilter.requestId(request)
+        );
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(result);
     }
-    @PatchMapping("/{id}")
-    public PermissionPreset update(Authentication actor,@PathVariable long id,@RequestBody Map<String,Object> body,HttpServletRequest request) {
-        return service.update(Long.parseLong(actor.getName()),id,body,ApiRequestFilter.requestId(request));
+
+    @PatchMapping("/permission-presets/{id}")
+    public PermissionPreset updatePermissionPreset(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        return permissionPresetService.update(actorId(actor), id, body, ApiRequestFilter.requestId(request));
+    }
+
+    private static long actorId(Authentication actor) {
+        return Long.parseLong(actor.getName());
     }
 }
