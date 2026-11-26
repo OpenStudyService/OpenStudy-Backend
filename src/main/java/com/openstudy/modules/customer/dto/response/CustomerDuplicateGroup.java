@@ -7,6 +7,15 @@ import java.util.List;
 public record CustomerDuplicateGroup(String phone, List<Member> customers) {
 
     /** Contract schema {@code DuplicateCustomer}. */
-    public record Member(String id, String memberNo, String name, String status, String registeredBranchId, Instant registeredAt,
-            long paymentCount, Instant lastActivityAt) {}
+    public record Member(
+            String id,
+            String memberNo,
+            String name,
+            String status,
+            String registeredBranchId,
+            Instant registeredAt,
+            long paymentCount,
+            Instant lastActivityAt
+    ) {
+    }
 }

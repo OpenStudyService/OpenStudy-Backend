@@ -41,57 +41,81 @@ import org.hibernate.generator.EventType;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Customer {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @SemanticField(id = "customer.id", name = "회원 ID", role = "ID", exposed = false)
     private Long id;
+
     @Column(name = "member_no", nullable = false, length = 40, updatable = false)
     @SemanticField(id = "customer.member_no", name = "회원 번호", role = "CODE", exposed = false)
     private String memberNo;
+
     @Column(nullable = false, length = 100)
     @SemanticField(id = "customer.name", name = "회원 성명", exposed = false)
     private String name;
+
     @Column(length = 30)
     @SemanticField(id = "customer.phone", name = "회원 전화번호", exposed = false)
     private String phone;
+
     @Column(length = 254)
     @SemanticField(id = "customer.email", name = "회원 이메일", exposed = false)
     private String email;
+
     @Column(name = "registered_branch_id", updatable = false)
     private Long registeredBranchId;
-    @Enumerated(EnumType.STRING) @Column(nullable = false)
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
     private CustomerStatus status;
+
     @Column(name = "status_reason", length = 500)
     private String statusReason;
+
     /** The customer this one was merged into (V14, M13-D03); null unless MERGED. */
     @Column(name = "merged_into_customer_id")
     private Long mergedIntoCustomerId;
+
     @Column(length = 1000)
     @SemanticField(id = "customer.memo", name = "회원 메모", exposed = false)
     private String memo;
+
     // Both timestamps are DB-maintained (DEFAULT / ON UPDATE CURRENT_TIMESTAMP(6)).
-    @Generated(event = EventType.INSERT) @Column(name = "registered_at", insertable = false, updatable = false)
+    @Generated(event = EventType.INSERT)
+    @Column(name = "registered_at", insertable = false, updatable = false)
     private Instant registeredAt;
-    @Generated(event = {EventType.INSERT, EventType.UPDATE}) @Column(name = "updated_at", insertable = false, updatable = false)
+
+    @Generated(event = {EventType.INSERT, EventType.UPDATE})
+    @Column(name = "updated_at", insertable = false, updatable = false)
     private Instant updatedAt;
+
     /** Exposed to clients and checked with 409 on every customer command (JPA-02). */
     @Version
     private long version;
 
     public Customer(String memberNo, long registeredBranchId, String name, String phone, String email, String memo) {
-        this.memberNo = memberNo; this.registeredBranchId = registeredBranchId; this.status = CustomerStatus.NORMAL;
+        this.memberNo = memberNo;
+        this.registeredBranchId = registeredBranchId;
+        this.status = CustomerStatus.NORMAL;
         change(name, phone, email, memo);
     }
 
     public void change(String name, String phone, String email, String memo) {
-        this.name = name; this.phone = phone; this.email = email; this.memo = memo;
+        this.name = name;
+        this.phone = phone;
+        this.email = email;
+        this.memo = memo;
     }
 
     public void changeStatus(CustomerStatus status, String reason) {
-        this.status = status; this.statusReason = reason;
+        this.status = status;
+        this.statusReason = reason;
     }
 
     /** Absorbed into another customer, or moved to a new target when that customer is absorbed in turn (M13-D03). */
     public void mergeInto(long target) {
-        this.status = CustomerStatus.MERGED; this.mergedIntoCustomerId = target;
+        this.status = CustomerStatus.MERGED;
+        this.mergedIntoCustomerId = target;
     }
 }
