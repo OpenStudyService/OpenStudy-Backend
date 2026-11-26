@@ -7,6 +7,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.IntSupplier;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -24,88 +25,151 @@ import com.openstudy.modules.retention.repository.RetentionRepository;
 @Slf4j
 @Service
 public class RetentionService {
-    /** The rules this server can run, in the order of the daily job. Undecided kinds (transactions, inquiries,
-     * attendance) have no rule at all (ADR-M11-002). */
-    public static final List<String> RULES = List.of("CUSTOMER_IDENTITY", "AI_CONVERSATION", "ACCOUNT_MAIL_HISTORY",
-            "IDEMPOTENCY_RECORD", "AUDIT_EVENT");
 
-    private final RetentionRepository repository;
-    private final TransactionTemplate transactions;
+    /**
+     * The rules this server can run, in the order of the daily job. Undecided kinds (transactions, inquiries,
+     * attendance) have no rule at all (ADR-M11-002).
+     */
+    public static final List<String> RULES = List.of(
+            "CUSTOMER_IDENTITY",
+            "AI_CONVERSATION",
+            "ACCOUNT_MAIL_HISTORY",
+            "IDEMPOTENCY_RECORD",
+            "AUDIT_EVENT"
+    );
+
+    private final RetentionRepository retentionRepository;
+    private final TransactionTemplate transactionTemplate;
     private final Clock clock;
 
-    public RetentionService(RetentionRepository repository, PlatformTransactionManager transactions, Clock clock) {
-        this.repository = repository;
-        this.transactions = new TransactionTemplate(transactions);
-        this.transactions.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    public RetentionService(
+            RetentionRepository retentionRepository,
+            PlatformTransactionManager transactionManager,
+            Clock clock
+    ) {
+        this.retentionRepository = retentionRepository;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.clock = clock;
     }
 
     /** What one run did; {@code ran} is false for a disabled rule, which leaves no record. */
-    public record Outcome(String rule, boolean ran, int target, int processed, String errorCode) {}
+    public record Outcome(String rule, boolean ran, int target, int processed, String errorCode) {
+    }
+
+    /** A rule's counts: how many rows qualified and how many were processed. */
+    private record Counts(int target, int processed) {
+    }
 
     public Map<String, Outcome> runAll() {
-        var outcomes = new LinkedHashMap<String, Outcome>();
-        for (String rule : RULES) outcomes.put(rule, run(rule));
+        Map<String, Outcome> outcomes = new LinkedHashMap<>();
+
+        for (String rule : RULES) {
+            outcomes.put(rule, run(rule));
+        }
+
         return outcomes;
     }
 
     public Outcome run(String code) {
-        var rule = repository.rule(code).orElseThrow(() -> new IllegalStateException("Unknown retention rule " + code));
-        if (!rule.enabled() || rule.periodDays() == null) return new Outcome(code, false, 0, 0, null);
+        RetentionRepository.Rule rule = retentionRepository.findRule(code)
+                .orElseThrow(() -> new IllegalStateException("Unknown retention rule " + code));
+
+        if (!rule.enabled() || rule.periodDays() == null) {
+            return new Outcome(code, false, 0, 0, null);
+        }
+
         // Defense in depth: the CHECK constraint already refuses this, but a rule must never delete inside its legal minimum.
-        if (rule.legalMinimumDays() != null && rule.periodDays() < rule.legalMinimumDays()) {
+        boolean shorterThanLegalMinimum = rule.legalMinimumDays() != null
+                && rule.periodDays() < rule.legalMinimumDays();
+
+        if (shorterThanLegalMinimum) {
             throw new IllegalStateException("Retention period of " + code + " is shorter than its legal minimum");
         }
+
         Instant started = clock.instant().truncatedTo(ChronoUnit.MICROS);
         Instant cutoff = started.minus(Duration.ofDays(rule.periodDays()));
+
         try {
-            int[] counts = transactions.execute(status -> apply(code, cutoff, started));
+            Counts counts = transactionTemplate.execute(status -> applyRule(code, cutoff, started));
             Instant finished = clock.instant();
-            transactions.executeWithoutResult(status -> repository.recordRun(code, rule.periodDays(), cutoff, started, finished,
-                    counts[0], counts[1], null));
-            if (counts[1] > 0) log.info("Retention rule {} processed {} of {}", code, counts[1], counts[0]);
-            return new Outcome(code, true, counts[0], counts[1], null);
+            recordRun(code, rule, cutoff, started, finished, counts, null);
+
+            if (counts.processed() > 0) {
+                log.info("Retention rule {} processed {} of {}", code, counts.processed(), counts.target());
+            }
+
+            return new Outcome(code, true, counts.target(), counts.processed(), null);
         } catch (RuntimeException failure) {
             // The type only: a message could quote a value that was being removed.
             String error = failure.getClass().getSimpleName();
-            transactions.executeWithoutResult(status -> repository.recordRun(code, rule.periodDays(), cutoff, started,
-                    clock.instant(), 0, 0, error));
+            recordRun(code, rule, cutoff, started, clock.instant(), new Counts(0, 0), error);
             log.error("Retention rule {} failed: {}", code, error);
+
             return new Outcome(code, true, 0, 0, error);
         }
     }
 
-    /** Returns {target, processed}. */
-    private int[] apply(String code, Instant cutoff, Instant now) {
+    /** Records the run in a transaction of its own, so a failure is kept even though the cleanup rolled back. */
+    private void recordRun(
+            String code,
+            RetentionRepository.Rule rule,
+            Instant cutoff,
+            Instant started,
+            Instant finished,
+            Counts counts,
+            String errorCode
+    ) {
+        transactionTemplate.executeWithoutResult(status -> retentionRepository.recordRun(
+                code,
+                rule.periodDays(),
+                cutoff,
+                started,
+                finished,
+                counts.target(),
+                counts.processed(),
+                errorCode
+        ));
+    }
+
+    private Counts applyRule(String code, Instant cutoff, Instant now) {
         return switch (code) {
             case "CUSTOMER_IDENTITY" -> {
-                int target = repository.countInactiveCustomers(cutoff, now);
-                yield new int[] {target, untilDone(() -> repository.anonymizeInactiveCustomers(cutoff, now))};
+                int target = retentionRepository.countInactiveCustomers(cutoff, now);
+                int processed = sumUntilDone(() -> retentionRepository.anonymizeInactiveCustomers(cutoff, now));
+                yield new Counts(target, processed);
             }
             case "AI_CONVERSATION" -> {
-                int target = repository.countIdleConversations(cutoff);
-                yield new int[] {target, untilDone(() -> repository.deleteIdleConversations(cutoff))};
+                int target = retentionRepository.countIdleConversations(cutoff);
+                int processed = sumUntilDone(() -> retentionRepository.deleteIdleConversations(cutoff));
+                yield new Counts(target, processed);
             }
             case "ACCOUNT_MAIL_HISTORY" -> {
-                int done = repository.deleteEndedResetLinks(cutoff) + untilDone(() -> repository.deleteUnjoinedInvitations(cutoff))
-                        + repository.deleteFinishedSendJobs(cutoff);
-                yield new int[] {done, done};
+                int done = retentionRepository.deleteEndedResetLinks(cutoff)
+                        + sumUntilDone(() -> retentionRepository.deleteUnjoinedInvitations(cutoff))
+                        + retentionRepository.deleteFinishedSendJobs(cutoff);
+                yield new Counts(done, done);
             }
             case "IDEMPOTENCY_RECORD" -> {
-                int done = untilDone(() -> repository.deleteExpiredIdempotencyRecords(cutoff));
-                yield new int[] {done, done};
+                int done = sumUntilDone(() -> retentionRepository.deleteExpiredIdempotencyRecords(cutoff));
+                yield new Counts(done, done);
             }
             case "AUDIT_EVENT" -> {
-                int done = untilDone(() -> repository.deleteAuditEventsBefore(cutoff));
-                yield new int[] {done, done};
+                int done = sumUntilDone(() -> retentionRepository.deleteAuditEventsBefore(cutoff));
+                yield new Counts(done, done);
             }
             default -> throw new IllegalStateException("No retention action for " + code);
         };
     }
 
-    private static int untilDone(java.util.function.IntSupplier chunk) {
+    /** Runs one chunk after another until a chunk changes nothing, and returns the total. */
+    private static int sumUntilDone(IntSupplier chunk) {
         int total = 0;
-        for (int done = chunk.getAsInt(); done > 0; done = chunk.getAsInt()) total += done;
+
+        for (int done = chunk.getAsInt(); done > 0; done = chunk.getAsInt()) {
+            total += done;
+        }
+
         return total;
     }
 }

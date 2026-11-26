@@ -35,7 +35,7 @@ class RetentionServiceUnitTests {
     }
 
     @Test void aFailureIsRecordedWithItsTypeAndNeverItsMessage() {
-        when(repository.rule("CUSTOMER_IDENTITY")).thenReturn(Optional.of(new RetentionRepository.Rule("CUSTOMER_IDENTITY", true, 365, null)));
+        when(repository.findRule("CUSTOMER_IDENTITY")).thenReturn(Optional.of(new RetentionRepository.Rule("CUSTOMER_IDENTITY", true, 365, null)));
         when(repository.countInactiveCustomers(any(), any())).thenThrow(new IllegalStateException("홍길동 010-1234-5678"));
         var outcome = service.run("CUSTOMER_IDENTITY");
         assertThat(outcome.ran()).isTrue();
@@ -45,15 +45,15 @@ class RetentionServiceUnitTests {
     }
 
     @Test void aDisabledRuleOrOneWithoutAPeriodDoesNothingAndRecordsNothing() {
-        when(repository.rule("AI_CONVERSATION")).thenReturn(Optional.of(new RetentionRepository.Rule("AI_CONVERSATION", false, 365, null)));
-        when(repository.rule("AUDIT_EVENT")).thenReturn(Optional.of(new RetentionRepository.Rule("AUDIT_EVENT", true, null, 1095)));
+        when(repository.findRule("AI_CONVERSATION")).thenReturn(Optional.of(new RetentionRepository.Rule("AI_CONVERSATION", false, 365, null)));
+        when(repository.findRule("AUDIT_EVENT")).thenReturn(Optional.of(new RetentionRepository.Rule("AUDIT_EVENT", true, null, 1095)));
         assertThat(service.run("AI_CONVERSATION").ran()).isFalse();
         assertThat(service.run("AUDIT_EVENT").ran()).isFalse();
         verify(repository, never()).recordRun(any(), anyInt(), any(), any(), any(), anyInt(), anyInt(), any());
     }
 
     @Test void aPeriodShorterThanTheLegalMinimumIsRefusedBeforeAnythingIsDeleted() {
-        when(repository.rule("AUDIT_EVENT")).thenReturn(Optional.of(new RetentionRepository.Rule("AUDIT_EVENT", true, 30, 1095)));
+        when(repository.findRule("AUDIT_EVENT")).thenReturn(Optional.of(new RetentionRepository.Rule("AUDIT_EVENT", true, 30, 1095)));
         assertThatThrownBy(() -> service.run("AUDIT_EVENT")).isInstanceOf(IllegalStateException.class);
         verify(repository, never()).deleteAuditEventsBefore(any());
     }
