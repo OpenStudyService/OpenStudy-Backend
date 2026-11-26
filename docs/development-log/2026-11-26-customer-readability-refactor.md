@@ -57,7 +57,13 @@
 
 - `./gradlew compileJava compileTestJava`: 통과.
 - customer `src/main`에 `var`, 중괄호 없는 `if`·`for`, 120자를 넘는 코드 줄(주석 제외)이 남아 있지 않은 것을 확인했다.
-- `./gradlew test --tests "com.openstudy.modules.customer.*"`: 처음 실행은 Docker Desktop이 꺼져 있어 14개 모두 컨텍스트 로딩에서 실패했다(Testcontainers MySQL을 띄우지 못함). 코드 원인이 아니며, Docker를 켠 뒤 다시 실행한 결과를 아래에 덧붙인다.
+- customer 모듈 테스트: 처음 실행은 Docker Desktop이 꺼져 있어 14개 모두 컨텍스트 로딩에서 실패했다(Testcontainers MySQL을 띄우지 못함). 코드 원인이 아니다. Docker를 켠 뒤 전체 테스트에서 14개 모두 통과했다.
+- 전체 테스트 1차(`./gradlew test`): 1,270개 중 실패 11, 건너뜀 52.
+  - 실패는 모두 AI·DomainLens 테스트(`DomainLensPipelineIntegrationTests` 등)였고 원인은 `INDEX_MISMATCH`였다.
+  - 같은 테스트가 `main`에서도 똑같이 실패해 이번 변경과 무관함을 확인했다.
+  - 원인은 로컬 임베딩 모델(`.models/koen-e5-tiny-q8`, Git 미포함) 삭제였다. 앞서 서브에이전트 워크트리를 정리하면서 폴더를 강제 삭제했는데, 그 안의 `.models` 디렉터리 링크(junction)를 따라 원본 모델 파일까지 지워졌다.
+  - 다른 로컬 체크아웃에 있던 같은 모델을 복사해 복구했고, 해시가 `manifest.json`과 일치함을 확인했다. 복구 후 실패했던 AI 테스트 3개 클래스(21개)가 통과했다.
+- 전체 테스트 2차(`./gradlew test`): 1,270개 중 실패 0, 건너뜀 28 (BUILD SUCCESSFUL, 약 19분). 건너뛴 28개는 ai·sales 패키지의 AI 관련 조건부 테스트다.
 
 ## 6. 남은 작업 / 보류 사항
 
