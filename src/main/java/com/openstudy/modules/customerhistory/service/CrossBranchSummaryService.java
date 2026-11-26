@@ -37,63 +37,106 @@ import com.openstudy.modules.ticket.service.PassService;
 @Service
 @RequiredArgsConstructor
 public class CrossBranchSummaryService {
+
     static final String ENTITY = "customers";
+
     private static final String SEAT = "좌석";
     private static final String ROOM = "스터디룸";
     private static final String LOCKER = "사물함";
     private static final int RECENT_USAGES = 50;
-    private final CustomerService customers;
-    private final PassService passes;
-    private final SeatSessionService seats;
-    private final RoomReservationService rooms;
-    private final LockerAssignmentService lockers;
-    private final AuthorizationService policy;
-    private final AuthorizedCommands commands;
-    private final AuditTrail audit;
-    private final CrossBranchDenialTrail denials;
+    private static final int MAX_REASON_LENGTH = 500;
+
+    private final CustomerService customerService;
+    private final PassService passService;
+    private final SeatSessionService seatSessionService;
+    private final RoomReservationService roomReservationService;
+    private final LockerAssignmentService lockerAssignmentService;
+    private final AuthorizationService authorizationService;
+    private final AuthorizedCommands authorizedCommands;
+    private final AuditTrail auditTrail;
+    private final CrossBranchDenialTrail crossBranchDenialTrail;
     private final Clock clock;
 
     /** Deliberately not transactional: the refusal is recorded after the command's transaction has rolled back. */
-    public CrossBranchSummary summary(long actor, long id, Map<String, Object> body, String requestId) {
-        var input = new StrictInput(body).only("branchId", "reason");
+    public CrossBranchSummary getSummary(long actor, long id, Map<String, Object> body, String requestId) {
+        StrictInput input = new StrictInput(body).only("branchId", "reason");
         long branch = input.id("branchId");
-        String reason = input.text("reason", 500);
+        String reason = input.text("reason", MAX_REASON_LENGTH);
+
         try {
-            return commands.activeEmployee(actor, () -> {}, state -> {
-                if (!permitted(state, branch)) throw AuthorizationService.forbidden();
-                if (customers.summaries(Set.of(id)).isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+            return authorizedCommands.activeEmployee(actor, () -> {}, state -> {
+                if (!isPermitted(state, branch)) {
+                    throw AuthorizationService.forbidden();
+                }
+
+                if (customerService.summaries(Set.of(id)).isEmpty()) {
+                    throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+                }
+
                 Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
                 record(state, actor, id, branch, reason, now, requestId);
-                return new CrossBranchSummary(Long.toString(id), passes.heldBy(id, now), usages(id, now), now);
+
+                return new CrossBranchSummary(Long.toString(id), passService.heldBy(id, now), findUsages(id, now), now);
             });
         } catch (AccessDeniedException refused) {
-            denials.record(actor, id, branch, requestId);
+            crossBranchDenialTrail.record(actor, id, branch, requestId);
             throw refused;
         }
     }
 
-    /** OWNER passes both; a MANAGER needs only the role and anyone else the grant, each at the serving branch and valid now. */
-    private boolean permitted(AuthorizationState state, long branch) {
-        return policy.permits(state, branch, BranchAction.SERVE_CROSS_BRANCH_AS_MANAGER)
-                || policy.permits(state, branch, BranchAction.SERVE_CROSS_BRANCH);
+    /**
+     * OWNER passes both; a MANAGER needs only the role and anyone else the grant, each at the serving branch and valid
+     * now.
+     */
+    private boolean isPermitted(AuthorizationState state, long branch) {
+        return authorizationService.permits(state, branch, BranchAction.SERVE_CROSS_BRANCH_AS_MANAGER)
+                || authorizationService.permits(state, branch, BranchAction.SERVE_CROSS_BRANCH);
     }
 
-    private void record(AuthorizationState state, long actor, long id, long branch, String reason, Instant now, String requestId) {
-        if (state.memberships().containsKey(branch)) customers.recordCrossBranchSummary(id, branch, actor, reason, now);
-        // The table references branch_memberships, which an OWNER may not have at this branch.
-        else audit.record(AuditEvent.change(actor, branch, ENTITY, id, "CROSS_BRANCH_SUMMARY", reason, null, null, requestId));
+    private void record(
+            AuthorizationState state,
+            long actor,
+            long id,
+            long branch,
+            String reason,
+            Instant now,
+            String requestId
+    ) {
+        if (state.memberships().containsKey(branch)) {
+            customerService.recordCrossBranchSummary(id, branch, actor, reason, now);
+        } else {
+            // The table references branch_memberships, which an OWNER may not have at this branch.
+            auditTrail.record(AuditEvent.change(
+                    actor,
+                    branch,
+                    ENTITY,
+                    id,
+                    "CROSS_BRANCH_SUMMARY",
+                    reason,
+                    null,
+                    null,
+                    requestId
+            ));
+        }
     }
 
     /** Each kind brings at most the limit, so the merged top holds whatever the mix, latest first. */
-    private List<CrossBranchUsage> usages(long id, Instant now) {
-        var merged = new ArrayList<CrossBranchUsage>();
-        seats.recentUsages(id, RECENT_USAGES).forEach(usage -> merged.add(usage(SEAT, usage.branchId(), usage.startAt(), usage.endAt())));
-        rooms.recentUsages(id, RECENT_USAGES).forEach(usage -> merged.add(usage(ROOM, usage.branchId(), usage.startAt(), usage.endAt())));
-        lockers.recentUsages(id, RECENT_USAGES, now).forEach(usage -> merged.add(usage(LOCKER, usage.branchId(), usage.startAt(), usage.endAt())));
-        return merged.stream().sorted(Comparator.comparing(CrossBranchUsage::startAt).reversed()).limit(RECENT_USAGES).toList();
+    private List<CrossBranchUsage> findUsages(long id, Instant now) {
+        List<CrossBranchUsage> merged = new ArrayList<>();
+        seatSessionService.recentUsages(id, RECENT_USAGES)
+                .forEach(usage -> merged.add(toUsage(SEAT, usage.branchId(), usage.startAt(), usage.endAt())));
+        roomReservationService.recentUsages(id, RECENT_USAGES)
+                .forEach(usage -> merged.add(toUsage(ROOM, usage.branchId(), usage.startAt(), usage.endAt())));
+        lockerAssignmentService.recentUsages(id, RECENT_USAGES, now)
+                .forEach(usage -> merged.add(toUsage(LOCKER, usage.branchId(), usage.startAt(), usage.endAt())));
+
+        return merged.stream()
+                .sorted(Comparator.comparing(CrossBranchUsage::startAt).reversed())
+                .limit(RECENT_USAGES)
+                .toList();
     }
 
-    private static CrossBranchUsage usage(String kind, long branch, Instant start, Instant end) {
+    private static CrossBranchUsage toUsage(String kind, long branch, Instant start, Instant end) {
         return new CrossBranchUsage(kind, Long.toString(branch), start, end);
     }
 }
