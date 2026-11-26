@@ -14,6 +14,7 @@ import com.openstudy.modules.branch.entity.Branch;
 
 /** The single repository of the branch aggregate (branch + weekly hours). */
 public interface BranchRepository extends JpaRepository<Branch, Long> {
+
     @EntityGraph(attributePaths = "weeklyHours")
     Optional<Branch> findWithWeeklyHoursById(long id);
 
@@ -24,9 +25,21 @@ public interface BranchRepository extends JpaRepository<Branch, Long> {
      * JPA-01 native exception: membership rows belong to the authorization module (JPA-03), so the branch module
      * keeps this one EXISTS check in SQL instead of mapping branch_memberships here.
      */
-    @Query(value = "SELECT b.* FROM branches b WHERE (:owner OR EXISTS "
-            + "(SELECT 1 FROM branch_memberships m WHERE m.branch_id = b.id AND m.employee_id = :employeeId "
-            + "AND m.status = 'ACTIVE')) ORDER BY b.id", nativeQuery = true)
+    @Query(value = """
+            SELECT b.*
+            FROM branches b
+            WHERE (
+                :owner
+                OR EXISTS (
+                    SELECT 1
+                    FROM branch_memberships m
+                    WHERE m.branch_id = b.id
+                      AND m.employee_id = :employeeId
+                      AND m.status = 'ACTIVE'
+                )
+            )
+            ORDER BY b.id
+            """, nativeQuery = true)
     List<Branch> findAccessible(@Param("employeeId") long employeeId, @Param("owner") boolean owner);
 
     List<Branch> findByIdIn(Collection<Long> ids);
