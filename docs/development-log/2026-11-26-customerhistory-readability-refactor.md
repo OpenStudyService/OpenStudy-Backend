@@ -51,7 +51,7 @@
   - `passhistory.CustomerHistoryIntegrationTests` 19개
   - `inquiry.InquiryIntegrationTests` 26개
   - `architecture.SpaceOperationsContractTests` 13개
-- 전체 테스트 결과는 아래에 덧붙인다.
+- `./gradlew test`: 1,270개 중 실패 0, 건너뜀 28 (BUILD SUCCESSFUL, 약 19분). 건너뛴 28개는 ai·sales 패키지의 AI 관련 조건부 테스트다.
 
 ## 6. 남은 작업 / 보류 사항
 
