@@ -7,6 +7,9 @@ import com.openstudy.modules.invitation.entity.EmployeeInvitation;
 import com.openstudy.modules.invitation.entity.InvitationStatus;
 
 public interface ApprovalStatusRepository extends Repository<EmployeeInvitation, Long> {
-    List<EmployeeInvitation> findByAcceptedEmployeeIdAndAcceptedAtIsNotNullAndStatusInOrderByIdAsc(long employeeId,
-            Collection<InvitationStatus> statuses);
+
+    List<EmployeeInvitation> findByAcceptedEmployeeIdAndAcceptedAtIsNotNullAndStatusInOrderByIdAsc(
+            long employeeId,
+            Collection<InvitationStatus> statuses
+    );
 }

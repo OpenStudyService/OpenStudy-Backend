@@ -17,13 +17,18 @@ import com.openstudy.modules.invitation.entity.SendJobStatus;
 
 /** Send jobs. Transitions are JPQL mirrors of the former UPDATE statements; the job row has no version. */
 public interface InvitationSendJobRepository extends JpaRepository<InvitationSendJob, Long> {
+
     /** Non-locking bounded scan, (invitation id, job id) rows: never lock a job before its parent invitation. */
-    @Query("SELECT j.invitationId, j.id FROM InvitationSendJob j WHERE "
-            + "(j.status = com.openstudy.modules.invitation.entity.SendJobStatus.PENDING "
-            + "AND (j.nextAttemptAt IS NULL OR j.nextAttemptAt <= :now)) OR "
-            + "(j.status = com.openstudy.modules.invitation.entity.SendJobStatus.PROCESSING "
-            + "AND (j.lockedUntil IS NULL OR j.lockedUntil <= :now)) ORDER BY j.id")
-    List<Object[]> candidates(@Param("now") Instant now, Limit limit);
+    @Query("""
+            SELECT j.invitationId, j.id
+            FROM InvitationSendJob j
+            WHERE (j.status = com.openstudy.modules.invitation.entity.SendJobStatus.PENDING
+                   AND (j.nextAttemptAt IS NULL OR j.nextAttemptAt <= :now))
+               OR (j.status = com.openstudy.modules.invitation.entity.SendJobStatus.PROCESSING
+                   AND (j.lockedUntil IS NULL OR j.lockedUntil <= :now))
+            ORDER BY j.id
+            """)
+    List<Object[]> findCandidates(@Param("now") Instant now, Limit limit);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<InvitationSendJob> findForUpdateById(long id);
@@ -36,16 +41,32 @@ public interface InvitationSendJobRepository extends JpaRepository<InvitationSen
 
     /** The former enqueue INSERT; next_attempt_at is the database's UTC time, so this stays one HQL insert. */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("INSERT INTO InvitationSendJob (invitationId, revision, status, nextAttemptAt) VALUES (:invitation, :revision, "
-            + "com.openstudy.modules.invitation.entity.SendJobStatus.PENDING, cast(sql('UTC_TIMESTAMP(6)') as Instant))")
+    @Query("""
+            INSERT INTO InvitationSendJob (invitationId, revision, status, nextAttemptAt)
+            VALUES (
+                :invitation,
+                :revision,
+                com.openstudy.modules.invitation.entity.SendJobStatus.PENDING,
+                cast(sql('UTC_TIMESTAMP(6)') as Instant)
+            )
+            """)
     int enqueue(@Param("invitation") long invitationId, @Param("revision") int revision);
 
     /** Management closes open jobs without an error code; expiry by the worker uses {@link #skipOpen}. */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("UPDATE InvitationSendJob j SET j.status = com.openstudy.modules.invitation.entity.SendJobStatus.SKIPPED, "
-            + "j.nextAttemptAt = NULL, j.lockedUntil = NULL, j.workerId = NULL "
-            + "WHERE j.invitationId = :invitation AND j.status IN (com.openstudy.modules.invitation.entity.SendJobStatus.PENDING, "
-            + "com.openstudy.modules.invitation.entity.SendJobStatus.PROCESSING, com.openstudy.modules.invitation.entity.SendJobStatus.FAILED)")
+    @Query("""
+            UPDATE InvitationSendJob j
+            SET j.status = com.openstudy.modules.invitation.entity.SendJobStatus.SKIPPED,
+                j.nextAttemptAt = NULL,
+                j.lockedUntil = NULL,
+                j.workerId = NULL
+            WHERE j.invitationId = :invitation
+              AND j.status IN (
+                  com.openstudy.modules.invitation.entity.SendJobStatus.PENDING,
+                  com.openstudy.modules.invitation.entity.SendJobStatus.PROCESSING,
+                  com.openstudy.modules.invitation.entity.SendJobStatus.FAILED
+              )
+            """)
     int skipOpenJobs(@Param("invitation") long invitationId);
 
     /**
@@ -53,29 +74,60 @@ public interface InvitationSendJobRepository extends JpaRepository<InvitationSen
      * module may not call the authorization repository, so it takes the same statement here.
      */
     @Query(value = "SELECT id FROM administration_guard WHERE id=1 FOR UPDATE", nativeQuery = true)
-    List<Object> lockGuard();
+    List<Object> findGuardForUpdate();
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("UPDATE InvitationSendJob j SET j.status = com.openstudy.modules.invitation.entity.SendJobStatus.PROCESSING, "
-            + "j.attempts = j.attempts + 1, j.workerId = :worker, j.lockedUntil = :leaseUntil, j.nextAttemptAt = NULL, "
-            + "j.lastErrorCode = NULL WHERE j.id = :id")
+    @Query("""
+            UPDATE InvitationSendJob j
+            SET j.status = com.openstudy.modules.invitation.entity.SendJobStatus.PROCESSING,
+                j.attempts = j.attempts + 1,
+                j.workerId = :worker,
+                j.lockedUntil = :leaseUntil,
+                j.nextAttemptAt = NULL,
+                j.lastErrorCode = NULL
+            WHERE j.id = :id
+            """)
     int claim(@Param("id") long id, @Param("worker") String workerId, @Param("leaseUntil") Instant leaseUntil);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("UPDATE InvitationSendJob j SET j.status = com.openstudy.modules.invitation.entity.SendJobStatus.SENT, "
-            + "j.sentAt = :now, j.lockedUntil = NULL, j.workerId = NULL, j.nextAttemptAt = NULL, j.lastErrorCode = NULL "
-            + "WHERE j.id = :id")
-    int sent(@Param("id") long id, @Param("now") Instant now);
+    @Query("""
+            UPDATE InvitationSendJob j
+            SET j.status = com.openstudy.modules.invitation.entity.SendJobStatus.SENT,
+                j.sentAt = :now,
+                j.lockedUntil = NULL,
+                j.workerId = NULL,
+                j.nextAttemptAt = NULL,
+                j.lastErrorCode = NULL
+            WHERE j.id = :id
+            """)
+    int markSent(@Param("id") long id, @Param("now") Instant now);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("UPDATE InvitationSendJob j SET j.status = :status, j.nextAttemptAt = NULL, j.lockedUntil = NULL, j.workerId = NULL, "
-            + "j.lastErrorCode = :reason WHERE j.id = :id")
+    @Query("""
+            UPDATE InvitationSendJob j
+            SET j.status = :status,
+                j.nextAttemptAt = NULL,
+                j.lockedUntil = NULL,
+                j.workerId = NULL,
+                j.lastErrorCode = :reason
+            WHERE j.id = :id
+            """)
     int finish(@Param("id") long id, @Param("status") SendJobStatus status, @Param("reason") String reason);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("UPDATE InvitationSendJob j SET j.status = com.openstudy.modules.invitation.entity.SendJobStatus.SKIPPED, "
-            + "j.nextAttemptAt = NULL, j.lockedUntil = NULL, j.workerId = NULL, j.lastErrorCode = 'INVITATION_EXPIRED' "
-            + "WHERE j.invitationId = :invitation AND j.status IN (com.openstudy.modules.invitation.entity.SendJobStatus.PENDING, "
-            + "com.openstudy.modules.invitation.entity.SendJobStatus.PROCESSING, com.openstudy.modules.invitation.entity.SendJobStatus.FAILED)")
+    @Query("""
+            UPDATE InvitationSendJob j
+            SET j.status = com.openstudy.modules.invitation.entity.SendJobStatus.SKIPPED,
+                j.nextAttemptAt = NULL,
+                j.lockedUntil = NULL,
+                j.workerId = NULL,
+                j.lastErrorCode = 'INVITATION_EXPIRED'
+            WHERE j.invitationId = :invitation
+              AND j.status IN (
+                  com.openstudy.modules.invitation.entity.SendJobStatus.PENDING,
+                  com.openstudy.modules.invitation.entity.SendJobStatus.PROCESSING,
+                  com.openstudy.modules.invitation.entity.SendJobStatus.FAILED
+              )
+            """)
     int skipOpen(@Param("invitation") long invitationId);
 }

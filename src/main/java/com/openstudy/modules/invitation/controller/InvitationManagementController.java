@@ -4,6 +4,7 @@ import java.net.URI;
 import java.util.Map;
 import java.util.Set;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,56 +22,108 @@ import com.openstudy.modules.invitation.dto.Invitation;
 import com.openstudy.modules.invitation.service.InvitationManagementService;
 
 @RestController
-@RequestMapping("/api/invitations")
+@RequestMapping("/api")
+@RequiredArgsConstructor
 public class InvitationManagementController {
-    private final InvitationManagementService service;
-    public InvitationManagementController(InvitationManagementService service) { this.service = service; }
 
-    @GetMapping
-    public PageResponse<Invitation> list(Authentication actor, @RequestParam(defaultValue = "all") String scope,
-            @RequestParam(defaultValue = "1") long page, @RequestParam(defaultValue = "20") int pageSize,
-            @RequestParam(required = false) String q, @RequestParam(required = false) String sort,
-            @RequestParam(required = false) String direction, @RequestParam(required = false) String status) {
-        return service.list(actor(actor), scope, ListQuery.parse(page, pageSize, q, sort, direction,
-                Set.of("createdAt", "expiresAt", "name"), "createdAt"), status);
+    private static final Set<String> SORT_FIELDS = Set.of("createdAt", "expiresAt", "name");
+    private static final String DEFAULT_SORT = "createdAt";
+
+    private final InvitationManagementService invitationManagementService;
+
+    @GetMapping("/invitations")
+    public PageResponse<Invitation> listInvitations(
+            Authentication actor,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String direction,
+            @RequestParam(required = false) String status
+    ) {
+        ListQuery query = ListQuery.parse(page, pageSize, q, sort, direction, SORT_FIELDS, DEFAULT_SORT);
+
+        return invitationManagementService.list(actorId(actor), scope, query, status);
     }
 
-    @GetMapping("/{id}")
-    public Invitation get(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope) {
-        return service.get(actor(actor), id, scope);
+    @GetMapping("/invitations/{id}")
+    public Invitation getInvitation(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope
+    ) {
+        return invitationManagementService.get(actorId(actor), id, scope);
     }
 
-    @PostMapping
-    public ResponseEntity<Invitation> create(Authentication actor, @RequestParam(defaultValue = "all") String scope,
+    @PostMapping("/invitations")
+    public ResponseEntity<Invitation> createInvitation(
+            Authentication actor,
+            @RequestParam(defaultValue = "all") String scope,
             @RequestHeader(name = "Idempotency-Key", required = false) String key,
-            @RequestBody Map<String, Object> body, HttpServletRequest request) {
-        var result = service.create(actor(actor), scope, body, key, ApiRequestFilter.requestId(request));
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        Invitation result = invitationManagementService.create(
+                actorId(actor),
+                scope,
+                body,
+                key,
+                ApiRequestFilter.requestId(request)
+        );
+
         return ResponseEntity.created(URI.create("/api/invitations/" + result.id())).body(result);
     }
 
-    @PostMapping("/{id}/reissue")
-    public Invitation reissue(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope,
-            @RequestBody Map<String, Object> body, HttpServletRequest request) {
-        return service.reissue(actor(actor), id, scope, body, ApiRequestFilter.requestId(request));
+    @PostMapping("/invitations/{id}/reissue")
+    public Invitation reissueInvitation(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        String requestId = ApiRequestFilter.requestId(request);
+
+        return invitationManagementService.reissue(actorId(actor), id, scope, body, requestId);
     }
 
-    @PostMapping("/{id}/cancel")
-    public Invitation cancel(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope,
-            @RequestBody Map<String, Object> body, HttpServletRequest request) {
-        return service.cancel(actor(actor), id, scope, body, ApiRequestFilter.requestId(request));
+    @PostMapping("/invitations/{id}/cancel")
+    public Invitation cancelInvitation(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        return invitationManagementService.cancel(actorId(actor), id, scope, body, ApiRequestFilter.requestId(request));
     }
 
-    @PostMapping("/{id}/reject")
-    public Invitation reject(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope,
-            @RequestBody Map<String, Object> body, HttpServletRequest request) {
-        return service.reject(actor(actor), id, scope, body, ApiRequestFilter.requestId(request));
+    @PostMapping("/invitations/{id}/reject")
+    public Invitation rejectInvitation(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        return invitationManagementService.reject(actorId(actor), id, scope, body, ApiRequestFilter.requestId(request));
     }
 
-    @PostMapping("/{id}/approve")
-    public Invitation approve(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope,
-            @RequestBody Map<String, Object> body, HttpServletRequest request) {
-        return service.approve(actor(actor), id, scope, body, ApiRequestFilter.requestId(request));
+    @PostMapping("/invitations/{id}/approve")
+    public Invitation approveInvitation(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        String requestId = ApiRequestFilter.requestId(request);
+
+        return invitationManagementService.approve(actorId(actor), id, scope, body, requestId);
     }
 
-    private static long actor(Authentication authentication) { return Long.parseLong(authentication.getName()); }
+    private static long actorId(Authentication authentication) {
+        return Long.parseLong(authentication.getName());
+    }
 }
