@@ -61,7 +61,7 @@
 
 - `./gradlew compileJava compileTestJava`: 통과.
 - branch `src/main`에 `var`, 중괄호 없는 `if`·`for`, 120자를 넘는 코드 줄(주석 제외)이 남아 있지 않은 것을 확인했다.
-- 전체 테스트 결과는 아래에 덧붙인다.
+- `./gradlew test`: 1,270개 중 실패 0, 건너뜀 28 (BUILD SUCCESSFUL, 약 18분). 건너뛴 28개는 ai·sales 패키지의 AI 관련 조건부 테스트다.
 
 ## 6. 남은 작업 / 보류 사항
 
