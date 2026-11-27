@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -25,27 +26,50 @@ import com.openstudy.modules.sales.service.DailyClosingService;
 
 /** Daily closings (#115, operations-extension-api.md "일별 마감"). There is no cancellation or reopening. */
 @RestController
+@RequestMapping("/api/daily-closings")
 @RequiredArgsConstructor
 public class DailyClosingController {
-    private final DailyClosingService service;
 
-    @GetMapping("/api/daily-closings")
-    public PageResponse<DailyClosingView.Summary> list(Authentication actor, @RequestParam(required = false) List<String> branchIds,
-            @RequestParam(required = false) String from, @RequestParam(required = false) String to,
-            @RequestParam(defaultValue = "1") long page, @RequestParam(defaultValue = "20") int pageSize) {
+    private static final Set<String> SORT_FIELDS = Set.of("id");
+    private static final String DEFAULT_SORT = "id";
+
+    private final DailyClosingService dailyClosingService;
+
+    @GetMapping
+    public PageResponse<DailyClosingView.Summary> listDailyClosings(
+            Authentication actor,
+            @RequestParam(required = false) List<String> branchIds,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") int pageSize
+    ) {
+        long actorId = actorId(actor);
         // The order is fixed by the contract (business date descending, then branch).
-        return service.list(actor(actor), branchIds, from, to, ListQuery.parse(page, pageSize, null, null, null, Set.of("id"), "id"));
+        ListQuery query = ListQuery.parse(page, pageSize, null, null, null, SORT_FIELDS, DEFAULT_SORT);
+
+        return dailyClosingService.list(actorId, branchIds, from, to, query);
     }
 
-    @PostMapping("/api/daily-closings")
-    public ResponseEntity<DailyClosingView> create(Authentication actor, @RequestHeader(name = "Idempotency-Key", required = false) String key,
-            @RequestBody Map<String, Object> body, HttpServletRequest request) {
-        var result = service.create(actor(actor), key, body, ApiRequestFilter.requestId(request));
+    @PostMapping
+    public ResponseEntity<DailyClosingView> createDailyClosing(
+            Authentication actor,
+            @RequestHeader(name = "Idempotency-Key", required = false) String key,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        String requestId = ApiRequestFilter.requestId(request);
+        DailyClosingView result = dailyClosingService.create(actorId(actor), key, body, requestId);
+
         return ResponseEntity.created(URI.create("/api/daily-closings/" + result.id())).body(result);
     }
 
-    @GetMapping("/api/daily-closings/{id}")
-    public DailyClosingView get(Authentication actor, @PathVariable long id) { return service.get(actor(actor), id); }
+    @GetMapping("/{id}")
+    public DailyClosingView getDailyClosing(Authentication actor, @PathVariable long id) {
+        return dailyClosingService.get(actorId(actor), id);
+    }
 
-    private static long actor(Authentication authentication) { return Long.parseLong(authentication.getName()); }
+    private static long actorId(Authentication authentication) {
+        return Long.parseLong(authentication.getName());
+    }
 }

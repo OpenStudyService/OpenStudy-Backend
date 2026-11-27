@@ -25,23 +25,43 @@ import org.hibernate.type.SqlTypes;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class DailyClosing {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
     @Column(name = "branch_id", nullable = false, updatable = false)
     private long branchId;
+
     @Column(name = "business_date", nullable = false, updatable = false)
     private LocalDate businessDate;
+
     @Column(length = 500, updatable = false)
     private String note;
-    @JdbcTypeCode(SqlTypes.JSON) @Column(name = "snapshot_json", nullable = false, updatable = false)
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "snapshot_json", nullable = false, updatable = false)
     private String snapshotJson;
+
     @Column(name = "closed_by", nullable = false, updatable = false)
     private long closedBy;
+
     @Column(name = "closed_at", nullable = false, updatable = false)
     private Instant closedAt;
 
-    public DailyClosing(long branchId, LocalDate businessDate, String note, String snapshotJson, long closedBy, Instant closedAt) {
-        this.branchId = branchId; this.businessDate = businessDate; this.note = note; this.snapshotJson = snapshotJson;
-        this.closedBy = closedBy; this.closedAt = closedAt;
+    public DailyClosing(
+            long branchId,
+            LocalDate businessDate,
+            String note,
+            String snapshotJson,
+            long closedBy,
+            Instant closedAt
+    ) {
+        this.branchId = branchId;
+        this.businessDate = businessDate;
+        this.note = note;
+        this.snapshotJson = snapshotJson;
+        this.closedBy = closedBy;
+        this.closedAt = closedAt;
     }
 }

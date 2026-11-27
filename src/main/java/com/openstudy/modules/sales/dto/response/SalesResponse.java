@@ -29,7 +29,8 @@ public record SalesResponse(
             long net,
             long approvedCount,
             long refundCount
-    ) {}
+    ) {
+    }
 
     public record Totals(
             long approvedKrw,
@@ -37,5 +38,6 @@ public record SalesResponse(
             long netKrw,
             long approvedCount,
             long refundCount
-    ) {}
+    ) {
+    }
 }

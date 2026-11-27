@@ -14,12 +14,38 @@ import com.openstudy.modules.ticket.dto.ProductTerms;
  * Arithmetic is exact: an overflow fails rather than wraps.
  */
 final class PassTally {
+
+    /**
+     * The fixed ranking order (aggregation-api.md "상품별 판매량·순위"): netSoldQuantity descending, then productId,
+     * productName, categoryCode and categoryName ascending, text by Unicode code point. kind is functionally fixed by the
+     * product and only closes the order.
+     */
+    static final Comparator<Ranked> ORDER = Comparator
+            .comparingLong((Ranked row) -> row.volume().netSoldQuantity())
+            .reversed()
+            .thenComparingLong(row -> row.snapshot().productId())
+            .thenComparing(row -> row.snapshot().productName(), PassTally::compareByCodePoint)
+            .thenComparing(row -> row.snapshot().categoryCode(), PassTally::compareByCodePoint)
+            .thenComparing(row -> row.snapshot().categoryName(), PassTally::compareByCodePoint)
+            .thenComparing(row -> row.snapshot().kind(), PassTally::compareByCodePoint);
+
+    private static final String TIME_KIND = "TIME";
+    private static final String PERIOD_KIND = "PERIOD";
+    private static final String STORED_VALUE_KIND = "STORED_VALUE";
+
     /**
      * paymentCount (건) and soldQuantity (개) count approvals, refundedQuantity (개) and refundCount the refunds;
      * issuedCount (개) is the passes created for the approvals and stays when they are refunded. paymentCount +
      * refundCount is the number of pass source rows (approval and refund ledger items) behind the bundle.
      */
-    record Volume(long paymentCount, long soldQuantity, long refundedQuantity, long issuedCount, long refundCount) {
+    record Volume(
+            long paymentCount,
+            long soldQuantity,
+            long refundedQuantity,
+            long issuedCount,
+            long refundCount
+    ) {
+
         static final Volume ZERO = new Volume(0, 0, 0, 0, 0);
 
         static Volume of(PassTotal total) {
@@ -29,69 +55,106 @@ final class PassTally {
         }
 
         static Volume sum(List<PassTotal> totals) {
-            var sum = ZERO;
-            for (var total : totals) sum = sum.plus(of(total));
+            Volume sum = ZERO;
+
+            for (PassTotal total : totals) {
+                sum = sum.plus(of(total));
+            }
+
             return sum;
         }
 
         Volume plus(Volume other) {
-            return new Volume(Math.addExact(paymentCount, other.paymentCount), Math.addExact(soldQuantity, other.soldQuantity),
-                    Math.addExact(refundedQuantity, other.refundedQuantity), Math.addExact(issuedCount, other.issuedCount),
-                    Math.addExact(refundCount, other.refundCount));
+            return new Volume(
+                    Math.addExact(paymentCount, other.paymentCount),
+                    Math.addExact(soldQuantity, other.soldQuantity),
+                    Math.addExact(refundedQuantity, other.refundedQuantity),
+                    Math.addExact(issuedCount, other.issuedCount),
+                    Math.addExact(refundCount, other.refundCount)
+            );
         }
 
         /** May be negative on processedDate: an earlier sale refunded in this period. */
-        long netSoldQuantity() { return Math.subtractExact(soldQuantity, refundedQuantity); }
-        long sourceRows() { return Math.addExact(paymentCount, refundCount); }
-        String dataStatus() { return sourceRows() == 0 ? RevenueTally.NO_DATA : RevenueTally.HAS_DATA; }
+        long netSoldQuantity() {
+            return Math.subtractExact(soldQuantity, refundedQuantity);
+        }
 
-        PassVolume view() {
-            return new PassVolume(paymentCount, soldQuantity, refundedQuantity, netSoldQuantity(), issuedCount, dataStatus());
+        long sourceRows() {
+            return Math.addExact(paymentCount, refundCount);
+        }
+
+        String dataStatus() {
+            return sourceRows() == 0 ? RevenueTally.NO_DATA : RevenueTally.HAS_DATA;
+        }
+
+        PassVolume toView() {
+            return new PassVolume(
+                    paymentCount,
+                    soldQuantity,
+                    refundedQuantity,
+                    netSoldQuantity(),
+                    issuedCount,
+                    dataStatus()
+            );
         }
     }
 
     /** The row key of the product ranking: the sale-time snapshot copied into passes (FR-AGG-06). */
-    record Snapshot(long productId, String productName, String categoryCode, String categoryName, String kind) {
+    record Snapshot(
+            long productId,
+            String productName,
+            String categoryCode,
+            String categoryName,
+            String kind
+    ) {
+
         static Snapshot of(PassTotal total) {
-            return new Snapshot(total.productId(), total.productName(), total.categoryCode(), total.categoryName(), total.kind());
+            return new Snapshot(
+                    total.productId(),
+                    total.productName(),
+                    total.categoryCode(),
+                    total.categoryName(),
+                    total.kind()
+            );
         }
 
         /** passes.kind as the contract label; the kind of a product never changes after registration (Q9). */
         String kindLabel() {
             return switch (kind) {
-                case "TIME" -> ProductTerms.TIME;
-                case "PERIOD" -> ProductTerms.PERIOD;
-                case "STORED_VALUE" -> ProductTerms.STORED_VALUE;
+                case TIME_KIND -> ProductTerms.TIME;
+                case PERIOD_KIND -> ProductTerms.PERIOD;
+                case STORED_VALUE_KIND -> ProductTerms.STORED_VALUE;
                 default -> throw new IllegalStateException("Unknown pass kind " + kind);
             };
         }
     }
 
-    /**
-     * The fixed ranking order (aggregation-api.md "상품별 판매량·순위"): netSoldQuantity descending, then productId,
-     * productName, categoryCode and categoryName ascending, text by Unicode code point. kind is functionally fixed by the
-     * product and only closes the order.
-     */
-    static final Comparator<Ranked> ORDER = Comparator.comparingLong((Ranked row) -> row.volume().netSoldQuantity()).reversed()
-            .thenComparingLong(row -> row.snapshot().productId())
-            .thenComparing(row -> row.snapshot().productName(), PassTally::byCodePoint)
-            .thenComparing(row -> row.snapshot().categoryCode(), PassTally::byCodePoint)
-            .thenComparing(row -> row.snapshot().categoryName(), PassTally::byCodePoint)
-            .thenComparing(row -> row.snapshot().kind(), PassTally::byCodePoint);
+    record Ranked(Snapshot snapshot, Volume volume) {
+    }
 
-    record Ranked(Snapshot snapshot, Volume volume) {}
-
-    private PassTally() {}
+    private PassTally() {
+    }
 
     /** String.compareTo orders UTF-16 code units, which differs from code points above U+FFFF. */
-    static int byCodePoint(String left, String right) {
-        int i = 0, j = 0;
-        while (i < left.length() && j < right.length()) {
-            int a = left.codePointAt(i), b = right.codePointAt(j);
-            if (a != b) return Integer.compare(a, b);
-            i += Character.charCount(a);
-            j += Character.charCount(b);
+    static int compareByCodePoint(String left, String right) {
+        int leftIndex = 0;
+        int rightIndex = 0;
+
+        while (leftIndex < left.length() && rightIndex < right.length()) {
+            int leftCodePoint = left.codePointAt(leftIndex);
+            int rightCodePoint = right.codePointAt(rightIndex);
+
+            if (leftCodePoint != rightCodePoint) {
+                return Integer.compare(leftCodePoint, rightCodePoint);
+            }
+
+            leftIndex += Character.charCount(leftCodePoint);
+            rightIndex += Character.charCount(rightCodePoint);
         }
-        return Boolean.compare(i < left.length(), j < right.length());
+
+        boolean leftRemains = leftIndex < left.length();
+        boolean rightRemains = rightIndex < right.length();
+
+        return Boolean.compare(leftRemains, rightRemains);
     }
 }

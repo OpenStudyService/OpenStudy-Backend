@@ -18,56 +18,96 @@ import com.openstudy.modules.sales.repository.SalesSourceRepository.SourceTotal;
  * Arithmetic is exact: an overflow fails rather than wraps (amounts are won integers).
  */
 final class RevenueTally {
+
     static final String HAS_DATA = "hasData";
     static final String NO_DATA = "noData";
 
+    private final Map<Long, Map<SalesPurpose, Amounts>> cells = new HashMap<>();
+
     /** One cell or a sum of cells. approvedCount + refundCount is the number of source rows behind it. */
-    record Amounts(long approvedAmount, long refundAmount, long approvedCount, long refundCount) {
+    record Amounts(
+            long approvedAmount,
+            long refundAmount,
+            long approvedCount,
+            long refundCount
+    ) {
+
         static final Amounts ZERO = new Amounts(0, 0, 0, 0);
 
         Amounts plus(Amounts other) {
-            return new Amounts(Math.addExact(approvedAmount, other.approvedAmount), Math.addExact(refundAmount, other.refundAmount),
-                    Math.addExact(approvedCount, other.approvedCount), Math.addExact(refundCount, other.refundCount));
+            return new Amounts(
+                    Math.addExact(approvedAmount, other.approvedAmount),
+                    Math.addExact(refundAmount, other.refundAmount),
+                    Math.addExact(approvedCount, other.approvedCount),
+                    Math.addExact(refundCount, other.refundCount)
+            );
         }
 
-        long net() { return Math.subtractExact(approvedAmount, refundAmount); }
-        long sourceRows() { return Math.addExact(approvedCount, refundCount); }
-        String dataStatus() { return sourceRows() == 0 ? NO_DATA : HAS_DATA; }
+        long net() {
+            return Math.subtractExact(approvedAmount, refundAmount);
+        }
 
-        RevenueAmounts view() {
+        long sourceRows() {
+            return Math.addExact(approvedCount, refundCount);
+        }
+
+        String dataStatus() {
+            return sourceRows() == 0 ? NO_DATA : HAS_DATA;
+        }
+
+        RevenueAmounts toView() {
             return new RevenueAmounts(approvedAmount, refundAmount, net(), approvedCount, refundCount, dataStatus());
         }
 
-        PurposeRevenue view(SalesPurpose purpose) {
-            return new PurposeRevenue(purpose.label, approvedAmount, refundAmount, net(), approvedCount, refundCount, dataStatus());
+        PurposeRevenue toView(SalesPurpose purpose) {
+            return new PurposeRevenue(
+                    purpose.label,
+                    approvedAmount,
+                    refundAmount,
+                    net(),
+                    approvedCount,
+                    refundCount,
+                    dataStatus()
+            );
         }
     }
-
-    private final Map<Long, Map<SalesPurpose, Amounts>> cells = new HashMap<>();
 
     RevenueTally(List<SourceTotal> totals) {
-        for (var total : totals) {
-            var cell = total.type() == LedgerEntryType.APPROVAL
+        for (SourceTotal total : totals) {
+            Amounts cell = total.type() == LedgerEntryType.APPROVAL
                     ? new Amounts(total.amountKrw(), 0, total.count(), 0)
                     : new Amounts(0, total.amountKrw(), 0, total.count());
-            cells.computeIfAbsent(total.branchId(), id -> new EnumMap<>(SalesPurpose.class)).merge(total.purpose(), cell, Amounts::plus);
+
+            cells.computeIfAbsent(total.branchId(), id -> new EnumMap<>(SalesPurpose.class))
+                    .merge(total.purpose(), cell, Amounts::plus);
         }
     }
 
-    Amounts of(long branchId, SalesPurpose purpose) {
-        return cells.getOrDefault(branchId, Map.of()).getOrDefault(purpose, Amounts.ZERO);
+    Amounts findAmounts(long branchId, SalesPurpose purpose) {
+        return cells.getOrDefault(branchId, Map.of())
+                .getOrDefault(purpose, Amounts.ZERO);
     }
 
-    Amounts of(List<Long> branchIds, List<SalesPurpose> purposes) {
-        var sum = Amounts.ZERO;
-        for (long branch : branchIds) for (var purpose : purposes) sum = sum.plus(of(branch, purpose));
+    Amounts sumAmounts(List<Long> branchIds, List<SalesPurpose> purposes) {
+        Amounts sum = Amounts.ZERO;
+
+        for (long branch : branchIds) {
+            for (SalesPurpose purpose : purposes) {
+                sum = sum.plus(findAmounts(branch, purpose));
+            }
+        }
+
         return sum;
     }
 
     /** The byPurpose rows in the contract order 이용권 → 스터디룸 → 사물함, zero rows included. */
-    List<PurposeRevenue> byPurpose(List<Long> branchIds, List<SalesPurpose> purposes) {
-        var rows = new ArrayList<PurposeRevenue>();
-        for (var purpose : purposes) rows.add(of(branchIds, List.of(purpose)).view(purpose));
+    List<PurposeRevenue> toPurposeRows(List<Long> branchIds, List<SalesPurpose> purposes) {
+        List<PurposeRevenue> rows = new ArrayList<>();
+
+        for (SalesPurpose purpose : purposes) {
+            rows.add(sumAmounts(branchIds, List.of(purpose)).toView(purpose));
+        }
+
         return rows;
     }
 }
