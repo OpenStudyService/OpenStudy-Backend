@@ -13,6 +13,7 @@ import org.springframework.data.repository.query.Param;
 import com.openstudy.modules.facility.entity.Facility;
 
 public interface FacilityRepository extends JpaRepository<Facility, Long> {
+
     /**
      * Parent lock for AuthorizedCommands, taken after the guard/employee/branch locks. It is also what keeps the
      * facility's open inspection work single: every command that opens or closes one holds this row.
@@ -24,7 +25,7 @@ public interface FacilityRepository extends JpaRepository<Facility, Long> {
     /** SELECT ... FOR UPDATE: a locking read returns the latest commit, whatever the transaction's snapshot is. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT f FROM Facility f WHERE f.id = :id")
-    Optional<Facility> locked(@Param("id") long id);
+    Optional<Facility> findLocked(@Param("id") long id);
 
     /** A change to the open work leaves the facility row otherwise untouched; the caller re-reads it afterwards. */
     @Modifying(flushAutomatically = true, clearAutomatically = true)

@@ -30,74 +30,141 @@ import com.openstudy.modules.facility.service.FacilityFilters;
 import com.openstudy.modules.facility.service.FacilityService;
 import com.openstudy.modules.facility.service.FacilityTypeService;
 
-/** There is deliberately no DELETE for a facility or a facility type (collaboration-api.md). */
+/**
+ * There is deliberately no DELETE for a facility or a facility type (collaboration-api.md). Facilities and facility
+ * types are two top-level paths, so the class maps only /api.
+ */
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
 public class FacilityController {
-    private static final Set<String> SORTS = Set.of("nextInspectionOn", "name", "createdAt");
-    private final FacilityService service;
-    private final FacilityTypeService typeService;
+
+    private static final Set<String> SORT_FIELDS = Set.of("nextInspectionOn", "name", "createdAt");
+    private static final String DEFAULT_SORT = "nextInspectionOn";
+    private static final String CREATED_AT = "createdAt";
+    private static final String ASCENDING = "asc";
+    private static final String DESCENDING = "desc";
+
+    private final FacilityService facilityService;
+    private final FacilityTypeService facilityTypeService;
 
     @GetMapping("/facility-types")
-    public FacilityTypeList types(Authentication actor) {
-        return typeService.list(actor(actor));
+    public FacilityTypeList listFacilityTypes(Authentication actor) {
+        return facilityTypeService.list(actorId(actor));
     }
 
     @PostMapping("/facility-types")
-    public ResponseEntity<FacilityTypeView> createType(Authentication actor,
-            @RequestHeader(name = "Idempotency-Key", required = false) String key, @RequestBody Map<String, Object> body,
-            HttpServletRequest request) {
-        var result = typeService.create(actor(actor), key, body, ApiRequestFilter.requestId(request));
+    public ResponseEntity<FacilityTypeView> createFacilityType(
+            Authentication actor,
+            @RequestHeader(name = "Idempotency-Key", required = false) String key,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        String requestId = ApiRequestFilter.requestId(request);
+        FacilityTypeView result = facilityTypeService.create(actorId(actor), key, body, requestId);
+
         return ResponseEntity.created(URI.create("/api/facility-types")).body(result);
     }
 
     @GetMapping("/facilities")
-    public PageResponse<FacilityListItem> list(Authentication actor, @RequestParam(defaultValue = "all") String scope,
-            @RequestParam(defaultValue = "1") long page, @RequestParam(defaultValue = "20") int pageSize,
-            @RequestParam(required = false) String q, @RequestParam(required = false) String typeId,
-            @RequestParam(required = false) String assigneeId, @RequestParam(required = false) String workStatus,
-            @RequestParam(required = false) String inspectionDue, @RequestParam(required = false) String status,
-            @RequestParam(required = false) String sort, @RequestParam(required = false) String direction) {
-        // The contract's default is the soonest due first; a creation-time list reads newest first like the other lists.
-        String order = direction != null ? direction : "createdAt".equals(sort) ? "desc" : "asc";
-        return service.list(actor(actor), scope, ListQuery.parse(page, pageSize, q, sort, order, SORTS, "nextInspectionOn"),
-                FacilityFilters.parse(typeId, assigneeId, workStatus, inspectionDue, status));
+    public PageResponse<FacilityListItem> listFacilities(
+            Authentication actor,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String typeId,
+            @RequestParam(required = false) String assigneeId,
+            @RequestParam(required = false) String workStatus,
+            @RequestParam(required = false) String inspectionDue,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String direction
+    ) {
+        String order = toDirection(sort, direction);
+        long actorId = actorId(actor);
+        ListQuery query = ListQuery.parse(page, pageSize, q, sort, order, SORT_FIELDS, DEFAULT_SORT);
+        FacilityFilters filters = FacilityFilters.parse(typeId, assigneeId, workStatus, inspectionDue, status);
+
+        return facilityService.list(actorId, scope, query, filters);
     }
 
     @GetMapping("/facilities/summary")
-    public FacilitySummary summary(Authentication actor, @RequestParam(defaultValue = "all") String scope,
-            @RequestParam(required = false) String q, @RequestParam(required = false) String typeId,
-            @RequestParam(required = false) String assigneeId, @RequestParam(required = false) String workStatus,
-            @RequestParam(required = false) String inspectionDue) {
-        return service.summary(actor(actor), scope, q, FacilityFilters.parse(typeId, assigneeId, workStatus, inspectionDue, null));
+    public FacilitySummary getFacilitySummary(
+            Authentication actor,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String typeId,
+            @RequestParam(required = false) String assigneeId,
+            @RequestParam(required = false) String workStatus,
+            @RequestParam(required = false) String inspectionDue
+    ) {
+        long actorId = actorId(actor);
+        FacilityFilters filters = FacilityFilters.parse(typeId, assigneeId, workStatus, inspectionDue, null);
+
+        return facilityService.summary(actorId, scope, q, filters);
     }
 
     @GetMapping("/facilities/{id}")
-    public FacilityDetail get(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope) {
-        return service.get(actor(actor), id, scope);
+    public FacilityDetail getFacility(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope
+    ) {
+        return facilityService.get(actorId(actor), id, scope);
     }
 
     @PostMapping("/facilities")
-    public ResponseEntity<FacilityDetail> create(Authentication actor, @RequestParam(defaultValue = "all") String scope,
-            @RequestHeader(name = "Idempotency-Key", required = false) String key, @RequestBody Map<String, Object> body,
-            HttpServletRequest request) {
-        var result = service.create(actor(actor), scope, key, body, ApiRequestFilter.requestId(request));
+    public ResponseEntity<FacilityDetail> createFacility(
+            Authentication actor,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestHeader(name = "Idempotency-Key", required = false) String key,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        String requestId = ApiRequestFilter.requestId(request);
+        FacilityDetail result = facilityService.create(actorId(actor), scope, key, body, requestId);
+
         return ResponseEntity.created(URI.create("/api/facilities/" + result.id())).body(result);
     }
 
     @PatchMapping("/facilities/{id}")
-    public FacilityDetail update(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope,
-            @RequestBody Map<String, Object> body, HttpServletRequest request) {
-        return service.update(actor(actor), id, scope, body, ApiRequestFilter.requestId(request));
+    public FacilityDetail updateFacility(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        String requestId = ApiRequestFilter.requestId(request);
+
+        return facilityService.update(actorId(actor), id, scope, body, requestId);
     }
 
     @PostMapping("/facilities/{id}/inspection/complete")
-    public FacilityDetail complete(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope,
-            @RequestHeader(name = "Idempotency-Key", required = false) String key, @RequestBody Map<String, Object> body,
-            HttpServletRequest request) {
-        return service.completeInspection(actor(actor), id, scope, key, body, ApiRequestFilter.requestId(request));
+    public FacilityDetail completeFacilityInspection(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestHeader(name = "Idempotency-Key", required = false) String key,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        String requestId = ApiRequestFilter.requestId(request);
+
+        return facilityService.completeInspection(actorId(actor), id, scope, key, body, requestId);
     }
 
-    private static long actor(Authentication authentication) { return Long.parseLong(authentication.getName()); }
+    /** The contract's default is the soonest due first; a creation-time list reads newest first like the other lists. */
+    private static String toDirection(String sort, String direction) {
+        if (direction != null) {
+            return direction;
+        }
+
+        return CREATED_AT.equals(sort) ? DESCENDING : ASCENDING;
+    }
+
+    private static long actorId(Authentication authentication) {
+        return Long.parseLong(authentication.getName());
+    }
 }

@@ -5,15 +5,31 @@ package com.openstudy.modules.facility.entity;
  * occurs here because there is no cancel operation.
  */
 public enum FacilityWorkStatus {
-    OPEN("대기"), IN_PROGRESS("진행 중"), DONE("완료"), CANCELLED("취소");
+    OPEN("대기"),
+    IN_PROGRESS("진행 중"),
+    DONE("완료"),
+    CANCELLED("취소");
+
+    private static final FacilityWorkStatus[] OPEN_STATUSES = {OPEN, IN_PROGRESS};
 
     private final String label;
-    FacilityWorkStatus(String label) { this.label = label; }
-    public String label() { return label; }
+
+    FacilityWorkStatus(String label) {
+        this.label = label;
+    }
+
+    public String label() {
+        return label;
+    }
 
     /** The two statuses of a work that is still open; the label is the contract's processing status. */
     public static FacilityWorkStatus ofOpenLabel(String label) {
-        for (var status : new FacilityWorkStatus[] {OPEN, IN_PROGRESS}) if (status.label.equals(label)) return status;
+        for (FacilityWorkStatus status : OPEN_STATUSES) {
+            if (status.label.equals(label)) {
+                return status;
+            }
+        }
+
         return null;
     }
 }

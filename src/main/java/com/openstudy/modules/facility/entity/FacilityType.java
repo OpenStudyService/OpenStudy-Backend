@@ -16,14 +16,24 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class FacilityType {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
     @Column(nullable = false, length = 80, updatable = false)
     private String name;
-    @Column(name = "default_inspection_days", nullable = false, updatable = false, columnDefinition = "smallint unsigned")
+
+    @Column(
+            name = "default_inspection_days",
+            nullable = false,
+            updatable = false,
+            columnDefinition = "smallint unsigned"
+    )
     private int defaultInspectionDays;
 
     public FacilityType(String name, int defaultInspectionDays) {
-        this.name = name; this.defaultInspectionDays = defaultInspectionDays;
+        this.name = name;
+        this.defaultInspectionDays = defaultInspectionDays;
     }
 }

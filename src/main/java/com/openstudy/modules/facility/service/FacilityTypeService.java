@@ -2,10 +2,14 @@ package com.openstudy.modules.facility.service;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -15,6 +19,7 @@ import tools.jackson.databind.ObjectMapper;
 import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
+import com.openstudy.common.idempotency.IdempotencyRecord;
 import com.openstudy.common.idempotency.IdempotencyStore;
 import com.openstudy.common.web.StrictInput;
 import com.openstudy.modules.authorization.service.AuthorizationService;
@@ -31,58 +36,96 @@ import com.openstudy.modules.facility.repository.FacilityTypeRepository;
 @Service
 @RequiredArgsConstructor
 public class FacilityTypeService {
+
     private static final String CREATE = "facility-types:create";
-    private final FacilityTypeRepository repository;
-    private final AuthorizationService policy;
-    private final AuthorizedCommands commands;
-    private final IdempotencyStore requests;
-    private final AuditTrail audit;
-    private final ObjectMapper json;
+    private static final String ALL_SCOPE = "all";
+    private static final String AUDIT_TABLE = "facility_types";
+    private static final int MAX_NAME_LENGTH = 80;
+    private static final int MIN_KEY_LENGTH = 16;
+    private static final int MAX_KEY_LENGTH = 128;
+    private static final int CREATED = 201;
+    private static final Duration RESULT_RETENTION = Duration.ofHours(24);
+    private static final String HASH_ALGORITHM = "SHA-256";
+
+    private final FacilityTypeRepository facilityTypeRepository;
+    private final AuthorizationService authorizationService;
+    private final AuthorizedCommands authorizedCommands;
+    private final IdempotencyStore idempotencyStore;
+    private final AuditTrail auditTrail;
+    private final ObjectMapper objectMapper;
     private final Clock clock;
 
     @Transactional(readOnly = true)
     public FacilityTypeList list(long actor) {
-        policy.current(actor);
-        return new FacilityTypeList(repository.findAllByOrderByNameAscIdAsc().stream().map(FacilityTypeService::view).toList());
+        authorizationService.current(actor);
+        List<FacilityTypeView> types = facilityTypeRepository.findAllByOrderByNameAscIdAsc()
+                .stream()
+                .map(FacilityTypeService::toView)
+                .toList();
+
+        return new FacilityTypeList(types);
     }
 
     public FacilityTypeView create(long actor, String key, Map<String, Object> body, String requestId) {
-        var input = new StrictInput(body).only("name", "defaultInspectionDays");
-        String name = input.text("name", 80);
-        if (!body.containsKey("defaultInspectionDays")) throw ApiException.validation("defaultInspectionDays", "점검 주기를 입력해 주세요.");
-        int days = FacilityInputs.days(body.get("defaultInspectionDays"), "defaultInspectionDays");
-        if (key == null || key.length() < 16 || key.length() > 128)
+        StrictInput input = new StrictInput(body).only("name", "defaultInspectionDays");
+        String name = input.text("name", MAX_NAME_LENGTH);
+
+        if (!body.containsKey("defaultInspectionDays")) {
+            throw ApiException.validation("defaultInspectionDays", "점검 주기를 입력해 주세요.");
+        }
+
+        int days = FacilityInputs.parseDays(body.get("defaultInspectionDays"), "defaultInspectionDays");
+        boolean isValidKey = key != null && key.length() >= MIN_KEY_LENGTH && key.length() <= MAX_KEY_LENGTH;
+
+        if (!isValidKey) {
             throw ApiException.validation("Idempotency-Key", "16~128자 키가 필요합니다.");
-        byte[] fingerprint = digest(json.writeValueAsString(Arrays.asList(name, days)));
-        return commands.ownerCommand(actor, () -> {
-            var prior = requests.lock(actor, CREATE, "all", key);
-            var now = clock.instant();
+        }
+
+        byte[] fingerprint = digest(objectMapper.writeValueAsString(Arrays.asList(name, days)));
+
+        return authorizedCommands.ownerCommand(actor, () -> {
+            Optional<IdempotencyRecord> prior = idempotencyStore.lock(actor, CREATE, ALL_SCOPE, key);
+            Instant now = clock.instant();
+
             if (prior.isPresent()) {
                 if (now.isBefore(prior.get().getExpiresAt())) {
-                    if (!MessageDigest.isEqual(fingerprint, prior.get().getRequestHash()))
+                    if (!MessageDigest.isEqual(fingerprint, prior.get().getRequestHash())) {
                         throw ApiException.conflict("IDEMPOTENCY_CONFLICT", "같은 키로 다른 입력을 저장할 수 없습니다.");
-                    return json.readValue(prior.get().getResponseJson(), FacilityTypeView.class);
+                    }
+
+                    return objectMapper.readValue(prior.get().getResponseJson(), FacilityTypeView.class);
                 }
-                requests.discard(prior.get());
+
+                idempotencyStore.discard(prior.get());
             }
+
             // ownerCommand serializes every owner write under the guard lock, so this check cannot race with another
             // create; it replaces catching the JDBC duplicate-key error, which JPA would surface as a different type.
-            if (repository.existsByName(name)) throw ApiException.conflict("DUPLICATE_FACILITY_TYPE", "이미 등록된 시설 유형입니다.");
-            var type = repository.saveAndFlush(new FacilityType(name, days));
-            var result = view(type);
-            String snapshot = json.writeValueAsString(result);
-            audit.record(AuditEvent.change(actor, null, "facility_types", type.getId(), "CREATED", null, snapshot, requestId));
-            requests.complete(actor, CREATE, "all", key, fingerprint, 201, snapshot, now.plus(Duration.ofHours(24)));
+            if (facilityTypeRepository.existsByName(name)) {
+                throw ApiException.conflict("DUPLICATE_FACILITY_TYPE", "이미 등록된 시설 유형입니다.");
+            }
+
+            FacilityType type = facilityTypeRepository.saveAndFlush(new FacilityType(name, days));
+            FacilityTypeView result = toView(type);
+            String snapshot = objectMapper.writeValueAsString(result);
+            auditTrail.record(AuditEvent.change(actor, null, AUDIT_TABLE, type.getId(), "CREATED", null, snapshot,
+                    requestId));
+            Instant expiresAt = now.plus(RESULT_RETENTION);
+            idempotencyStore.complete(actor, CREATE, ALL_SCOPE, key, fingerprint, CREATED, snapshot, expiresAt);
+
             return result;
         });
     }
 
-    static FacilityTypeView view(FacilityType type) {
+    static FacilityTypeView toView(FacilityType type) {
         return new FacilityTypeView(type.getId().toString(), type.getName(), type.getDefaultInspectionDays());
     }
 
     private static byte[] digest(String value) {
-        try { return MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)); }
-        catch (java.security.NoSuchAlgorithmException exception) { throw new IllegalStateException(exception); }
+        try {
+            return MessageDigest.getInstance(HASH_ALGORITHM).digest(value.getBytes(StandardCharsets.UTF_8));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 }
