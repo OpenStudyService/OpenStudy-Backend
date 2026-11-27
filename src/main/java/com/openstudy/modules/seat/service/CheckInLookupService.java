@@ -8,11 +8,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.ObjectMapper;
+
 import com.openstudy.common.audit.AuditEvent;
 import com.openstudy.common.audit.AuditTrail;
 import com.openstudy.common.exception.ApiException;
@@ -26,6 +28,7 @@ import com.openstudy.modules.seat.dto.response.CheckInCandidate;
 import com.openstudy.modules.seat.dto.response.CheckInLookupResult;
 import com.openstudy.modules.seat.entity.SeatSession;
 import com.openstudy.modules.seat.repository.SeatSessionRepository;
+import com.openstudy.modules.ticket.dto.UsablePass;
 import com.openstudy.modules.ticket.service.PassService;
 
 /**
@@ -36,70 +39,115 @@ import com.openstudy.modules.ticket.service.PassService;
 @Service
 @RequiredArgsConstructor
 public class CheckInLookupService {
+
     private static final String ENTITY = "customer-lookups";
     private static final String BY_MEMBER_NO = "회원번호";
     private static final String BY_PHONE = "연락처";
-    private final CustomerService customers;
-    private final PassService passes;
-    private final SeatSessionRepository sessions;
-    private final AuthorizedCommands commands;
-    private final AuditTrail audit;
-    private final ObjectMapper json;
+    private static final int MAX_MEMBER_NO_LENGTH = 40;
+
+    private final CustomerService customerService;
+    private final PassService passService;
+    private final SeatSessionRepository seatSessionRepository;
+    private final AuthorizedCommands authorizedCommands;
+    private final AuditTrail auditTrail;
+    private final ObjectMapper objectMapper;
     private final Clock clock;
-    private final CheckInLookupLimiter limiter;
+    private final CheckInLookupLimiter checkInLookupLimiter;
 
     public CheckInLookupResult lookup(long actor, Map<String, Object> body, String requestId) {
-        var input = new StrictInput(body).only("branchId", "memberNo", "phone");
+        StrictInput input = new StrictInput(body).only("branchId", "memberNo", "phone");
         long branch = input.id("branchId");
-        if (input.has("memberNo") == input.has("phone"))
+
+        if (input.has("memberNo") == input.has("phone")) {
             throw ApiException.validation("memberNo", "회원번호와 연락처 중 하나만 입력해 주세요.");
+        }
+
         boolean byMemberNo = input.has("memberNo");
-        String memberNo = byMemberNo ? input.text("memberNo", 40) : null;
-        String phone = byMemberNo ? null : customers.normalizedPhone(body);
+        String memberNo = byMemberNo ? input.text("memberNo", MAX_MEMBER_NO_LENGTH) : null;
+        String phone = byMemberNo ? null : customerService.normalizedPhone(body);
         // #65: refused before anything is read, so a refusal tells nothing about customers. The first refusal of a
         // window is audited; branch_id stays empty because the branch has not been authorized yet.
-        var refusal = limiter.check(actor, branch);
+        CheckInLookupLimiter.Refusal refusal = checkInLookupLimiter.check(actor, branch);
+
         if (refusal != null) {
             if (refusal.firstInWindow()) {
-                audit.record(AuditEvent.denied(actor, null, ENTITY, null, "CHECK_IN_LOOKUP_RATE_LIMITED",
-                        json.writeValueAsString(Map.of("branchId", Long.toString(branch))), requestId));
+                String detail = objectMapper.writeValueAsString(Map.of("branchId", Long.toString(branch)));
+                auditTrail.record(AuditEvent.denied(actor, null, ENTITY, null, "CHECK_IN_LOOKUP_RATE_LIMITED", detail,
+                        requestId));
             }
+
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS);
         }
-        return commands.inBranches(actor, Set.of(branch), BranchAction.READ, () -> {}, state -> {
-            var matches = byMemberNo ? customers.matchMemberNo(memberNo) : customers.matchPhone(phone);
+
+        return authorizedCommands.inBranches(actor, Set.of(branch), BranchAction.READ, () -> {}, state -> {
+            List<ExactCustomerMatch> matches = byMemberNo
+                    ? customerService.matchMemberNo(memberNo)
+                    : customerService.matchPhone(phone);
             Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
-            record(state, actor, branch, byMemberNo ? BY_MEMBER_NO : BY_PHONE, matches, now, requestId);
-            return new CheckInLookupResult(candidates(matches, now));
+            String method = byMemberNo ? BY_MEMBER_NO : BY_PHONE;
+            recordLookup(state, actor, branch, method, matches, now, requestId);
+
+            return new CheckInLookupResult(toCandidates(matches, now));
         });
     }
 
-    private void record(AuthorizationState state, long actor, long branch, String method, List<ExactCustomerMatch> matches,
-            Instant now, String requestId) {
+    private void recordLookup(
+            AuthorizationState state,
+            long actor,
+            long branch,
+            String method,
+            List<ExactCustomerMatch> matches,
+            Instant now,
+            String requestId
+    ) {
         if (matches.isEmpty()) {
             // There is no customer row to point at, and the searched value is not stored: it may be a stranger's phone.
-            audit.record(AuditEvent.change(actor, branch, ENTITY, null, "CHECK_IN_LOOKUP_NO_MATCH", null,
-                    json.writeValueAsString(Map.of("method", method)), requestId));
+            auditTrail.record(AuditEvent.change(actor, branch, ENTITY, null, "CHECK_IN_LOOKUP_NO_MATCH", null,
+                    objectMapper.writeValueAsString(Map.of("method", method)), requestId));
         } else if (state.memberships().containsKey(branch)) {
             String reason = "입실 정확 일치 조회(" + method + ")";
-            matches.forEach(match -> customers.recordLookup(match.id(), branch, actor, reason, now));
+            matches.forEach(match -> customerService.recordLookup(match.id(), branch, actor, reason, now));
         } else {
             // The table references branch_memberships, which an OWNER may not have at this branch.
-            var after = new LinkedHashMap<String, Object>();
+            List<String> customerIds = matches.stream()
+                    .map(match -> Long.toString(match.id()))
+                    .toList();
+            Map<String, Object> after = new LinkedHashMap<>();
             after.put("method", method);
-            after.put("customerIds", matches.stream().map(match -> Long.toString(match.id())).toList());
-            audit.record(AuditEvent.change(actor, branch, ENTITY, null, "CHECK_IN_LOOKUP", null, json.writeValueAsString(after), requestId));
+            after.put("customerIds", customerIds);
+            auditTrail.record(AuditEvent.change(actor, branch, ENTITY, null, "CHECK_IN_LOOKUP", null,
+                    objectMapper.writeValueAsString(after), requestId));
         }
     }
 
-    private List<CheckInCandidate> candidates(List<ExactCustomerMatch> matches, Instant now) {
-        if (matches.isEmpty()) return List.of();
-        var ids = matches.stream().map(ExactCustomerMatch::id).toList();
-        var usable = passes.usableBy(ids, now);
+    private List<CheckInCandidate> toCandidates(List<ExactCustomerMatch> matches, Instant now) {
+        if (matches.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> ids = matches.stream()
+                .map(ExactCustomerMatch::id)
+                .toList();
+        Map<Long, List<UsablePass>> usable = passService.usableBy(ids, now);
         Map<Long, CheckInCandidate.ActiveSession> active = new HashMap<>();
-        sessions.findByStatusAndCustomerIdIn(SeatSession.Status.ACTIVE, ids).forEach(session -> active.put(session.getCustomerId(),
-                new CheckInCandidate.ActiveSession(session.getId().toString(), Long.toString(session.getBranchId()), session.getCheckedInAt())));
-        return matches.stream().map(match -> new CheckInCandidate(match.customer(), match.status(), active.get(match.id()),
-                usable.getOrDefault(match.id(), List.of()))).toList();
+        seatSessionRepository.findByStatusAndCustomerIdIn(SeatSession.Status.ACTIVE, ids)
+                .forEach(session -> active.put(session.getCustomerId(), toActiveSession(session)));
+
+        return matches.stream()
+                .map(match -> new CheckInCandidate(
+                        match.customer(),
+                        match.status(),
+                        active.get(match.id()),
+                        usable.getOrDefault(match.id(), List.of())
+                ))
+                .toList();
+    }
+
+    private static CheckInCandidate.ActiveSession toActiveSession(SeatSession session) {
+        return new CheckInCandidate.ActiveSession(
+                session.getId().toString(),
+                Long.toString(session.getBranchId()),
+                session.getCheckedInAt()
+        );
     }
 }

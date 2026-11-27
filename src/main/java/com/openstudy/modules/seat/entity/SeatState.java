@@ -5,11 +5,16 @@ package com.openstudy.modules.seat.entity;
  * so it is not a value of this enum.
  */
 public enum SeatState {
-    AVAILABLE("사용 가능"), BLOCKED("운영 중단");
+    AVAILABLE("사용 가능"),
+    BLOCKED("운영 중단");
 
     private final String label;
 
-    SeatState(String label) { this.label = label; }
+    SeatState(String label) {
+        this.label = label;
+    }
 
-    public String label() { return label; }
+    public String label() {
+        return label;
+    }
 }

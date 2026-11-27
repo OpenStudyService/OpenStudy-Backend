@@ -42,36 +42,56 @@ import org.hibernate.generator.EventType;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Seat {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @SemanticField(id = "seat.id", name = "좌석 ID", role = "ID", allowedOps = {"EQ", "NE", "IN"})
     private Long id;
+
     @Column(name = "branch_id", nullable = false, updatable = false)
     @SemanticField(id = "seat.branch_id", name = "지점 ID", role = "FK", allowedOps = {"EQ", "NE", "IN"})
     @SemanticRelation(id = "seat.branch", targetEntity = "branch", targetField = "id", direction = "OUTGOING", joinUse = "APPROVED", meaning = "좌석 소속 지점")
     private long branchId;
+
     @Column(nullable = false, length = 80)
     private String zone;
+
     @Column(name = "seat_no", nullable = false, length = 30)
     @SemanticField(id = "seat.seat_no", name = "좌석 번호", role = "CODE", aliases = {"자리 번호"}, allowedOps = {"EQ", "NE", "IN"})
     private String seatNo;
-    @Enumerated(EnumType.STRING) @Column(nullable = false)
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
     private SeatKind kind;
-    @Enumerated(EnumType.STRING) @Column(nullable = false)
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
     @SemanticField(id = "seat.status", name = "좌석 상태", role = "STATUS", allowedValues = {"AVAILABLE", "OCCUPIED", "BLOCKED"}, aliases = {"빈자리", "사용 중", "점검"}, allowedOps = {"EQ", "NE", "IN"})
     private SeatState status;
-    @Generated(event = EventType.INSERT) @Column(name = "created_at", insertable = false, updatable = false)
+
+    @Generated(event = EventType.INSERT)
+    @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
+
     /** Exposed to clients as version + 1 and checked on every change. */
     @Version
     private long version;
 
     public Seat(long branchId, String zone, String seatNo, SeatKind kind, SeatState status) {
-        this.branchId = branchId; this.zone = zone; this.seatNo = seatNo; this.kind = kind; this.status = status;
+        this.branchId = branchId;
+        this.zone = zone;
+        this.seatNo = seatNo;
+        this.kind = kind;
+        this.status = status;
     }
 
     public void change(String zone, String seatNo, SeatKind kind) {
-        this.zone = zone; this.seatNo = seatNo; this.kind = kind;
+        this.zone = zone;
+        this.seatNo = seatNo;
+        this.kind = kind;
     }
 
-    public void changeStatus(SeatState status) { this.status = status; }
+    public void changeStatus(SeatState status) {
+        this.status = status;
+    }
 }
