@@ -1,3 +1,6 @@
 package com.openstudy.modules.ticket.entity;
 
-public enum CategoryStatus { ACTIVE, INACTIVE }
+public enum CategoryStatus {
+    ACTIVE,
+    INACTIVE
+}

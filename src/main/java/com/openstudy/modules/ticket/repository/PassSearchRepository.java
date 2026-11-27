@@ -22,48 +22,87 @@ import com.openstudy.modules.ticket.entity.ProductKind;
 @Repository
 @RequiredArgsConstructor
 public class PassSearchRepository {
+
     /** Effective status as a SQL expression; its single parameter is the request instant. */
     private static final String EFFECTIVE = "CASE WHEN x.status = 'REFUNDED' THEN 'REFUNDED' "
             + "WHEN x.status = 'EXPIRED' OR (x.expires_at IS NOT NULL AND x.expires_at <= ?) THEN 'EXPIRED' "
             + "WHEN x.status = 'EXHAUSTED' THEN 'EXHAUSTED' ELSE 'ACTIVE' END";
+    private static final String FROM = " FROM passes x WHERE ";
+
     private final EntityManager entityManager;
 
-    public enum Sort { CREATED_AT, EXPIRES_AT }
+    public enum Sort {
+        CREATED_AT,
+        EXPIRES_AT
+    }
 
     /** {@code status} is ACTIVE, EXHAUSTED, EXPIRED or REFUNDED as an effective status, or null. */
-    public record Filter(Set<Long> branches, Long customerId, String status, ProductKind kind, Instant now) {}
+    public record Filter(Set<Long> branches, Long customerId, String status, ProductKind kind, Instant now) {
+    }
 
-    public record Page(List<Pass> rows, long total) {}
+    public record Page(List<Pass> rows, long total) {
+    }
 
     @SuppressWarnings("unchecked")
     public Page find(Filter filter, Sort sort, boolean descending, long offset, int limit) {
-        if (filter.branches().isEmpty()) return new Page(List.of(), 0);
-        var where = new StringBuilder("x.purchase_branch_id IN (")
-                .append(String.join(",", Collections.nCopies(filter.branches().size(), "?"))).append(")");
-        var binds = new ArrayList<Object>(filter.branches().stream().sorted().toList());
-        // A customer filter includes the customers merged into it (M13-D07, #114).
-        if (filter.customerId() != null) {
-            where.append(" AND x.customer_id IN (SELECT m.id FROM customers m WHERE m.id = ? OR m.merged_into_customer_id = ?)");
-            binds.add(filter.customerId()); binds.add(filter.customerId());
+        if (filter.branches().isEmpty()) {
+            return new Page(List.of(), 0);
         }
-        if (filter.kind() != null) { where.append(" AND x.kind = ?"); binds.add(filter.kind().name()); }
-        if (filter.status() != null) {
-            where.append(" AND ").append(EFFECTIVE).append(" = ?");
-            binds.add(filter.now());
-            binds.add(filter.status());
-        }
+
+        StringBuilder where = new StringBuilder();
+        List<Object> binds = new ArrayList<>();
+        appendWhere(filter, where, binds);
+
         String order = descending ? " DESC" : " ASC";
         // Passes without an expiry sort last in either direction: "no expiry" is not a date.
-        String by = sort == Sort.EXPIRES_AT ? "x.expires_at IS NULL, x.expires_at" + order : "x.created_at" + order;
-        Query rows = entityManager.createNativeQuery("SELECT x.* FROM passes x WHERE " + where
-                + " ORDER BY " + by + ", x.id" + order + " LIMIT ? OFFSET ?", Pass.class);
-        Query count = entityManager.createNativeQuery("SELECT COUNT(*) FROM passes x WHERE " + where);
+        String orderBy = sort == Sort.EXPIRES_AT
+                ? "x.expires_at IS NULL, x.expires_at" + order
+                : "x.created_at" + order;
+        String rowsSql = "SELECT x.*" + FROM + where
+                + " ORDER BY " + orderBy + ", x.id" + order + " LIMIT ? OFFSET ?";
+        Query rows = entityManager.createNativeQuery(rowsSql, Pass.class);
+        Query count = entityManager.createNativeQuery("SELECT COUNT(*)" + FROM + where);
+
         for (int index = 0; index < binds.size(); index++) {
             rows.setParameter(index + 1, binds.get(index));
             count.setParameter(index + 1, binds.get(index));
         }
+
         rows.setParameter(binds.size() + 1, limit);
         rows.setParameter(binds.size() + 2, offset);
+
         return new Page(rows.getResultList(), ((Number) count.getSingleResult()).longValue());
+    }
+
+    private static void appendWhere(Filter filter, StringBuilder where, List<Object> binds) {
+        List<Long> branches = filter.branches()
+                .stream()
+                .sorted()
+                .toList();
+        where.append("x.purchase_branch_id IN (")
+                .append(String.join(",", Collections.nCopies(branches.size(), "?")))
+                .append(")");
+        binds.addAll(branches);
+
+        // A customer filter includes the customers merged into it (M13-D07, #114).
+        if (filter.customerId() != null) {
+            where.append(" AND x.customer_id IN (SELECT m.id FROM customers m"
+                    + " WHERE m.id = ? OR m.merged_into_customer_id = ?)");
+            binds.add(filter.customerId());
+            binds.add(filter.customerId());
+        }
+
+        if (filter.kind() != null) {
+            where.append(" AND x.kind = ?");
+            binds.add(filter.kind().name());
+        }
+
+        if (filter.status() != null) {
+            where.append(" AND ")
+                    .append(EFFECTIVE)
+                    .append(" = ?");
+            binds.add(filter.now());
+            binds.add(filter.status());
+        }
     }
 }

@@ -1,5 +1,6 @@
 package com.openstudy.modules.ticket.repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -12,6 +13,7 @@ import org.springframework.data.repository.query.Param;
 import com.openstudy.modules.ticket.entity.Product;
 
 public interface ProductRepository extends JpaRepository<Product, Long> {
+
     @EntityGraph(attributePaths = {"category", "branchIds"})
     List<Product> findAllWithDetailsByOrderByIdAsc();
 
@@ -31,18 +33,21 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     /** The limit decides the sale's lock mode before any product lock is taken (M13-D02). */
     @Query("SELECT p.salesLimit FROM Product p WHERE p.id = :id")
-    java.util.Optional<Integer> salesLimitOf(@Param("id") long id);
+    Optional<Integer> findSalesLimit(@Param("id") long id);
 
     /**
      * Approved (not refunded, not failed) payments of a product over every branch: the sold quantity of the limit
      * (M13-D02). Read by entity name so the ticket module does not depend on the payment module.
      */
     @Query("SELECT COUNT(p) FROM Payment p WHERE p.productId = :id AND CAST(p.status AS string) = 'APPROVED'")
-    long soldQuantity(@Param("id") long id);
+    long countSold(@Param("id") long id);
 
-    @Query("SELECT p.productId, COUNT(p) FROM Payment p WHERE p.productId IN :ids AND CAST(p.status AS string) = 'APPROVED' "
-            + "GROUP BY p.productId")
-    List<Object[]> soldQuantities(@Param("ids") java.util.Collection<Long> ids);
+    @Query("""
+            SELECT p.productId, COUNT(p) FROM Payment p
+            WHERE p.productId IN :ids AND CAST(p.status AS string) = 'APPROVED'
+            GROUP BY p.productId
+            """)
+    List<Object[]> countSoldByProduct(@Param("ids") Collection<Long> ids);
 
     /** Advances an otherwise unchanged product's version; the caller refreshes the managed entity afterwards. */
     @Modifying(flushAutomatically = true)

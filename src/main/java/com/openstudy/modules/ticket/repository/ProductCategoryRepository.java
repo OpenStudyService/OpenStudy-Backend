@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Lock;
 import com.openstudy.modules.ticket.entity.ProductCategory;
 
 public interface ProductCategoryRepository extends JpaRepository<ProductCategory, Long> {
+
     List<ProductCategory> findAllByOrderByIdAsc();
 
     /** Serialize category edits so an update never races a product assignment to the same category. */

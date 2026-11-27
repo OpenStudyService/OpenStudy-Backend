@@ -8,9 +8,13 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
  * 유효기간이 없는 시간권·정액권은 {@code validDays=null}이며 0으로 대신하지 않는다.
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.DEDUCTION)
-@JsonSubTypes({@JsonSubTypes.Type(ProductTerms.Time.class), @JsonSubTypes.Type(ProductTerms.Period.class),
-        @JsonSubTypes.Type(ProductTerms.StoredValue.class)})
+@JsonSubTypes({
+        @JsonSubTypes.Type(ProductTerms.Time.class),
+        @JsonSubTypes.Type(ProductTerms.Period.class),
+        @JsonSubTypes.Type(ProductTerms.StoredValue.class)
+})
 public sealed interface ProductTerms {
+
     String TIME = "시간권";
     String PERIOD = "기간권";
     String STORED_VALUE = "정액권";
@@ -18,23 +22,46 @@ public sealed interface ProductTerms {
     String kind();
 
     record Time(String kind, long includedMinutes, Long validDays) implements ProductTerms {
-        public Time { requireKind(TIME, kind); }
-        public static Time of(long includedMinutes, Long validDays) { return new Time(TIME, includedMinutes, validDays); }
+
+        public Time {
+            requireKind(TIME, kind);
+        }
+
+        public static Time of(long includedMinutes, Long validDays) {
+            return new Time(TIME, includedMinutes, validDays);
+        }
     }
 
     record Period(String kind, long periodDays) implements ProductTerms {
-        public Period { requireKind(PERIOD, kind); }
-        public static Period of(long periodDays) { return new Period(PERIOD, periodDays); }
+
+        public Period {
+            requireKind(PERIOD, kind);
+        }
+
+        public static Period of(long periodDays) {
+            return new Period(PERIOD, periodDays);
+        }
     }
 
-    record StoredValue(String kind, long creditKrw, long hourlyRateKrw, Long validDays) implements ProductTerms {
-        public StoredValue { requireKind(STORED_VALUE, kind); }
+    record StoredValue(
+            String kind,
+            long creditKrw,
+            long hourlyRateKrw,
+            Long validDays
+    ) implements ProductTerms {
+
+        public StoredValue {
+            requireKind(STORED_VALUE, kind);
+        }
+
         public static StoredValue of(long creditKrw, long hourlyRateKrw, Long validDays) {
             return new StoredValue(STORED_VALUE, creditKrw, hourlyRateKrw, validDays);
         }
     }
 
     private static void requireKind(String expected, String actual) {
-        if (!expected.equals(actual)) throw new IllegalArgumentException("Unexpected product kind");
+        if (!expected.equals(actual)) {
+            throw new IllegalArgumentException("Unexpected product kind");
+        }
     }
 }

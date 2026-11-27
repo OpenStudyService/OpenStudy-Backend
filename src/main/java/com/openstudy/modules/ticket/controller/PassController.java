@@ -2,6 +2,7 @@ package com.openstudy.modules.ticket.controller;
 
 import java.util.Map;
 import java.util.Set;
+
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
 import com.openstudy.common.web.ApiRequestFilter;
 import com.openstudy.common.web.ListQuery;
 import com.openstudy.common.web.PageResponse;
@@ -25,30 +27,55 @@ import com.openstudy.modules.ticket.service.PassService;
 @RequestMapping("/api/passes")
 @RequiredArgsConstructor
 public class PassController {
-    private final PassService service;
-    private final PassAdjustmentService adjustments;
+
+    private static final Set<String> SORT_FIELDS = Set.of("createdAt", "expiresAt");
+    private static final String DEFAULT_SORT = "createdAt";
+
+    private final PassService passService;
+    private final PassAdjustmentService passAdjustmentService;
 
     @GetMapping
-    public PageResponse<IssuedPass> list(Authentication actor, @RequestParam(defaultValue = "all") String scope,
-            @RequestParam(defaultValue = "1") long page, @RequestParam(defaultValue = "20") int pageSize,
-            @RequestParam(required = false) String sort, @RequestParam(required = false) String direction,
-            @RequestParam(required = false) String customerId, @RequestParam(required = false) String status,
-            @RequestParam(required = false) String kind) {
-        return service.list(actor(actor), scope, ListQuery.parse(page, pageSize, null, sort, direction,
-                Set.of("createdAt", "expiresAt"), "createdAt"), customerId, status, kind);
+    public PageResponse<IssuedPass> listPasses(
+            Authentication actor,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String direction,
+            @RequestParam(required = false) String customerId,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String kind
+    ) {
+        long actorId = actorId(actor);
+        ListQuery query = ListQuery.parse(page, pageSize, null, sort, direction, SORT_FIELDS, DEFAULT_SORT);
+
+        return passService.list(actorId, scope, query, customerId, status, kind);
     }
 
     @GetMapping("/{id}")
-    public IssuedPass get(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope) {
-        return service.get(actor(actor), id, scope);
+    public IssuedPass getPass(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope
+    ) {
+        return passService.get(actorId(actor), id, scope);
     }
 
     @PostMapping("/{id}/adjustments")
-    public IssuedPass adjust(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope,
-            @RequestHeader(name = "Idempotency-Key", required = false) String key, @RequestBody Map<String, Object> body,
-            HttpServletRequest request) {
-        return adjustments.adjust(actor(actor), id, scope, key, body, ApiRequestFilter.requestId(request));
+    public IssuedPass adjustPass(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestHeader(name = "Idempotency-Key", required = false) String key,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        String requestId = ApiRequestFilter.requestId(request);
+
+        return passAdjustmentService.adjust(actorId(actor), id, scope, key, body, requestId);
     }
 
-    private static long actor(Authentication authentication) { return Long.parseLong(authentication.getName()); }
+    private static long actorId(Authentication authentication) {
+        return Long.parseLong(authentication.getName());
+    }
 }
