@@ -12,6 +12,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.Generated;
@@ -27,36 +28,69 @@ import org.hibernate.generator.EventType;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class LockerAssignmentCharge {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
     @Column(name = "assignment_id", nullable = false, updatable = false)
     private long assignmentId;
+
     @Column(name = "payment_id", nullable = false, updatable = false)
     private long paymentId;
-    @Enumerated(EnumType.STRING) @Column(name = "charge_kind", nullable = false, updatable = false)
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "charge_kind", nullable = false, updatable = false)
     private LockerChargeKind kind;
+
     @Column(name = "start_date", nullable = false, updatable = false)
     private LocalDate startDate;
+
     @Column(name = "end_date", nullable = false, updatable = false)
     private LocalDate endDate;
+
     @Column(name = "charged_4week_terms", nullable = false, updatable = false, columnDefinition = "int unsigned")
     private int terms;
+
     @Column(name = "rate_per_4weeks_snapshot_krw", nullable = false, updatable = false)
     private long ratePer4WeeksSnapshotKrw;
+
     @Column(name = "amount_krw", nullable = false, updatable = false)
     private long amountKrw;
-    @Enumerated(EnumType.STRING) @Column(nullable = false, updatable = false)
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, updatable = false)
     private LockerChargeStatus status;
-    @Generated(event = EventType.INSERT) @Column(name = "created_at", insertable = false, updatable = false)
+
+    @Generated(event = EventType.INSERT)
+    @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
+
     @Column(name = "applied_at", updatable = false)
     private Instant appliedAt;
 
-    public LockerAssignmentCharge(long assignmentId, long paymentId, LockerChargeKind kind, LocalDate startDate, LocalDate endDate,
-            int terms, long ratePer4WeeksSnapshotKrw, long amountKrw, boolean approved, Instant at) {
-        this.assignmentId = assignmentId; this.paymentId = paymentId; this.kind = kind; this.startDate = startDate;
-        this.endDate = endDate; this.terms = terms; this.ratePer4WeeksSnapshotKrw = ratePer4WeeksSnapshotKrw;
-        this.amountKrw = amountKrw; this.status = approved ? LockerChargeStatus.APPLIED : LockerChargeStatus.FAILED;
+    @Builder
+    public LockerAssignmentCharge(
+            long assignmentId,
+            long paymentId,
+            LockerChargeKind kind,
+            LocalDate startDate,
+            LocalDate endDate,
+            int terms,
+            long ratePer4WeeksSnapshotKrw,
+            long amountKrw,
+            boolean approved,
+            Instant at
+    ) {
+        this.assignmentId = assignmentId;
+        this.paymentId = paymentId;
+        this.kind = kind;
+        this.startDate = startDate;
+        this.endDate = endDate;
+        this.terms = terms;
+        this.ratePer4WeeksSnapshotKrw = ratePer4WeeksSnapshotKrw;
+        this.amountKrw = amountKrw;
+        this.status = approved ? LockerChargeStatus.APPLIED : LockerChargeStatus.FAILED;
         this.appliedAt = approved ? at : null;
     }
 }
