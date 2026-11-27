@@ -5,6 +5,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -40,6 +41,7 @@ import com.openstudy.modules.employee.service.EmployeeAccountService;
 import com.openstudy.modules.workforce.dto.response.ActorSummary;
 import com.openstudy.modules.workforce.dto.response.RequestCancellation;
 import com.openstudy.modules.workforce.dto.response.RequestDecision;
+import com.openstudy.modules.workforce.dto.response.ShiftConflict;
 import com.openstudy.modules.workforce.dto.response.ShiftSwapView;
 import com.openstudy.modules.workforce.entity.LeaveRequest;
 import com.openstudy.modules.workforce.entity.Shift;
@@ -64,49 +66,103 @@ import com.openstudy.modules.workforce.repository.ShiftSwapRepository;
 @Service
 @RequiredArgsConstructor
 public class SwapService {
+
     private static final String CREATE = "shift-swaps:create";
     private static final String APPROVED = "APPROVED";
     private static final String RESTORED = "RESTORED";
-    private final ShiftSwapRepository swaps;
-    private final ShiftRepository shifts;
-    private final ShiftEventRepository history;
-    private final LeaveRequestRepository leaves;
-    private final LeaveSearchRepository search;
-    private final RecordScope readers;
-    private final EmployeeAccountService employees;
-    private final AuthorizationService policy;
-    private final AuthorizedCommands commands;
-    private final IdempotencyStore keys;
-    private final ObjectMapper json;
+    private static final String ACTIVE = "ACTIVE";
+    private static final String APPROVAL_CANCELLATION_LABEL = "승인 취소";
+    private static final String REQUEST_CANCELLATION_LABEL = "신청 취소";
+    private static final String ALREADY_DECIDED = "이미 처리된 대체근무 신청입니다.";
+    private static final String SWAP_LOCATION = "/api/shift-swaps/";
+    private static final String UNKNOWN_NAME = "";
+    private static final int REASON_MAX_LENGTH = 500;
+    private static final int CREATED_STATUS = 201;
+    private static final Duration IDEMPOTENCY_TTL = Duration.ofHours(24);
+
+    private final ShiftSwapRepository shiftSwapRepository;
+    private final ShiftRepository shiftRepository;
+    private final ShiftEventRepository shiftEventRepository;
+    private final LeaveRequestRepository leaveRequestRepository;
+    private final LeaveSearchRepository leaveSearchRepository;
+    private final RecordScope recordScope;
+    private final EmployeeAccountService employeeAccountService;
+    private final AuthorizationService authorizationService;
+    private final AuthorizedCommands authorizedCommands;
+    private final IdempotencyStore idempotencyStore;
+    private final ObjectMapper objectMapper;
     private final Clock clock;
 
+    private record Context(AuthorizationState state, ShiftSwap swap, Shift shift) {
+    }
+
+    private interface Command {
+
+        void apply(Context context);
+    }
+
     @Transactional(readOnly = true)
-    public PageResponse<ShiftSwapView> list(long actor, String scope, ListQuery query, String employeeId, String mine, String status,
-            String from, String to) {
-        Long employee = employeeId == null ? null : ShiftInputs.id(employeeId, "employeeId");
-        boolean own = ShiftInputs.flag(mine, "mine");
-        LeaveRequest.Status filterStatus = status == null ? null : LeaveInputs.status(status);
-        LocalDate first = from == null ? null : ShiftInputs.date(from, "from");
-        LocalDate last = to == null ? null : ShiftInputs.date(to, "to");
-        if (first != null && last != null && last.isBefore(first)) throw ApiException.validation("to", "종료 날짜는 시작 날짜보다 앞설 수 없습니다.");
-        var state = policy.current(actor);
-        Set<Long> readable = policy.scope(state, scope, BranchAction.READ);
-        Set<Long> managed = readable.stream().filter(branch -> readers.manages(state, branch)).collect(Collectors.toSet());
+    public PageResponse<ShiftSwapView> list(
+            long actor,
+            String scope,
+            ListQuery query,
+            String employeeId,
+            String mine,
+            String status,
+            String from,
+            String to
+    ) {
+        Long employee = employeeId == null ? null : ShiftInputs.parseId(employeeId, "employeeId");
+        boolean own = ShiftInputs.parseFlag(mine, "mine");
+        LeaveRequest.Status filterStatus = status == null ? null : LeaveInputs.parseStatus(status);
+        LocalDate first = from == null ? null : ShiftInputs.parseDate(from, "from");
+        LocalDate last = to == null ? null : ShiftInputs.parseDate(to, "to");
+
+        if (first != null && last != null && last.isBefore(first)) {
+            throw ApiException.validation("to", "종료 날짜는 시작 날짜보다 앞설 수 없습니다.");
+        }
+
+        AuthorizationState state = authorizationService.current(actor);
+        Set<Long> readable = authorizationService.scope(state, scope, BranchAction.READ);
+        Set<Long> managed = readable.stream()
+                .filter(branch -> recordScope.canManage(state, branch))
+                .collect(Collectors.toSet());
         Long person = employee;
+
         if (own) {
-            if (employee != null && employee != actor) return new PageResponse<>(List.of(), new PageResponse.Meta(query.page(), query.pageSize(), 0));
+            if (employee != null && employee != actor) {
+                return new PageResponse<>(List.of(), new PageResponse.Meta(query.page(), query.pageSize(), 0));
+            }
+
             person = actor;
             managed = Set.of();
         }
-        var page = search.swaps(readable, managed, actor, person, filterStatus, first == null ? null : ShiftInputs.startOf(first),
-                last == null ? null : ShiftInputs.startOf(last.plusDays(1)), query.offset(), query.pageSize());
-        return new PageResponse<>(views(page.rows(), state), new PageResponse.Meta(query.page(), query.pageSize(), page.total()));
+
+        Instant start = first == null ? null : ShiftInputs.toStartOf(first);
+        Instant end = last == null ? null : ShiftInputs.toStartOf(last.plusDays(1));
+        LeaveSearchRepository.Page<ShiftSwap> page = leaveSearchRepository.findSwaps(
+                readable,
+                managed,
+                actor,
+                person,
+                filterStatus,
+                start,
+                end,
+                query.offset(),
+                query.pageSize()
+        );
+
+        return new PageResponse<>(
+                toViews(page.rows(), state),
+                new PageResponse.Meta(query.page(), query.pageSize(), page.total())
+        );
     }
 
     @Transactional(readOnly = true)
     public ShiftSwapView get(long actor, long id) {
-        var state = policy.current(actor);
-        return views(List.of(visible(state, id)), state).getFirst();
+        AuthorizationState state = authorizationService.current(actor);
+
+        return toViews(List.of(findVisible(state, id)), state).getFirst();
     }
 
     /**
@@ -115,47 +171,92 @@ public class SwapService {
      * shift until a manager approves (M12-D04).
      */
     public ShiftSwapView create(long actor, long shiftId, String key, Map<String, Object> body) {
-        var reader = policy.current(actor);
-        var readable = readers.readable(reader);
-        var found = shifts.findById(shiftId).filter(shift -> readers.sees(reader, readable, shift.getBranchId(), shift.getEmployeeId()))
-                .orElseThrow(SwapService::notFound);
-        if (found.getEmployeeId() != actor) throw AuthorizationService.forbidden();
-        var input = new StrictInput(body).only("replacementEmployeeId", "proposedStartsAt", "proposedEndsAt", "reason");
+        AuthorizationState reader = authorizationService.current(actor);
+        Set<Long> readable = recordScope.findReadable(reader);
+        Shift found = shiftRepository.findById(shiftId)
+                .filter(shift -> recordScope.canSee(reader, readable, shift.getBranchId(), shift.getEmployeeId()))
+                .orElseThrow(SwapService::createNotFoundError);
+
+        if (found.getEmployeeId() != actor) {
+            throw AuthorizationService.forbidden();
+        }
+
+        StrictInput input = new StrictInput(body)
+                .only("replacementEmployeeId", "proposedStartsAt", "proposedEndsAt", "reason");
         long replacement = input.id("replacementEmployeeId");
-        Instant start = ShiftInputs.instant(body.get("proposedStartsAt"), "proposedStartsAt");
-        Instant end = ShiftInputs.instant(body.get("proposedEndsAt"), "proposedEndsAt");
-        String reason = input.text("reason", 500);
-        ShiftInputs.validKey(key);
+        Instant start = ShiftInputs.parseInstant(body.get("proposedStartsAt"), "proposedStartsAt");
+        Instant end = ShiftInputs.parseInstant(body.get("proposedEndsAt"), "proposedEndsAt");
+        String reason = input.text("reason", REASON_MAX_LENGTH);
+        ShiftInputs.validateKey(key);
         ShiftInputs.requireValid(start, end, found.getPlannedBreakMinutes());
         String scopeKey = Long.toString(found.getBranchId());
-        byte[] fingerprint = ShiftInputs.digest(json.writeValueAsString(Arrays.asList(shiftId, replacement, start.toString(), end.toString(), reason)));
-        var prior = new AtomicReference<Optional<IdempotencyRecord>>(Optional.empty());
-        var locked = new AtomicReference<Optional<Shift>>(Optional.empty());
-        return commands.activeEmployee(actor, () -> {
-            prior.set(keys.lock(actor, CREATE, scopeKey, key));
-            lockEmployees(actor, replacement);
-            locked.set(shifts.locked(shiftId));
-        }, state -> {
-            var replayed = replay(prior.get(), fingerprint);
-            if (replayed.isPresent()) return replayed.get();
-            var visibleNow = readers.readable(state);
-            var shift = locked.get().filter(row -> readers.sees(state, visibleNow, row.getBranchId(), row.getEmployeeId()))
-                    .orElseThrow(SwapService::notFound);
-            if (shift.getEmployeeId() != actor) throw AuthorizationService.forbidden();
-            ShiftInputs.requireValid(start, end, shift.getPlannedBreakMinutes());
-            requireReplacement(replacement, actor, shift.getBranchId());
-            if (shift.cancelled()) throw ApiException.conflict("INVALID_STATE", "취소된 근무는 대체근무를 신청할 수 없습니다.");
-            requireNotStarted(shift);
-            requireOperating(state, shift.getBranchId());
-            var pending = swaps.forShift(shiftId, LeaveRequest.Status.REQUESTED);
-            if (!pending.isEmpty()) throw WorkforceRequestRefusal.pendingSwap(pending.getFirst().getId());
-            requireFree(state, replacement, start, end, shiftId);
-            var swap = swaps.saveAndFlush(new ShiftSwap(shiftId, actor, replacement, start, end, reason));
-            var result = views(List.of(swap), state).getFirst();
-            keys.complete(actor, CREATE, scopeKey, key, fingerprint, 201, json.writeValueAsString(result),
-                    clock.instant().plus(Duration.ofHours(24)));
-            return result;
-        });
+        List<Object> fingerprintValues = Arrays.asList(shiftId, replacement, start.toString(), end.toString(), reason);
+        byte[] fingerprint = ShiftInputs.digest(objectMapper.writeValueAsString(fingerprintValues));
+        AtomicReference<Optional<IdempotencyRecord>> prior = new AtomicReference<>(Optional.empty());
+        AtomicReference<Optional<Shift>> locked = new AtomicReference<>(Optional.empty());
+
+        return authorizedCommands.activeEmployee(
+                actor,
+                () -> {
+                    prior.set(idempotencyStore.lock(actor, CREATE, scopeKey, key));
+                    lockEmployees(actor, replacement);
+                    locked.set(shiftRepository.findLocked(shiftId));
+                },
+                state -> {
+                    Optional<ShiftSwapView> replayed = findReplay(prior.get(), fingerprint);
+
+                    if (replayed.isPresent()) {
+                        return replayed.get();
+                    }
+
+                    Set<Long> visibleNow = recordScope.findReadable(state);
+                    Shift shift = locked.get()
+                            .filter(row -> recordScope.canSee(
+                                    state,
+                                    visibleNow,
+                                    row.getBranchId(),
+                                    row.getEmployeeId()
+                            ))
+                            .orElseThrow(SwapService::createNotFoundError);
+
+                    if (shift.getEmployeeId() != actor) {
+                        throw AuthorizationService.forbidden();
+                    }
+
+                    ShiftInputs.requireValid(start, end, shift.getPlannedBreakMinutes());
+                    requireReplacement(replacement, actor, shift.getBranchId());
+
+                    if (shift.cancelled()) {
+                        throw ApiException.conflict("INVALID_STATE", "취소된 근무는 대체근무를 신청할 수 없습니다.");
+                    }
+
+                    requireNotStarted(shift);
+                    requireOperating(state, shift.getBranchId());
+                    List<ShiftSwap> pending = shiftSwapRepository.findForShift(shiftId, LeaveRequest.Status.REQUESTED);
+
+                    if (!pending.isEmpty()) {
+                        throw WorkforceRequestRefusal.pendingSwap(pending.getFirst().getId());
+                    }
+
+                    requireFree(state, replacement, start, end, shiftId);
+                    ShiftSwap swap = shiftSwapRepository.saveAndFlush(
+                            new ShiftSwap(shiftId, actor, replacement, start, end, reason)
+                    );
+                    ShiftSwapView result = toViews(List.of(swap), state).getFirst();
+                    idempotencyStore.complete(
+                            actor,
+                            CREATE,
+                            scopeKey,
+                            key,
+                            fingerprint,
+                            CREATED_STATUS,
+                            objectMapper.writeValueAsString(result),
+                            clock.instant().plus(IDEMPOTENCY_TTL)
+                    );
+
+                    return result;
+                }
+        );
     }
 
     /**
@@ -164,24 +265,40 @@ public class SwapService {
      * employee and time change together with a SWAPPED row.
      */
     public ShiftSwapView approve(long actor, long id, Map<String, Object> body) {
-        var input = new StrictInput(body).only("version", "shiftVersion");
+        StrictInput input = new StrictInput(body).only("version", "shiftVersion");
         long version = input.version("version");
         long shiftVersion = input.version("shiftVersion");
-        var swap = decidable(actor, id);
-        return frame(actor, id, swap, version, LeaveRequest.Status.REQUESTED, "이미 처리된 대체근무 신청입니다.", true, (context) -> {
-            var row = context.swap();
-            var shift = context.shift();
-            if (shift.cancelled()) throw ApiException.conflict("INVALID_STATE", "취소된 근무는 대체할 수 없습니다.");
-            if (ApiVersion.fromDatabase(shift.getVersion()) != shiftVersion || shift.getEmployeeId() != row.getRequestedBy()
-                    || history.existsByShiftIdAndCreatedAtAfter(shift.getId(), row.getCreatedAt()))
+        ShiftSwap swap = findDecidable(actor, id);
+
+        return runCommand(actor, id, swap, version, LeaveRequest.Status.REQUESTED, ALREADY_DECIDED, true, context -> {
+            ShiftSwap row = context.swap();
+            Shift shift = context.shift();
+
+            if (shift.cancelled()) {
+                throw ApiException.conflict("INVALID_STATE", "취소된 근무는 대체할 수 없습니다.");
+            }
+
+            boolean shiftMoved = ApiVersion.fromDatabase(shift.getVersion()) != shiftVersion
+                    || shift.getEmployeeId() != row.getRequestedBy()
+                    || shiftEventRepository.existsByShiftIdAndCreatedAtAfter(shift.getId(), row.getCreatedAt());
+
+            if (shiftMoved) {
                 throw WorkforceRequestRefusal.shiftVersion(shift.getId(), ApiVersion.fromDatabase(shift.getVersion()));
+            }
+
             requireNotStarted(shift);
             requireOperating(context.state(), shift.getBranchId());
             requireReplacement(row.getReplacementEmployeeId(), row.getRequestedBy(), shift.getBranchId());
-            requireFree(context.state(), row.getReplacementEmployeeId(), row.getProposedStartsAt(), row.getProposedEndsAt(), shift.getId());
-            var before = ShiftService.values(shift);
+            requireFree(
+                    context.state(),
+                    row.getReplacementEmployeeId(),
+                    row.getProposedStartsAt(),
+                    row.getProposedEndsAt(),
+                    shift.getId()
+            );
+            Map<String, Object> before = ShiftService.toValues(shift);
             shift.reassign(row.getReplacementEmployeeId(), row.getProposedStartsAt(), row.getProposedEndsAt());
-            swapped(shifts.saveAndFlush(shift), actor, before, row, APPROVED);
+            recordSwapped(shiftRepository.saveAndFlush(shift), actor, before, row, APPROVED);
             row.approve(actor, clock.instant());
         });
     }
@@ -189,21 +306,41 @@ public class SwapService {
     /** The shift does not change. */
     public ShiftSwapView reject(long actor, long id, Map<String, Object> body) {
         long version = new StrictInput(body).only("version").version("version");
-        var swap = decidable(actor, id);
-        return frame(actor, id, swap, version, LeaveRequest.Status.REQUESTED, "이미 처리된 대체근무 신청입니다.", true,
-                context -> context.swap().reject(actor, clock.instant()));
+        ShiftSwap swap = findDecidable(actor, id);
+
+        return runCommand(
+                actor,
+                id,
+                swap,
+                version,
+                LeaveRequest.Status.REQUESTED,
+                ALREADY_DECIDED,
+                true,
+                context -> context.swap().reject(actor, clock.instant())
+        );
     }
 
     /** The requester withdraws an undecided request; also after the shift started or the membership ended (tidying up). */
     public ShiftSwapView cancel(long actor, long id, Map<String, Object> body) {
         long version = new StrictInput(body).only("version").version("version");
-        var swap = swaps.findById(id).orElseThrow(SwapService::notFound);
+        ShiftSwap swap = shiftSwapRepository.findById(id).orElseThrow(SwapService::createNotFoundError);
+
         if (swap.getRequestedBy() != actor) {
-            visible(policy.current(actor), id);
+            findVisible(authorizationService.current(actor), id);
+
             throw AuthorizationService.forbidden();
         }
-        return frame(actor, id, swap, version, LeaveRequest.Status.REQUESTED, "승인 전 신청만 취소할 수 있습니다.", false,
-                context -> context.swap().withdraw(actor, clock.instant()));
+
+        return runCommand(
+                actor,
+                id,
+                swap,
+                version,
+                LeaveRequest.Status.REQUESTED,
+                "승인 전 신청만 취소할 수 있습니다.",
+                false,
+                context -> context.swap().withdraw(actor, clock.instant())
+        );
     }
 
     /**
@@ -212,39 +349,54 @@ public class SwapService {
      */
     public ShiftSwapView cancelApproval(long actor, long id, Map<String, Object> body) {
         long version = new StrictInput(body).only("version").version("version");
-        var swap = decidable(actor, id);
-        return frame(actor, id, swap, version, LeaveRequest.Status.APPROVED, "승인된 대체근무만 승인 취소할 수 있습니다.", true, context -> {
-            var row = context.swap();
-            var shift = context.shift();
-            var approval = marker(shift.getId(), row.getId(), APPROVED).orElseThrow(() -> new IllegalStateException("Approved swap without its SWAPPED row"));
-            Map<String, Object> after = json.readValue(approval.getAfterJson(), Map.class);
-            Map<String, Object> before = json.readValue(approval.getBeforeJson(), Map.class);
+        ShiftSwap swap = findDecidable(actor, id);
+        String wrongState = "승인된 대체근무만 승인 취소할 수 있습니다.";
+
+        return runCommand(actor, id, swap, version, LeaveRequest.Status.APPROVED, wrongState, true, context -> {
+            ShiftSwap row = context.swap();
+            Shift shift = context.shift();
+            ShiftEvent approval = findMarker(shift.getId(), row.getId(), APPROVED)
+                    .orElseThrow(() -> new IllegalStateException("Approved swap without its SWAPPED row"));
+            Map<String, Object> after = readMap(approval.getAfterJson());
+            Map<String, Object> before = readMap(approval.getBeforeJson());
             long approvedVersion = ((Number) after.get("version")).longValue();
-            if (shift.cancelled() || ApiVersion.fromDatabase(shift.getVersion()) != approvedVersion)
-                throw WorkforceRequestRefusal.restore(shift.getId(), ApiVersion.fromDatabase(shift.getVersion()), approvedVersion);
+            boolean changedSinceApproval = shift.cancelled()
+                    || ApiVersion.fromDatabase(shift.getVersion()) != approvedVersion;
+
+            if (changedSinceApproval) {
+                throw WorkforceRequestRefusal.restore(
+                        shift.getId(),
+                        ApiVersion.fromDatabase(shift.getVersion()),
+                        approvedVersion
+                );
+            }
+
             requireNotStarted(shift);
             long original = Long.parseLong((String) before.get("employeeId"));
             Instant start = Instant.parse((String) before.get("startsAt"));
             Instant end = Instant.parse((String) before.get("endsAt"));
-            if (shifts.activeMember(original, shift.getBranchId()).isEmpty())
-                throw ApiException.unprocessable("INVALID_SHIFT_EMPLOYEE", "원래 담당자가 더 이상 근무 지점의 활성 소속 직원이 아닙니다.");
+
+            if (shiftRepository.findActiveMember(original, shift.getBranchId()).isEmpty()) {
+                throw ApiException.unprocessable(
+                        "INVALID_SHIFT_EMPLOYEE",
+                        "원래 담당자가 더 이상 근무 지점의 활성 소속 직원이 아닙니다."
+                );
+            }
+
             requireFree(context.state(), original, start, end, shift.getId());
-            var previous = ShiftService.values(shift);
+            Map<String, Object> previous = ShiftService.toValues(shift);
             shift.reassign(original, start, end);
-            swapped(shifts.saveAndFlush(shift), actor, previous, row, RESTORED);
+            recordSwapped(shiftRepository.saveAndFlush(shift), actor, previous, row, RESTORED);
             row.cancelApproval();
         });
     }
 
-    private record Context(AuthorizationState state, ShiftSwap swap, Shift shift) {}
-
-    private interface Command { void apply(Context context); }
-
     /** Before any lock: 404 for a swap the reader cannot see, 403 unless they manage the shift branch, 403 for their own. */
-    private ShiftSwap decidable(long actor, long id) {
-        var state = policy.current(actor);
-        var swap = visible(state, id);
-        requireDecider(state, swap, branchOf(swap));
+    private ShiftSwap findDecidable(long actor, long id) {
+        AuthorizationState state = authorizationService.current(actor);
+        ShiftSwap swap = findVisible(state, id);
+        requireDecider(state, swap, findBranchOf(swap));
+
         return swap;
     }
 
@@ -252,49 +404,89 @@ public class SwapService {
      * Shared frame: the guard, both employees' rows in id order, the swap row, the shift row; the same 404 and 403s on the
      * state read under lock; then the status before the version, so a repeated command is told what happened.
      */
-    private ShiftSwapView frame(long actor, long id, ShiftSwap known, long version, LeaveRequest.Status from, String wrongState,
-            boolean decider, Command command) {
-        var lockedSwap = new AtomicReference<Optional<ShiftSwap>>(Optional.empty());
-        var lockedShift = new AtomicReference<Optional<Shift>>(Optional.empty());
-        return commands.activeEmployee(actor, () -> {
-            lockEmployees(known.getRequestedBy(), known.getReplacementEmployeeId());
-            lockedSwap.set(swaps.locked(id));
-            lockedShift.set(shifts.locked(known.getOriginalShiftId()));
-        }, state -> {
-            var swap = lockedSwap.get().orElseThrow(SwapService::notFound);
-            var shift = lockedShift.get().orElseThrow(SwapService::notFound);
-            if (decider) {
-                if (!sees(state, readers.readable(state), swap, shift)) throw notFound();
-                requireDecider(state, swap, shift.getBranchId());
-            } else if (swap.getRequestedBy() != actor) {
-                throw AuthorizationService.forbidden();
-            }
-            if (swap.getStatus() != from)
-                throw WorkforceRequestRefusal.invalidState(wrongState, ApiVersion.fromDatabase(swap.getVersion()), reload(id));
-            ApiVersion.requireCurrent(version, swap.getVersion(), reload(id));
-            command.apply(new Context(state, swap, shift));
-            return views(List.of(swaps.saveAndFlush(swap)), state).getFirst();
-        });
+    private ShiftSwapView runCommand(
+            long actor,
+            long id,
+            ShiftSwap known,
+            long version,
+            LeaveRequest.Status from,
+            String wrongState,
+            boolean decider,
+            Command command
+    ) {
+        AtomicReference<Optional<ShiftSwap>> lockedSwap = new AtomicReference<>(Optional.empty());
+        AtomicReference<Optional<Shift>> lockedShift = new AtomicReference<>(Optional.empty());
+
+        return authorizedCommands.activeEmployee(
+                actor,
+                () -> {
+                    lockEmployees(known.getRequestedBy(), known.getReplacementEmployeeId());
+                    lockedSwap.set(shiftSwapRepository.findLocked(id));
+                    lockedShift.set(shiftRepository.findLocked(known.getOriginalShiftId()));
+                },
+                state -> {
+                    ShiftSwap swap = lockedSwap.get().orElseThrow(SwapService::createNotFoundError);
+                    Shift shift = lockedShift.get().orElseThrow(SwapService::createNotFoundError);
+
+                    if (decider) {
+                        if (!canSee(state, recordScope.findReadable(state), swap, shift)) {
+                            throw createNotFoundError();
+                        }
+
+                        requireDecider(state, swap, shift.getBranchId());
+                    } else if (swap.getRequestedBy() != actor) {
+                        throw AuthorizationService.forbidden();
+                    }
+
+                    if (swap.getStatus() != from) {
+                        throw WorkforceRequestRefusal.invalidState(
+                                wrongState,
+                                ApiVersion.fromDatabase(swap.getVersion()),
+                                toReloadUrl(id)
+                        );
+                    }
+
+                    ApiVersion.requireCurrent(version, swap.getVersion(), toReloadUrl(id));
+                    command.apply(new Context(state, swap, shift));
+                    ShiftSwap saved = shiftSwapRepository.saveAndFlush(swap);
+
+                    return toViews(List.of(saved), state).getFirst();
+                }
+        );
     }
 
     private void requireDecider(AuthorizationState state, ShiftSwap swap, long branch) {
-        if (!readers.manages(state, branch)) throw AuthorizationService.forbidden();
-        if (swap.getRequestedBy() == state.employeeId()) throw WorkforceRequestRefusal.selfDecision();
+        if (!recordScope.canManage(state, branch)) {
+            throw AuthorizationService.forbidden();
+        }
+
+        if (swap.getRequestedBy() == state.employeeId()) {
+            throw WorkforceRequestRefusal.selfDecision();
+        }
     }
 
     private void requireReplacement(long replacement, long requester, long branch) {
-        if (replacement == requester || shifts.activeMember(replacement, branch).isEmpty())
-            throw ApiException.unprocessable("INVALID_SHIFT_EMPLOYEE", "근무 지점의 활성 소속인 다른 직원만 대체할 수 있습니다.");
+        boolean invalid = replacement == requester
+                || shiftRepository.findActiveMember(replacement, branch).isEmpty();
+
+        if (invalid) {
+            throw ApiException.unprocessable(
+                    "INVALID_SHIFT_EMPLOYEE",
+                    "근무 지점의 활성 소속인 다른 직원만 대체할 수 있습니다."
+            );
+        }
     }
 
     private void requireNotStarted(Shift shift) {
-        if (!shift.getStartsAt().isAfter(clock.instant()))
+        if (!shift.getStartsAt().isAfter(clock.instant())) {
             throw ApiException.conflict("SHIFT_ALREADY_STARTED", "시작한 근무는 대체근무로 바꾸거나 되돌릴 수 없습니다.");
+        }
     }
 
     private static void requireOperating(AuthorizationState state, long branch) {
-        if (!"ACTIVE".equals(state.branches().get(branch)))
+        if (!ACTIVE.equals(state.branches().get(branch))) {
             throw ApiException.conflict("BRANCH_NOT_ACTIVE", "운영 중지된 지점의 근무는 대체할 수 없습니다.");
+        }
     }
 
     /**
@@ -302,120 +494,263 @@ public class SwapService {
      * approved leave day, this shift left out; a shift the requester cannot see is only an overlap.
      */
     private void requireFree(AuthorizationState state, long employee, Instant start, Instant end, long self) {
-        var taken = shifts.overlapping(employee, ShiftStatus.SCHEDULED, start, end).stream().filter(shift -> shift.getId() != self).toList();
-        var away = leaves.touching(employee, LeaveRequest.Status.APPROVED, ShiftInputs.day(start), ShiftInputs.day(end.minusNanos(1)));
-        if (taken.isEmpty() && away.isEmpty()) return;
-        var readable = readers.readable(state);
-        var conflicts = ShiftConflicts.of(start, end, taken, shift -> readers.sees(state, readable, shift.getBranchId(), shift.getEmployeeId()), away);
-        if (!conflicts.isEmpty()) throw WorkforceRequestRefusal.shiftConflict(conflicts);
+        List<Shift> taken = shiftRepository.findOverlapping(employee, ShiftStatus.SCHEDULED, start, end)
+                .stream()
+                .filter(shift -> shift.getId() != self)
+                .toList();
+        List<LeaveRequest> away = leaveRequestRepository.findTouching(
+                employee,
+                LeaveRequest.Status.APPROVED,
+                ShiftInputs.toDay(start),
+                ShiftInputs.toDay(end.minusNanos(1))
+        );
+
+        if (taken.isEmpty() && away.isEmpty()) {
+            return;
+        }
+
+        Set<Long> readable = recordScope.findReadable(state);
+        List<ShiftConflict> conflicts = ShiftConflicts.toConflicts(
+                start,
+                end,
+                taken,
+                shift -> recordScope.canSee(state, readable, shift.getBranchId(), shift.getEmployeeId()),
+                away
+        );
+
+        if (!conflicts.isEmpty()) {
+            throw WorkforceRequestRefusal.shiftConflict(conflicts);
+        }
     }
 
     private void lockEmployees(long one, long other) {
-        shifts.lockEmployee(Math.min(one, other));
-        if (one != other) shifts.lockEmployee(Math.max(one, other));
+        shiftRepository.lockEmployee(Math.min(one, other));
+
+        if (one != other) {
+            shiftRepository.lockEmployee(Math.max(one, other));
+        }
     }
 
     /** One SWAPPED row: the shift before and after, and in after_json which swap did it and whether it applied or restored it. */
-    private void swapped(Shift shift, long actor, Map<String, Object> before, ShiftSwap swap, String outcome) {
-        var after = new LinkedHashMap<>(ShiftService.values(shift));
+    private void recordSwapped(Shift shift, long actor, Map<String, Object> before, ShiftSwap swap, String outcome) {
+        Map<String, Object> after = new LinkedHashMap<>(ShiftService.toValues(shift));
         after.put("swapId", swap.getId().toString());
         after.put("swap", outcome);
-        history.save(new ShiftEvent(shift.getId(), actor, ShiftEvent.Type.SWAPPED, json.writeValueAsString(before),
-                json.writeValueAsString(after), swap.getReason()));
+        ShiftEvent event = new ShiftEvent(
+                shift.getId(),
+                actor,
+                ShiftEvent.Type.SWAPPED,
+                objectMapper.writeValueAsString(before),
+                objectMapper.writeValueAsString(after),
+                swap.getReason()
+        );
+        shiftEventRepository.save(event);
     }
 
-    private Optional<ShiftEvent> marker(long shift, long swap, String outcome) {
-        return markers(List.of(shift)).getOrDefault(key(swap, outcome), List.of()).stream().reduce((first, second) -> second);
+    private Optional<ShiftEvent> findMarker(long shift, long swap, String outcome) {
+        return findMarkers(List.of(shift))
+                .getOrDefault(toMarkerKey(swap, outcome), List.of())
+                .stream()
+                .reduce((first, second) -> second);
     }
 
     /** SWAPPED rows of these shifts by "swapId:outcome". */
-    private Map<String, List<ShiftEvent>> markers(List<Long> shiftIds) {
-        var result = new HashMap<String, List<ShiftEvent>>();
-        for (var event : history.findByShiftIdInAndEventTypeOrderByIdAsc(shiftIds, ShiftEvent.Type.SWAPPED)) {
-            Map<String, Object> after = json.readValue(event.getAfterJson(), Map.class);
-            if (after.get("swapId") instanceof String swap && after.get("swap") instanceof String outcome)
-                result.computeIfAbsent(swap + ":" + outcome, k -> new java.util.ArrayList<>()).add(event);
+    private Map<String, List<ShiftEvent>> findMarkers(List<Long> shiftIds) {
+        Map<String, List<ShiftEvent>> result = new HashMap<>();
+        List<ShiftEvent> events = shiftEventRepository.findByShiftIdInAndEventTypeOrderByIdAsc(
+                shiftIds,
+                ShiftEvent.Type.SWAPPED
+        );
+
+        for (ShiftEvent event : events) {
+            Map<String, Object> after = readMap(event.getAfterJson());
+
+            if (after.get("swapId") instanceof String swap && after.get("swap") instanceof String outcome) {
+                result.computeIfAbsent(swap + ":" + outcome, ignored -> new ArrayList<>()).add(event);
+            }
         }
+
         return result;
     }
 
-    private static String key(long swap, String outcome) { return swap + ":" + outcome; }
+    private static String toMarkerKey(long swap, String outcome) {
+        return swap + ":" + outcome;
+    }
 
-    private ShiftSwap visible(AuthorizationState state, long id) {
-        var swap = swaps.findById(id).orElseThrow(SwapService::notFound);
-        var shift = shifts.findById(swap.getOriginalShiftId()).orElseThrow(SwapService::notFound);
-        if (!sees(state, readers.readable(state), swap, shift)) throw notFound();
+    private ShiftSwap findVisible(AuthorizationState state, long id) {
+        ShiftSwap swap = shiftSwapRepository.findById(id).orElseThrow(SwapService::createNotFoundError);
+        Shift shift = shiftRepository.findById(swap.getOriginalShiftId()).orElseThrow(SwapService::createNotFoundError);
+
+        if (!canSee(state, recordScope.findReadable(state), swap, shift)) {
+            throw createNotFoundError();
+        }
+
         return swap;
     }
 
     /** M8-D02 by the shift branch: a managed branch shows every swap, any other readable branch those the reader is part of. */
-    private boolean sees(AuthorizationState state, Set<Long> readable, ShiftSwap swap, Shift shift) {
-        return readable.contains(shift.getBranchId()) && (readers.manages(state, shift.getBranchId())
-                || swap.getRequestedBy() == state.employeeId() || swap.getReplacementEmployeeId() == state.employeeId());
+    private boolean canSee(AuthorizationState state, Set<Long> readable, ShiftSwap swap, Shift shift) {
+        if (!readable.contains(shift.getBranchId())) {
+            return false;
+        }
+
+        return recordScope.canManage(state, shift.getBranchId())
+                || swap.getRequestedBy() == state.employeeId()
+                || swap.getReplacementEmployeeId() == state.employeeId();
     }
 
-    private long branchOf(ShiftSwap swap) {
-        return shifts.findById(swap.getOriginalShiftId()).map(Shift::getBranchId).orElseThrow(SwapService::notFound);
+    private long findBranchOf(ShiftSwap swap) {
+        return shiftRepository.findById(swap.getOriginalShiftId())
+                .map(Shift::getBranchId)
+                .orElseThrow(SwapService::createNotFoundError);
     }
 
     /** The one mapping behind every swap response. */
-    private List<ShiftSwapView> views(List<ShiftSwap> rows, AuthorizationState state) {
-        if (rows.isEmpty()) return List.of();
-        var shiftIds = rows.stream().map(ShiftSwap::getOriginalShiftId).distinct().toList();
-        Map<Long, Shift> byId = shifts.findAllById(shiftIds).stream().collect(Collectors.toMap(Shift::getId, Function.identity()));
-        var marks = markers(shiftIds);
-        var people = new LinkedHashSet<Long>();
-        rows.forEach(row -> { people.add(row.getRequestedBy()); people.add(row.getReplacementEmployeeId());
-            if (row.getDecidedBy() != null) people.add(row.getDecidedBy()); });
-        marks.values().forEach(events -> events.forEach(event -> people.add(event.getActorEmployeeId())));
-        var names = employees.names(people);
-        Instant now = clock.instant();
-        return rows.stream().map(row -> {
-            var shift = byId.get(row.getOriginalShiftId());
-            var approval = last(marks.get(key(row.getId(), APPROVED)));
-            var restore = last(marks.get(key(row.getId(), RESTORED)));
-            Instant originalStart = shift.getStartsAt(), originalEnd = shift.getEndsAt();
-            if (approval != null) {
-                Map<String, Object> before = json.readValue(approval.getBeforeJson(), Map.class);
-                originalStart = Instant.parse((String) before.get("startsAt"));
-                originalEnd = Instant.parse((String) before.get("endsAt"));
+    private List<ShiftSwapView> toViews(List<ShiftSwap> rows, AuthorizationState state) {
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> shiftIds = rows.stream()
+                .map(ShiftSwap::getOriginalShiftId)
+                .distinct()
+                .toList();
+        Map<Long, Shift> byId = shiftRepository.findAllById(shiftIds)
+                .stream()
+                .collect(Collectors.toMap(Shift::getId, Function.identity()));
+        Map<String, List<ShiftEvent>> marks = findMarkers(shiftIds);
+        Set<Long> people = new LinkedHashSet<>();
+        rows.forEach(row -> {
+            people.add(row.getRequestedBy());
+            people.add(row.getReplacementEmployeeId());
+
+            if (row.getDecidedBy() != null) {
+                people.add(row.getDecidedBy());
             }
-            var status = row.getStatus();
-            RequestDecision decision = row.getDecidedBy() != null && (status == LeaveRequest.Status.APPROVED || status == LeaveRequest.Status.REJECTED
-                    || approval != null) ? new RequestDecision(actor(row.getDecidedBy(), names), row.getDecidedAt()) : null;
-            RequestCancellation cancellation = null;
-            if (status == LeaveRequest.Status.CANCELLED)
-                cancellation = restore != null ? new RequestCancellation("승인 취소", actor(restore.getActorEmployeeId(), names), restore.getCreatedAt())
-                        : new RequestCancellation("신청 취소", actor(row.getDecidedBy(), names), row.getDecidedAt());
-            boolean decider = readers.manages(state, shift.getBranchId()) && row.getRequestedBy() != state.employeeId();
-            boolean requested = status == LeaveRequest.Status.REQUESTED;
-            return new ShiftSwapView(row.getId().toString(), ApiVersion.fromDatabase(row.getVersion()), status.label,
-                    shift.getId().toString(), Long.toString(shift.getBranchId()), actor(row.getRequestedBy(), names),
-                    actor(row.getReplacementEmployeeId(), names), originalStart, originalEnd, row.getProposedStartsAt(), row.getProposedEndsAt(),
-                    ApiVersion.fromDatabase(shift.getVersion()), row.getReason(), decision, cancellation, row.getCreatedAt(),
-                    requested && decider, requested && decider, requested && row.getRequestedBy() == state.employeeId(),
-                    status == LeaveRequest.Status.APPROVED && decider && shift.getStartsAt().isAfter(now));
-        }).toList();
+        });
+        marks.values().forEach(events -> events.forEach(event -> people.add(event.getActorEmployeeId())));
+        Map<Long, String> names = employeeAccountService.names(people);
+        Instant now = clock.instant();
+
+        return rows.stream()
+                .map(row -> toView(row, byId.get(row.getOriginalShiftId()), marks, names, state, now))
+                .toList();
     }
 
-    private static ShiftEvent last(List<ShiftEvent> events) { return events == null || events.isEmpty() ? null : events.getLast(); }
+    private ShiftSwapView toView(
+            ShiftSwap row,
+            Shift shift,
+            Map<String, List<ShiftEvent>> marks,
+            Map<Long, String> names,
+            AuthorizationState state,
+            Instant now
+    ) {
+        ShiftEvent approval = findLast(marks.get(toMarkerKey(row.getId(), APPROVED)));
+        ShiftEvent restore = findLast(marks.get(toMarkerKey(row.getId(), RESTORED)));
+        Instant originalStart = shift.getStartsAt();
+        Instant originalEnd = shift.getEndsAt();
 
-    private Optional<ShiftSwapView> replay(Optional<IdempotencyRecord> prior, byte[] fingerprint) {
-        if (prior.isEmpty()) return Optional.empty();
-        if (!clock.instant().isBefore(prior.get().getExpiresAt())) {
-            keys.discard(prior.get());
+        if (approval != null) {
+            Map<String, Object> before = readMap(approval.getBeforeJson());
+            originalStart = Instant.parse((String) before.get("startsAt"));
+            originalEnd = Instant.parse((String) before.get("endsAt"));
+        }
+
+        LeaveRequest.Status status = row.getStatus();
+        boolean decided = status == LeaveRequest.Status.APPROVED
+                || status == LeaveRequest.Status.REJECTED
+                || approval != null;
+        RequestDecision decision = row.getDecidedBy() != null && decided
+                ? new RequestDecision(toActor(row.getDecidedBy(), names), row.getDecidedAt())
+                : null;
+        RequestCancellation cancellation = null;
+
+        if (status == LeaveRequest.Status.CANCELLED) {
+            cancellation = restore != null
+                    ? new RequestCancellation(
+                            APPROVAL_CANCELLATION_LABEL,
+                            toActor(restore.getActorEmployeeId(), names),
+                            restore.getCreatedAt()
+                    )
+                    : new RequestCancellation(
+                            REQUEST_CANCELLATION_LABEL,
+                            toActor(row.getDecidedBy(), names),
+                            row.getDecidedAt()
+                    );
+        }
+
+        boolean decider = recordScope.canManage(state, shift.getBranchId())
+                && row.getRequestedBy() != state.employeeId();
+        boolean requested = status == LeaveRequest.Status.REQUESTED;
+        boolean ownRequest = row.getRequestedBy() == state.employeeId();
+        boolean approvalCancellable = status == LeaveRequest.Status.APPROVED
+                && decider
+                && shift.getStartsAt().isAfter(now);
+
+        return new ShiftSwapView(
+                row.getId().toString(),
+                ApiVersion.fromDatabase(row.getVersion()),
+                status.label,
+                shift.getId().toString(),
+                Long.toString(shift.getBranchId()),
+                toActor(row.getRequestedBy(), names),
+                toActor(row.getReplacementEmployeeId(), names),
+                originalStart,
+                originalEnd,
+                row.getProposedStartsAt(),
+                row.getProposedEndsAt(),
+                ApiVersion.fromDatabase(shift.getVersion()),
+                row.getReason(),
+                decision,
+                cancellation,
+                row.getCreatedAt(),
+                requested && decider,
+                requested && decider,
+                requested && ownRequest,
+                approvalCancellable
+        );
+    }
+
+    private static ShiftEvent findLast(List<ShiftEvent> events) {
+        return events == null || events.isEmpty() ? null : events.getLast();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> readMap(String json) {
+        return objectMapper.readValue(json, Map.class);
+    }
+
+    private Optional<ShiftSwapView> findReplay(Optional<IdempotencyRecord> prior, byte[] fingerprint) {
+        if (prior.isEmpty()) {
             return Optional.empty();
         }
-        if (!MessageDigest.isEqual(fingerprint, prior.get().getRequestHash()))
+
+        if (!clock.instant().isBefore(prior.get().getExpiresAt())) {
+            idempotencyStore.discard(prior.get());
+
+            return Optional.empty();
+        }
+
+        if (!MessageDigest.isEqual(fingerprint, prior.get().getRequestHash())) {
             throw ApiException.conflict("IDEMPOTENCY_CONFLICT", "같은 키로 다른 입력을 저장할 수 없습니다.");
-        return Optional.of(json.readValue(prior.get().getResponseJson(), ShiftSwapView.class));
+        }
+
+        return Optional.of(objectMapper.readValue(prior.get().getResponseJson(), ShiftSwapView.class));
     }
 
-    private static String reload(long id) { return "/api/shift-swaps/" + id; }
-
-    private static ActorSummary actor(Long id, Map<Long, String> names) {
-        return id == null ? null : new ActorSummary(id.toString(), Objects.requireNonNullElse(names.get(id), ""));
+    private static String toReloadUrl(long id) {
+        return SWAP_LOCATION + id;
     }
 
-    private static ResponseStatusException notFound() { return new ResponseStatusException(HttpStatus.NOT_FOUND); }
+    private static ActorSummary toActor(Long id, Map<Long, String> names) {
+        if (id == null) {
+            return null;
+        }
+
+        return new ActorSummary(id.toString(), Objects.requireNonNullElse(names.get(id), UNKNOWN_NAME));
+    }
+
+    private static ResponseStatusException createNotFoundError() {
+        return new ResponseStatusException(HttpStatus.NOT_FOUND);
+    }
 }

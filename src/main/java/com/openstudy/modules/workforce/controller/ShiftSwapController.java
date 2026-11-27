@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -27,56 +28,99 @@ import com.openstudy.modules.workforce.service.WorkforceRequestRefusal;
 
 /** Shift swaps (#109, workforce-requests-api.md "대체근무"). There is no DELETE and no edit: cancel and request again. */
 @RestController
+@RequestMapping("/api")
 @RequiredArgsConstructor
 public class ShiftSwapController {
-    private final SwapService service;
 
-    @GetMapping("/api/shift-swaps")
-    public PageResponse<ShiftSwapView> list(Authentication actor, @RequestParam(defaultValue = "all") String scope,
-            @RequestParam(defaultValue = "1") long page, @RequestParam(defaultValue = "20") int pageSize,
-            @RequestParam(required = false) String employeeId, @RequestParam(required = false) String mine,
-            @RequestParam(required = false) String status, @RequestParam(required = false) String from,
-            @RequestParam(required = false) String to) {
+    private static final String SWAP_LOCATION = "/api/shift-swaps/";
+    private static final Set<String> SORT_FIELDS = Set.of("id");
+    private static final String DEFAULT_SORT = "id";
+
+    private final SwapService swapService;
+
+    @GetMapping("/shift-swaps")
+    public PageResponse<ShiftSwapView> listShiftSwaps(
+            Authentication actor,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String employeeId,
+            @RequestParam(required = false) String mine,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to
+    ) {
         // The order is fixed by the contract (createdAt, then id, both descending).
-        return service.list(actor(actor), scope, ListQuery.parse(page, pageSize, null, null, null, Set.of("id"), "id"), employeeId, mine,
-                status, from, to);
+        ListQuery query = ListQuery.parse(page, pageSize, null, null, null, SORT_FIELDS, DEFAULT_SORT);
+
+        return swapService.list(actorId(actor), scope, query, employeeId, mine, status, from, to);
     }
 
-    @PostMapping("/api/shifts/{id}/swaps")
-    public ResponseEntity<ShiftSwapView> create(Authentication actor, @PathVariable long id,
-            @RequestHeader(name = "Idempotency-Key", required = false) String key, @RequestBody Map<String, Object> body) {
-        var result = service.create(actor(actor), id, key, body);
-        return ResponseEntity.created(URI.create("/api/shift-swaps/" + result.id())).body(result);
+    @PostMapping("/shifts/{id}/swaps")
+    public ResponseEntity<ShiftSwapView> createShiftSwap(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestHeader(name = "Idempotency-Key", required = false) String key,
+            @RequestBody Map<String, Object> body
+    ) {
+        ShiftSwapView result = swapService.create(actorId(actor), id, key, body);
+
+        return ResponseEntity.created(URI.create(SWAP_LOCATION + result.id()))
+                .body(result);
     }
 
-    @GetMapping("/api/shift-swaps/{id}")
-    public ShiftSwapView get(Authentication actor, @PathVariable long id) { return service.get(actor(actor), id); }
-
-    @PostMapping("/api/shift-swaps/{id}/approve")
-    public ShiftSwapView approve(Authentication actor, @PathVariable long id, @RequestBody Map<String, Object> body) {
-        return service.approve(actor(actor), id, body);
+    @GetMapping("/shift-swaps/{id}")
+    public ShiftSwapView getShiftSwap(Authentication actor, @PathVariable long id) {
+        return swapService.get(actorId(actor), id);
     }
 
-    @PostMapping("/api/shift-swaps/{id}/reject")
-    public ShiftSwapView reject(Authentication actor, @PathVariable long id, @RequestBody Map<String, Object> body) {
-        return service.reject(actor(actor), id, body);
+    @PostMapping("/shift-swaps/{id}/approve")
+    public ShiftSwapView approveShiftSwap(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestBody Map<String, Object> body
+    ) {
+        return swapService.approve(actorId(actor), id, body);
     }
 
-    @PostMapping("/api/shift-swaps/{id}/cancel")
-    public ShiftSwapView cancel(Authentication actor, @PathVariable long id, @RequestBody Map<String, Object> body) {
-        return service.cancel(actor(actor), id, body);
+    @PostMapping("/shift-swaps/{id}/reject")
+    public ShiftSwapView rejectShiftSwap(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestBody Map<String, Object> body
+    ) {
+        return swapService.reject(actorId(actor), id, body);
     }
 
-    @PostMapping("/api/shift-swaps/{id}/cancel-approval")
-    public ShiftSwapView cancelApproval(Authentication actor, @PathVariable long id, @RequestBody Map<String, Object> body) {
-        return service.cancelApproval(actor(actor), id, body);
+    @PostMapping("/shift-swaps/{id}/cancel")
+    public ShiftSwapView cancelShiftSwap(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestBody Map<String, Object> body
+    ) {
+        return swapService.cancel(actorId(actor), id, body);
+    }
+
+    @PostMapping("/shift-swaps/{id}/cancel-approval")
+    public ShiftSwapView cancelShiftSwapApproval(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestBody Map<String, Object> body
+    ) {
+        return swapService.cancelApproval(actorId(actor), id, body);
     }
 
     /** The contract's WorkforceRequestConflictError: the common error fields plus the target information of the code. */
     @ExceptionHandler(WorkforceRequestRefusal.class)
-    ResponseEntity<WorkforceRequestConflictError> refused(WorkforceRequestRefusal refusal, HttpServletRequest request) {
-        return ResponseEntity.status(refusal.status()).body(refusal.error(ApiRequestFilter.requestId(request)));
+    ResponseEntity<WorkforceRequestConflictError> handleRefusal(
+            WorkforceRequestRefusal refusal,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(refusal.status())
+                .body(refusal.error(ApiRequestFilter.requestId(request)));
     }
 
-    private static long actor(Authentication authentication) { return Long.parseLong(authentication.getName()); }
+    private static long actorId(Authentication authentication) {
+        return Long.parseLong(authentication.getName());
+    }
 }

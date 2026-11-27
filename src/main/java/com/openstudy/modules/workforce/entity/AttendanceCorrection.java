@@ -45,10 +45,22 @@ import org.hibernate.generator.EventType;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class AttendanceCorrection {
-    public enum Kind { CLOCK, BREAK }
-    public enum Status { REQUESTED, APPROVED, REJECTED, CANCELLED }
 
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    public enum Kind {
+
+        CLOCK,
+        BREAK
+    }
+    public enum Status {
+
+        REQUESTED,
+        APPROVED,
+        REJECTED,
+        CANCELLED
+    }
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @SemanticField(id = "attendance_correction.id", name = "정정 ID", role = "ID", allowedOps = {"EQ", "NE", "IN"})
     private Long id;
 
@@ -111,43 +123,80 @@ public class AttendanceCorrection {
     @Column(name = "decided_at")
     private Instant decidedAt;
 
-    @Generated(event = EventType.INSERT) @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
+    @Generated(event = EventType.INSERT)
+    @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private Instant createdAt;
 
     @Version
     private long version;
 
     /** A clock correction: both times, from the attendance's current ones. */
-    public static AttendanceCorrection clock(long attendance, long requester, Instant beforeIn, Instant beforeOut, Instant afterIn,
-            Instant afterOut, String reason) {
-        var correction = new AttendanceCorrection(attendance, requester, Kind.CLOCK, null, reason);
-        correction.beforeClockInAt = beforeIn; correction.beforeClockOutAt = beforeOut;
-        correction.requestedClockInAt = afterIn; correction.requestedClockOutAt = afterOut;
+    public static AttendanceCorrection clock(
+            long attendance,
+            long requester,
+            Instant beforeIn,
+            Instant beforeOut,
+            Instant afterIn,
+            Instant afterOut,
+            String reason
+    ) {
+        AttendanceCorrection correction = new AttendanceCorrection(attendance, requester, Kind.CLOCK, null, reason);
+        correction.beforeClockInAt = beforeIn;
+        correction.beforeClockOutAt = beforeOut;
+        correction.requestedClockInAt = afterIn;
+        correction.requestedClockOutAt = afterOut;
+
         return correction;
     }
 
     /** A correction of one existing break of the attendance. */
-    public static AttendanceCorrection pause(long attendance, long requester, long breakId, Instant beforeStart, Instant beforeEnd,
-            Instant afterStart, Instant afterEnd, String reason) {
-        var correction = new AttendanceCorrection(attendance, requester, Kind.BREAK, breakId, reason);
-        correction.beforeBreakStartAt = beforeStart; correction.beforeBreakEndAt = beforeEnd;
-        correction.afterBreakStartAt = afterStart; correction.afterBreakEndAt = afterEnd;
+    public static AttendanceCorrection pause(
+            long attendance,
+            long requester,
+            long breakId,
+            Instant beforeStart,
+            Instant beforeEnd,
+            Instant afterStart,
+            Instant afterEnd,
+            String reason
+    ) {
+        AttendanceCorrection correction = new AttendanceCorrection(attendance, requester, Kind.BREAK, breakId, reason);
+        correction.beforeBreakStartAt = beforeStart;
+        correction.beforeBreakEndAt = beforeEnd;
+        correction.afterBreakStartAt = afterStart;
+        correction.afterBreakEndAt = afterEnd;
+
         return correction;
     }
 
     private AttendanceCorrection(long attendance, long requester, Kind kind, Long breakId, String reason) {
-        this.attendanceRecordId = attendance; this.requestedBy = requester; this.correctionKind = kind; this.breakId = breakId;
-        this.reason = reason; this.status = Status.REQUESTED;
+        this.attendanceRecordId = attendance;
+        this.requestedBy = requester;
+        this.correctionKind = kind;
+        this.breakId = breakId;
+        this.reason = reason;
+        this.status = Status.REQUESTED;
     }
 
-    public void approve(long actor, Instant at) { decide(Status.APPROVED, actor, at); }
+    public void approve(long actor, Instant at) {
+        decide(Status.APPROVED, actor, at);
+    }
 
-    public void reject(long actor, Instant at) { decide(Status.REJECTED, actor, at); }
+    public void reject(long actor, Instant at) {
+        decide(Status.REJECTED, actor, at);
+    }
 
-    public void withdraw(long actor, Instant at) { decide(Status.CANCELLED, actor, at); }
+    public void withdraw(long actor, Instant at) {
+        decide(Status.CANCELLED, actor, at);
+    }
 
     private void decide(Status to, long actor, Instant at) {
-        if (status != Status.REQUESTED) throw new IllegalStateException("Attendance correction is " + status + ", not REQUESTED");
-        status = to; decidedBy = actor; decidedAt = at;
+        if (status != Status.REQUESTED) {
+            throw new IllegalStateException("Attendance correction is " + status + ", not REQUESTED");
+        }
+
+        status = to;
+        decidedBy = actor;
+        decidedAt = at;
     }
 }

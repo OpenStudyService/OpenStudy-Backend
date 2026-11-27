@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -30,45 +31,89 @@ import com.openstudy.modules.workforce.service.WorkforceRequestRefusal;
  * an approval (M12-D08): a further change is a new correction.
  */
 @RestController
+@RequestMapping("/api")
 @RequiredArgsConstructor
 public class AttendanceCorrectionController {
-    private final CorrectionService service;
 
-    @GetMapping("/api/attendance-corrections")
-    public PageResponse<AttendanceCorrectionView> list(Authentication actor, @RequestParam(defaultValue = "all") String scope,
-            @RequestParam(defaultValue = "1") long page, @RequestParam(defaultValue = "20") int pageSize,
-            @RequestParam(required = false) String employeeId, @RequestParam(required = false) String mine,
-            @RequestParam(required = false) String status, @RequestParam(required = false) String attendanceRecordId,
-            @RequestParam(required = false) String from, @RequestParam(required = false) String to) {
+    private static final String CORRECTION_LOCATION = "/api/attendance-corrections/";
+    private static final Set<String> SORT_FIELDS = Set.of("id");
+    private static final String DEFAULT_SORT = "id";
+
+    private final CorrectionService correctionService;
+
+    @GetMapping("/attendance-corrections")
+    public PageResponse<AttendanceCorrectionView> listAttendanceCorrections(
+            Authentication actor,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String employeeId,
+            @RequestParam(required = false) String mine,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String attendanceRecordId,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to
+    ) {
         // The order is fixed by the contract (createdAt, then id, both descending).
-        return service.list(actor(actor), scope, ListQuery.parse(page, pageSize, null, null, null, Set.of("id"), "id"), employeeId, mine,
-                status, attendanceRecordId, from, to);
+        ListQuery query = ListQuery.parse(page, pageSize, null, null, null, SORT_FIELDS, DEFAULT_SORT);
+
+        return correctionService.list(
+                actorId(actor),
+                scope,
+                query,
+                employeeId,
+                mine,
+                status,
+                attendanceRecordId,
+                from,
+                to
+        );
     }
 
-    @PostMapping("/api/attendance-records/{id}/corrections")
-    public ResponseEntity<AttendanceCorrectionView> create(Authentication actor, @PathVariable long id,
-            @RequestHeader(name = "Idempotency-Key", required = false) String key, @RequestBody Map<String, Object> body) {
-        var result = service.create(actor(actor), id, key, body);
-        return ResponseEntity.created(URI.create("/api/attendance-corrections/" + result.id())).body(result);
+    @PostMapping("/attendance-records/{id}/corrections")
+    public ResponseEntity<AttendanceCorrectionView> createAttendanceCorrection(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestHeader(name = "Idempotency-Key", required = false) String key,
+            @RequestBody Map<String, Object> body
+    ) {
+        AttendanceCorrectionView result = correctionService.create(actorId(actor), id, key, body);
+
+        return ResponseEntity.created(URI.create(CORRECTION_LOCATION + result.id()))
+                .body(result);
     }
 
-    @GetMapping("/api/attendance-corrections/{id}")
-    public AttendanceCorrectionView get(Authentication actor, @PathVariable long id) { return service.get(actor(actor), id); }
-
-    @PostMapping("/api/attendance-corrections/{id}/approve")
-    public AttendanceCorrectionView approve(Authentication actor, @PathVariable long id, @RequestBody Map<String, Object> body) {
-        return service.approve(actor(actor), id, body);
+    @GetMapping("/attendance-corrections/{id}")
+    public AttendanceCorrectionView getAttendanceCorrection(Authentication actor, @PathVariable long id) {
+        return correctionService.get(actorId(actor), id);
     }
 
-    @PostMapping("/api/attendance-corrections/{id}/reject")
-    public AttendanceCorrectionView reject(Authentication actor, @PathVariable long id, @RequestBody Map<String, Object> body,
-            HttpServletRequest request) {
-        return service.reject(actor(actor), id, body, ApiRequestFilter.requestId(request));
+    @PostMapping("/attendance-corrections/{id}/approve")
+    public AttendanceCorrectionView approveAttendanceCorrection(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestBody Map<String, Object> body
+    ) {
+        return correctionService.approve(actorId(actor), id, body);
     }
 
-    @PostMapping("/api/attendance-corrections/{id}/cancel")
-    public AttendanceCorrectionView cancel(Authentication actor, @PathVariable long id, @RequestBody Map<String, Object> body) {
-        return service.cancel(actor(actor), id, body);
+    @PostMapping("/attendance-corrections/{id}/reject")
+    public AttendanceCorrectionView rejectAttendanceCorrection(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        return correctionService.reject(actorId(actor), id, body, ApiRequestFilter.requestId(request));
+    }
+
+    @PostMapping("/attendance-corrections/{id}/cancel")
+    public AttendanceCorrectionView cancelAttendanceCorrection(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestBody Map<String, Object> body
+    ) {
+        return correctionService.cancel(actorId(actor), id, body);
     }
 
     /**
@@ -76,9 +121,15 @@ public class AttendanceCorrectionController {
      * {@code Exception} fallback would win over an advice and answer 500 (#108).
      */
     @ExceptionHandler(WorkforceRequestRefusal.class)
-    ResponseEntity<WorkforceRequestConflictError> refused(WorkforceRequestRefusal refusal, HttpServletRequest request) {
-        return ResponseEntity.status(refusal.status()).body(refusal.error(ApiRequestFilter.requestId(request)));
+    ResponseEntity<WorkforceRequestConflictError> handleRefusal(
+            WorkforceRequestRefusal refusal,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(refusal.status())
+                .body(refusal.error(ApiRequestFilter.requestId(request)));
     }
 
-    private static long actor(Authentication authentication) { return Long.parseLong(authentication.getName()); }
+    private static long actorId(Authentication authentication) {
+        return Long.parseLong(authentication.getName());
+    }
 }

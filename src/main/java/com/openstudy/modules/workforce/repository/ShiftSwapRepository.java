@@ -13,13 +13,14 @@ import com.openstudy.modules.workforce.entity.LeaveRequest;
 import com.openstudy.modules.workforce.entity.ShiftSwap;
 
 public interface ShiftSwapRepository extends JpaRepository<ShiftSwap, Long> {
+
     /** SELECT ... FOR UPDATE, after the employee rows. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT w FROM ShiftSwap w WHERE w.id = :id")
-    Optional<ShiftSwap> locked(@Param("id") long id);
+    Optional<ShiftSwap> findLocked(@Param("id") long id);
 
     /** The shift's swaps in this status, a locking read after the employee rows: one undecided swap per shift. */
     @Lock(LockModeType.PESSIMISTIC_READ)
     @Query("SELECT w FROM ShiftSwap w WHERE w.originalShiftId = :shift AND w.status = :status ORDER BY w.id")
-    List<ShiftSwap> forShift(@Param("shift") long shift, @Param("status") LeaveRequest.Status status);
+    List<ShiftSwap> findForShift(@Param("shift") long shift, @Param("status") LeaveRequest.Status status);
 }

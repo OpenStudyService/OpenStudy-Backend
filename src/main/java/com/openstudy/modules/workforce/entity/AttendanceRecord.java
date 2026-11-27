@@ -44,52 +44,83 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class AttendanceRecord {
-    public enum Status { WORKING, LEFT }
 
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    public enum Status {
+
+        WORKING,
+        LEFT
+    }
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @SemanticField(id = "attendance_record.id", name = "출퇴근 기록 ID", role = "ID", allowedOps = {"EQ", "NE", "IN"})
     private Long id;
+
     @Column(name = "employee_id", nullable = false, updatable = false)
     @SemanticField(id = "attendance_record.employee_id", name = "직원 ID", role = "FK", allowedOps = {"EQ", "NE", "IN"})
     @SemanticRelation(id = "attendance_record.employee", targetEntity = "employee", targetField = "id", direction = "OUTGOING", joinUse = "APPROVED", meaning = "출퇴근 직원")
     private long employeeId;
+
     @Column(name = "branch_id", nullable = false, updatable = false)
     @SemanticField(id = "attendance_record.branch_id", name = "지점 ID", role = "FK", allowedOps = {"EQ", "NE", "IN"})
     @SemanticRelation(id = "attendance_record.branch", targetEntity = "branch", targetField = "id", direction = "OUTGOING", joinUse = "APPROVED", meaning = "출퇴근 지점")
     private long branchId;
+
     @Column(name = "shift_id", updatable = false)
     private Long shiftId;
+
     @Column(name = "clock_in_at", nullable = false)
     @SemanticField(id = "attendance_record.clock_in_at", name = "출근 시각", role = "TIME", aliases = {"출근"}, allowedOps = {"EQ", "NE", "GT", "GTE", "LT", "LTE", "BETWEEN"})
     private Instant clockInAt;
+
     @Column(name = "clock_out_at")
     @SemanticField(id = "attendance_record.clock_out_at", name = "퇴근 시각", role = "TIME", aliases = {"퇴근"}, allowedOps = {"EQ", "NE", "GT", "GTE", "LT", "LTE", "BETWEEN", "IS_NULL"})
     private Instant clockOutAt;
-    @Enumerated(EnumType.STRING) @Column(nullable = false)
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
     @SemanticField(id = "attendance_record.status", name = "근태 상태", role = "STATUS", allowedValues = {"WORKING", "LEFT"}, allowedOps = {"EQ", "NE", "IN"})
     private Status status;
+
     @Column(nullable = false)
     private long version;
 
     /** A clock-in at a server time already cut to whole seconds (M8-D07). */
     public AttendanceRecord(long employeeId, long branchId, Long shiftId, Instant clockInAt) {
-        this.employeeId = employeeId; this.branchId = branchId; this.shiftId = shiftId; this.clockInAt = clockInAt;
+        this.employeeId = employeeId;
+        this.branchId = branchId;
+        this.shiftId = shiftId;
+        this.clockInAt = clockInAt;
         this.status = Status.WORKING;
     }
 
-    public boolean working() { return status == Status.WORKING; }
+    public boolean working() {
+        return status == Status.WORKING;
+    }
 
     /** A break started or ended: the record's version is the one the client sends back for the next command. */
-    public void touch() { version++; }
+    public void touch() {
+        version++;
+    }
 
     /** An approved clock correction of a closed attendance (M12-D01); the shift link stays the fact of the clock-in. */
     public void correct(Instant clockIn, Instant clockOut) {
-        if (working()) throw new IllegalStateException("Only a closed attendance is corrected");
-        clockInAt = clockIn; clockOutAt = clockOut; version++;
+        if (working()) {
+            throw new IllegalStateException("Only a closed attendance is corrected");
+        }
+
+        clockInAt = clockIn;
+        clockOutAt = clockOut;
+        version++;
     }
 
     public void clockOut(Instant at) {
-        if (!working()) throw new IllegalStateException("An attendance is closed only once");
-        clockOutAt = at; status = Status.LEFT; version++;
+        if (!working()) {
+            throw new IllegalStateException("An attendance is closed only once");
+        }
+
+        clockOutAt = at;
+        status = Status.LEFT;
+        version++;
     }
 }

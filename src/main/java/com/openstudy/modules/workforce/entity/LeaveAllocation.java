@@ -19,23 +19,34 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class LeaveAllocation {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
     @Column(name = "leave_request_id", nullable = false, updatable = false)
     private long leaveRequestId;
+
     @Column(name = "leave_grant_id", nullable = false, updatable = false)
     private long leaveGrantId;
+
     @Column(name = "allocated_days", nullable = false, updatable = false, precision = 7, scale = 1)
     private BigDecimal allocatedDays;
+
     @Column(name = "restored_at")
     private Instant restoredAt;
 
     public LeaveAllocation(long leaveRequestId, long leaveGrantId, BigDecimal allocatedDays) {
-        this.leaveRequestId = leaveRequestId; this.leaveGrantId = leaveGrantId; this.allocatedDays = allocatedDays;
+        this.leaveRequestId = leaveRequestId;
+        this.leaveGrantId = leaveGrantId;
+        this.allocatedDays = allocatedDays;
     }
 
     public void restore(Instant at) {
-        if (restoredAt != null) throw new IllegalStateException("An allocation is restored only once");
+        if (restoredAt != null) {
+            throw new IllegalStateException("An allocation is restored only once");
+        }
+
         restoredAt = at;
     }
 }
