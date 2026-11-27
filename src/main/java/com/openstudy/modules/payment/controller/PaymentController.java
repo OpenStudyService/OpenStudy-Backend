@@ -1,8 +1,12 @@
 package com.openstudy.modules.payment.controller;
 
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -15,9 +19,10 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.web.ApiRequestFilter;
 import com.openstudy.common.web.ListQuery;
-import com.openstudy.common.web.PageResponse;
 import com.openstudy.modules.payment.dto.response.PaymentDetail;
 import com.openstudy.modules.payment.dto.response.PaymentPage;
 import com.openstudy.modules.payment.service.PaymentService;
@@ -27,72 +32,153 @@ import com.openstudy.modules.payment.service.PaymentService;
 @RequestMapping("/api/payments")
 @RequiredArgsConstructor
 public class PaymentController {
-    private final PaymentService service;
+
+    private static final Set<String> SORT_FIELDS = Set.of("createdAt", "amountKrw");
+    private static final String DEFAULT_SORT = "createdAt";
+    private static final int MAX_CATEGORY_CODE_LENGTH = 40;
+    private static final String ID_FORMAT = "[1-9][0-9]{0,18}";
+    private static final String DUPLICATE_VALUE_MESSAGE = "같은 값을 두 번 보낼 수 없습니다.";
+
+    private final PaymentService paymentService;
 
     @GetMapping
-    public PaymentPage list(Authentication actor, @RequestParam(defaultValue = "all") String scope,
-            @RequestParam(defaultValue = "1") long page, @RequestParam(defaultValue = "20") int pageSize,
-            @RequestParam(required = false) String sort, @RequestParam(required = false) String direction,
-            @RequestParam(required = false) String status, @RequestParam(required = false) String from,
-            @RequestParam(required = false) String to, @RequestParam(required = false) String customerId,
-            @RequestParam(required = false) String categoryCode, jakarta.servlet.http.HttpServletRequest request) {
-        if (categoryCode != null && (categoryCode.isBlank() || categoryCode.length() > 40))
-            throw com.openstudy.common.exception.ApiException.validation("categoryCode", "올바른 분류 코드를 입력해 주세요.");
-        var advanced = new PaymentService.Advanced(labels(request, "methods", PaymentService.METHOD_LABELS),
-                labels(request, "productKinds", PaymentService.KIND_LABELS), categoryCode, ids(request, "operatorIds"),
-                ids(request, "processingBranchIds"));
-        return service.list(actor(actor), scope, ListQuery.parse(page, pageSize, null, sort, direction,
-                Set.of("createdAt", "amountKrw"), "createdAt"), status, from, to, customerId, advanced);
-    }
+    public PaymentPage listPayments(
+            Authentication actor,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String direction,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false) String customerId,
+            @RequestParam(required = false) String categoryCode,
+            HttpServletRequest request
+    ) {
+        boolean isInvalidCategoryCode = categoryCode != null
+                && (categoryCode.isBlank() || categoryCode.length() > MAX_CATEGORY_CODE_LENGTH);
 
-    /** Repeated contract labels to stored values; an unknown or repeated value is 422 (M13-D10). */
-    private static java.util.List<String> labels(jakarta.servlet.http.HttpServletRequest request, String name, java.util.Map<String, String> stored) {
-        String[] values = request.getParameterValues(name);
-        if (values == null) return java.util.List.of();
-        var result = new java.util.ArrayList<String>();
-        for (String value : values) {
-            String key = stored.entrySet().stream().filter(entry -> entry.getValue().equals(value)).map(java.util.Map.Entry::getKey).findFirst()
-                    .orElseThrow(() -> com.openstudy.common.exception.ApiException.validation(name, "허용되지 않은 값입니다."));
-            if (result.contains(key)) throw com.openstudy.common.exception.ApiException.validation(name, "같은 값을 두 번 보낼 수 없습니다.");
-            result.add(key);
+        if (isInvalidCategoryCode) {
+            throw ApiException.validation("categoryCode", "올바른 분류 코드를 입력해 주세요.");
         }
-        return result;
-    }
 
-    private static java.util.List<Long> ids(jakarta.servlet.http.HttpServletRequest request, String name) {
-        String[] values = request.getParameterValues(name);
-        if (values == null) return java.util.List.of();
-        var result = new java.util.ArrayList<Long>();
-        for (String value : values) {
-            if (value == null || !value.matches("[1-9][0-9]{0,18}"))
-                throw com.openstudy.common.exception.ApiException.validation(name, "올바른 ID를 입력해 주세요.");
-            long id = Long.parseLong(value);
-            if (result.contains(id)) throw com.openstudy.common.exception.ApiException.validation(name, "같은 값을 두 번 보낼 수 없습니다.");
-            result.add(id);
-        }
-        return result;
+        List<String> methods = parseLabels(request, "methods", PaymentService.METHOD_LABELS);
+        List<String> productKinds = parseLabels(request, "productKinds", PaymentService.KIND_LABELS);
+        List<Long> operatorIds = parseIds(request, "operatorIds");
+        List<Long> processingBranchIds = parseIds(request, "processingBranchIds");
+        PaymentService.Advanced advanced = new PaymentService.Advanced(
+                methods,
+                productKinds,
+                categoryCode,
+                operatorIds,
+                processingBranchIds
+        );
+        long actorId = actorId(actor);
+        ListQuery query = ListQuery.parse(page, pageSize, null, sort, direction, SORT_FIELDS, DEFAULT_SORT);
+
+        return paymentService.list(actorId, scope, query, status, from, to, customerId, advanced);
     }
 
     @GetMapping("/{id}")
-    public PaymentDetail get(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope) {
-        return service.get(actor(actor), id, scope);
+    public PaymentDetail getPayment(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope
+    ) {
+        return paymentService.get(actorId(actor), id, scope);
     }
 
     @PostMapping
-    public ResponseEntity<PaymentDetail> create(Authentication actor, @RequestParam(defaultValue = "all") String scope,
+    public ResponseEntity<PaymentDetail> createPayment(
+            Authentication actor,
+            @RequestParam(defaultValue = "all") String scope,
             @RequestHeader(name = "Idempotency-Key", required = false) String key,
-            @RequestBody Map<String, Object> body, HttpServletRequest request) {
-        var result = service.create(actor(actor), scope, key, body, ApiRequestFilter.requestId(request));
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        String requestId = ApiRequestFilter.requestId(request);
+        PaymentDetail result = paymentService.create(actorId(actor), scope, key, body, requestId);
+
         return ResponseEntity.created(URI.create("/api/payments/" + result.id())).body(result);
     }
 
     /** A refund is a separate event; the response is the payment with its refund, never a rewritten payment. */
     @PostMapping("/{id}/refund")
-    public PaymentDetail refund(Authentication actor, @PathVariable long id, @RequestParam(defaultValue = "all") String scope,
+    public PaymentDetail refundPayment(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(defaultValue = "all") String scope,
             @RequestHeader(name = "Idempotency-Key", required = false) String key,
-            @RequestBody Map<String, Object> body, HttpServletRequest request) {
-        return service.refund(actor(actor), id, scope, key, body, ApiRequestFilter.requestId(request));
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        String requestId = ApiRequestFilter.requestId(request);
+
+        return paymentService.refund(actorId(actor), id, scope, key, body, requestId);
     }
 
-    private static long actor(Authentication authentication) { return Long.parseLong(authentication.getName()); }
+    /** Repeated contract labels to stored values; an unknown or repeated value is 422 (M13-D10). */
+    private static List<String> parseLabels(HttpServletRequest request, String name, Map<String, String> stored) {
+        String[] values = request.getParameterValues(name);
+
+        if (values == null) {
+            return List.of();
+        }
+
+        List<String> result = new ArrayList<>();
+
+        for (String value : values) {
+            String key = findStoredValue(stored, value)
+                    .orElseThrow(() -> ApiException.validation(name, "허용되지 않은 값입니다."));
+
+            if (result.contains(key)) {
+                throw ApiException.validation(name, DUPLICATE_VALUE_MESSAGE);
+            }
+
+            result.add(key);
+        }
+
+        return result;
+    }
+
+    private static Optional<String> findStoredValue(Map<String, String> stored, String label) {
+        return stored.entrySet()
+                .stream()
+                .filter(entry -> entry.getValue().equals(label))
+                .map(Map.Entry::getKey)
+                .findFirst();
+    }
+
+    private static List<Long> parseIds(HttpServletRequest request, String name) {
+        String[] values = request.getParameterValues(name);
+
+        if (values == null) {
+            return List.of();
+        }
+
+        List<Long> result = new ArrayList<>();
+
+        for (String value : values) {
+            boolean isWellFormedId = value != null && value.matches(ID_FORMAT);
+
+            if (!isWellFormedId) {
+                throw ApiException.validation(name, "올바른 ID를 입력해 주세요.");
+            }
+
+            long id = Long.parseLong(value);
+
+            if (result.contains(id)) {
+                throw ApiException.validation(name, DUPLICATE_VALUE_MESSAGE);
+            }
+
+            result.add(id);
+        }
+
+        return result;
+    }
+
+    private static long actorId(Authentication authentication) {
+        return Long.parseLong(authentication.getName());
+    }
 }
