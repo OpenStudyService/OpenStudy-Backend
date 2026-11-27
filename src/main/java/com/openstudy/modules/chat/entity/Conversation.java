@@ -26,26 +26,44 @@ import org.hibernate.generator.EventType;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Conversation {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    @Enumerated(EnumType.STRING) @Column(nullable = false, updatable = false)
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, updatable = false)
     private ConversationKind kind;
+
     @Column(name = "branch_id", updatable = false)
     private Long branchId;
+
     @Column(length = 120)
     private String name;
+
     @Column(length = 500)
     private String description;
+
     @Column(name = "created_by", updatable = false)
     private Long createdBy;
-    @Generated(event = EventType.INSERT) @Column(name = "created_at", insertable = false, updatable = false)
+
+    @Generated(event = EventType.INSERT)
+    @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
+
     @Version
     private long version;
 
     public Conversation(ConversationKind kind, Long branchId, String name, String description, long createdBy) {
-        this.kind = kind; this.branchId = branchId; this.name = name; this.description = description; this.createdBy = createdBy;
+        this.kind = kind;
+        this.branchId = branchId;
+        this.name = name;
+        this.description = description;
+        this.createdBy = createdBy;
     }
 
-    public void edit(String name, String description) { this.name = name; this.description = description; }
+    public void edit(String name, String description) {
+        this.name = name;
+        this.description = description;
+    }
 }

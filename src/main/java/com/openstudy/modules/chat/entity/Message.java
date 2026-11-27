@@ -23,37 +23,80 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Message {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
     @Column(name = "conversation_id", nullable = false, updatable = false)
     private long conversationId;
+
     @Column(name = "sender_employee_id", nullable = false, updatable = false)
     private long senderEmployeeId;
+
     @Column(name = "parent_message_id", updatable = false)
     private Long parentMessageId;
+
     @Column(name = "related_task_id", updatable = false)
     private Long relatedTaskId;
-    @Enumerated(EnumType.STRING) @Column(nullable = false, updatable = false)
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, updatable = false)
     private MessageKind kind;
+
     @Column(columnDefinition = "text", updatable = false)
     private String body;
+
     @Column(name = "client_message_key", nullable = false, length = 100, updatable = false)
     private String clientMessageKey;
+
     @Column(name = "sent_at", nullable = false, updatable = false)
     private Instant sentAt;
 
-    public static Message text(long conversation, long sender, Long parent, String body, String clientKey, Instant sentAt) {
-        var message = new Message();
-        message.conversationId = conversation; message.senderEmployeeId = sender; message.parentMessageId = parent;
-        message.kind = MessageKind.TEXT; message.body = body; message.clientMessageKey = clientKey; message.sentAt = sentAt;
+    public static Message text(
+            long conversation,
+            long sender,
+            Long parent,
+            String body,
+            String clientKey,
+            Instant sentAt
+    ) {
+        return create(conversation, sender, parent, MessageKind.TEXT, body, clientKey, sentAt);
+    }
+
+    public static Message taskCard(
+            long conversation,
+            long sender,
+            Long parent,
+            long task,
+            String body,
+            String clientKey,
+            Instant sentAt
+    ) {
+        Message message = create(conversation, sender, parent, MessageKind.TASK_CARD, body, clientKey, sentAt);
+        message.relatedTaskId = task;
+
         return message;
     }
 
-    public static Message taskCard(long conversation, long sender, Long parent, long task, String body, String clientKey, Instant sentAt) {
-        var message = new Message();
-        message.conversationId = conversation; message.senderEmployeeId = sender; message.parentMessageId = parent;
-        message.relatedTaskId = task; message.kind = MessageKind.TASK_CARD; message.body = body;
-        message.clientMessageKey = clientKey; message.sentAt = sentAt;
+    private static Message create(
+            long conversation,
+            long sender,
+            Long parent,
+            MessageKind kind,
+            String body,
+            String clientKey,
+            Instant sentAt
+    ) {
+        Message message = new Message();
+        message.conversationId = conversation;
+        message.senderEmployeeId = sender;
+        message.parentMessageId = parent;
+        message.kind = kind;
+        message.body = body;
+        message.clientMessageKey = clientKey;
+        message.sentAt = sentAt;
+
         return message;
     }
 }

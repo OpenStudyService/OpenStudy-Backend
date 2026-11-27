@@ -46,94 +46,170 @@ import com.openstudy.modules.chat.service.MessageService;
 @RequestMapping("/api/channels")
 @RequiredArgsConstructor
 public class ChannelController {
-    private final ChannelService channels;
-    private final MessageService messages;
+
+    private static final Set<String> MANAGEABLE_SORT_FIELDS = Set.of("name");
+    private static final String MANAGEABLE_DEFAULT_SORT = "name";
+
+    private final ChannelService channelService;
+    private final MessageService messageService;
 
     @GetMapping
-    public ChannelList list(Authentication actor, @RequestParam(defaultValue = "all") String scope) {
-        return channels.list(actor(actor), scope);
+    public ChannelList listMyChannels(
+            Authentication actor,
+            @RequestParam(defaultValue = "all") String scope
+    ) {
+        return channelService.list(actorId(actor), scope);
     }
 
     @PostMapping
-    public ResponseEntity<ChannelView> create(Authentication actor, @RequestParam(defaultValue = "all") String scope,
-            @RequestHeader(name = "Idempotency-Key", required = false) String key, @RequestBody Map<String, Object> body,
-            HttpServletRequest request) {
-        var result = channels.create(actor(actor), scope, key, body, ApiRequestFilter.requestId(request));
+    public ResponseEntity<ChannelView> createChannel(
+            Authentication actor,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestHeader(name = "Idempotency-Key", required = false) String key,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        String requestId = ApiRequestFilter.requestId(request);
+        ChannelView result = channelService.create(actorId(actor), scope, key, body, requestId);
+
         return ResponseEntity.created(URI.create("/api/channels/" + result.id())).body(result);
     }
 
     @GetMapping("/manageable")
-    public PageResponse<ChannelView> manageable(Authentication actor, @RequestParam(defaultValue = "all") String scope,
-            @RequestParam(defaultValue = "1") long page, @RequestParam(defaultValue = "20") int pageSize) {
-        return channels.manageable(actor(actor), scope, ListQuery.parse(page, pageSize, null, null, null, Set.of("name"), "name"));
+    public PageResponse<ChannelView> listManageableChannels(
+            Authentication actor,
+            @RequestParam(defaultValue = "all") String scope,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "20") int pageSize
+    ) {
+        long actorId = actorId(actor);
+        ListQuery query = ListQuery.parse(page, pageSize, null, null, null, MANAGEABLE_SORT_FIELDS,
+                MANAGEABLE_DEFAULT_SORT);
+
+        return channelService.manageable(actorId, scope, query);
     }
 
     @GetMapping("/member-candidates")
-    public CandidateList candidates(Authentication actor, @RequestParam(required = false) String branchId) {
-        return channels.candidates(actor(actor), branchId);
+    public CandidateList listChannelMemberCandidates(
+            Authentication actor,
+            @RequestParam(required = false) String branchId
+    ) {
+        return channelService.candidates(actorId(actor), branchId);
     }
 
     @GetMapping("/{id}")
-    public ChannelView get(Authentication actor, @PathVariable long id) {
-        return channels.get(actor(actor), id);
+    public ChannelView getChannel(Authentication actor, @PathVariable long id) {
+        return channelService.get(actorId(actor), id);
     }
 
     @PatchMapping("/{id}")
-    public ChannelView update(Authentication actor, @PathVariable long id, @RequestBody Map<String, Object> body, HttpServletRequest request) {
-        return channels.update(actor(actor), id, body, ApiRequestFilter.requestId(request));
+    public ChannelView updateChannel(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        String requestId = ApiRequestFilter.requestId(request);
+
+        return channelService.update(actorId(actor), id, body, requestId);
     }
 
     @GetMapping("/{id}/members")
-    public ChannelMemberList members(Authentication actor, @PathVariable long id) {
-        return channels.members(actor(actor), id);
+    public ChannelMemberList listChannelMembers(Authentication actor, @PathVariable long id) {
+        return channelService.members(actorId(actor), id);
     }
 
     @PutMapping("/{id}/members")
-    public ChannelMemberList replaceMembers(Authentication actor, @PathVariable long id, @RequestBody Map<String, Object> body,
-            HttpServletRequest request) {
-        return channels.replaceMembers(actor(actor), id, body, ApiRequestFilter.requestId(request));
+    public ChannelMemberList replaceChannelMembers(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request
+    ) {
+        String requestId = ApiRequestFilter.requestId(request);
+
+        return channelService.replaceMembers(actorId(actor), id, body, requestId);
     }
 
     @PostMapping("/{id}/read")
-    public ChannelReadResult read(Authentication actor, @PathVariable long id, @RequestBody Map<String, Object> body) {
-        return messages.markRead(actor(actor), id, body);
+    public ChannelReadResult markChannelRead(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestBody Map<String, Object> body
+    ) {
+        return messageService.markRead(actorId(actor), id, body);
     }
 
     @GetMapping("/{id}/messages")
-    public MessageFeed messages(Authentication actor, @PathVariable long id, @RequestParam(required = false) String before,
-            @RequestParam(required = false) String limit) {
-        return messages.list(actor(actor), id, before, limit);
+    public MessageFeed listChannelMessages(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestParam(required = false) String before,
+            @RequestParam(required = false) String limit
+    ) {
+        return messageService.list(actorId(actor), id, before, limit);
     }
 
     @PostMapping("/{id}/messages")
-    public ResponseEntity<MessageView> send(Authentication actor, @PathVariable long id, @RequestBody Map<String, Object> body) {
-        var sent = messages.send(actor(actor), id, body);
-        if (!sent.created()) return ResponseEntity.ok(sent.message());
-        return ResponseEntity.created(URI.create("/api/channels/" + id + "/messages/" + sent.message().id())).body(sent.message());
+    public ResponseEntity<MessageView> sendChannelMessage(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestBody Map<String, Object> body
+    ) {
+        MessageService.Sent sent = messageService.send(actorId(actor), id, body);
+
+        return toSentResponse(id, sent);
     }
 
     @PostMapping("/{id}/task-cards")
-    public ResponseEntity<MessageView> shareTaskCard(Authentication actor, @PathVariable long id, @RequestBody Map<String, Object> body) {
-        var sent = messages.shareTaskCard(actor(actor), id, body);
-        if (!sent.created()) return ResponseEntity.ok(sent.message());
-        return ResponseEntity.created(URI.create("/api/channels/" + id + "/messages/" + sent.message().id())).body(sent.message());
+    public ResponseEntity<MessageView> shareTaskCard(
+            Authentication actor,
+            @PathVariable long id,
+            @RequestBody Map<String, Object> body
+    ) {
+        MessageService.Sent sent = messageService.shareTaskCard(actorId(actor), id, body);
+
+        return toSentResponse(id, sent);
     }
 
     @GetMapping("/{id}/messages/{messageId}")
-    public MessageView message(Authentication actor, @PathVariable long id, @PathVariable long messageId) {
-        return messages.get(actor(actor), id, messageId);
+    public MessageView getChannelMessage(Authentication actor, @PathVariable long id, @PathVariable long messageId) {
+        return messageService.get(actorId(actor), id, messageId);
     }
 
     @GetMapping("/{id}/messages/{messageId}/replies")
-    public MessageFeed replies(Authentication actor, @PathVariable long id, @PathVariable long messageId,
-            @RequestParam(required = false) String before, @RequestParam(required = false) String limit) {
-        return messages.replies(actor(actor), id, messageId, before, limit);
+    public MessageFeed listMessageReplies(
+            Authentication actor,
+            @PathVariable long id,
+            @PathVariable long messageId,
+            @RequestParam(required = false) String before,
+            @RequestParam(required = false) String limit
+    ) {
+        return messageService.replies(actorId(actor), id, messageId, before, limit);
     }
 
     @PostMapping("/{id}/messages/{messageId}/read")
-    public ThreadReadResult readThread(Authentication actor, @PathVariable long id, @PathVariable long messageId, @RequestBody Map<String, Object> body) {
-        return messages.markThreadRead(actor(actor), id, messageId, body);
+    public ThreadReadResult markThreadRead(
+            Authentication actor,
+            @PathVariable long id,
+            @PathVariable long messageId,
+            @RequestBody Map<String, Object> body
+    ) {
+        return messageService.markThreadRead(actorId(actor), id, messageId, body);
     }
 
-    private static long actor(Authentication authentication) { return Long.parseLong(authentication.getName()); }
+    /** A repeated send answers 200 with the stored message; a new one is 201 with its location. */
+    private static ResponseEntity<MessageView> toSentResponse(long channelId, MessageService.Sent sent) {
+        if (!sent.created()) {
+            return ResponseEntity.ok(sent.message());
+        }
+
+        URI location = URI.create("/api/channels/" + channelId + "/messages/" + sent.message().id());
+
+        return ResponseEntity.created(location).body(sent.message());
+    }
+
+    private static long actorId(Authentication authentication) {
+        return Long.parseLong(authentication.getName());
+    }
 }

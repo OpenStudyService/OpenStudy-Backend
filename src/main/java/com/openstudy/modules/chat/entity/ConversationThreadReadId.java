@@ -11,7 +11,10 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @EqualsAndHashCode
 public class ConversationThreadReadId implements Serializable {
+
     private long conversationId;
+
     private long employeeId;
+
     private long parentMessageId;
 }

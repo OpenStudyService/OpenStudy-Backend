@@ -11,6 +11,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @EqualsAndHashCode
 public class ConversationMemberId implements Serializable {
+
     private long conversationId;
+
     private long employeeId;
 }
