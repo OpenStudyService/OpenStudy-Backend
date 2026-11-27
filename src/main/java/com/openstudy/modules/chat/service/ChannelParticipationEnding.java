@@ -1,7 +1,9 @@
 package com.openstudy.modules.chat.service;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.event.EventListener;
@@ -26,19 +28,28 @@ import com.openstudy.modules.employee.service.EmployeeAccountService;
 @Component
 @RequiredArgsConstructor
 public class ChannelParticipationEnding {
-    private final ConversationRepository channels;
-    private final ConversationMemberRepository members;
-    private final EmployeeAccountService employees;
+
+    private final ConversationRepository conversationRepository;
+    private final ConversationMemberRepository conversationMemberRepository;
+    private final EmployeeAccountService employeeAccountService;
     private final Clock clock;
 
     @EventListener
     @Transactional(propagation = Propagation.MANDATORY)
     public void onAccessReduced(EmployeeAccessReduced event) {
         long employee = event.employeeId();
-        var ended = channels.joined(employee).stream().filter(channel -> !employees.channelEligible(employee, channel.getBranchId()))
-                .map(Conversation::getId).toList();
-        if (ended.isEmpty()) return;
-        members.end(employee, ended, clock.instant().truncatedTo(ChronoUnit.MICROS));
-        channels.incrementVersions(ended);
+        List<Long> ended = conversationRepository.findJoined(employee)
+                .stream()
+                .filter(channel -> !employeeAccountService.channelEligible(employee, channel.getBranchId()))
+                .map(Conversation::getId)
+                .toList();
+
+        if (ended.isEmpty()) {
+            return;
+        }
+
+        Instant at = clock.instant().truncatedTo(ChronoUnit.MICROS);
+        conversationMemberRepository.endParticipation(employee, ended, at);
+        conversationRepository.incrementVersions(ended);
     }
 }

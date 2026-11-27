@@ -9,6 +9,18 @@ import com.openstudy.modules.task.dto.response.TaskCardView;
  * The two thread fields are this reader's and belong to an original: a reply has null in both. threadLastReadMessageId is
  * the position the thread's replies compare with, not necessarily one of them; null means none of them has been read.
  */
-public record MessageView(String id, String channelId, ActorSummary sender, String parentId, String kind, String body,
-        TaskCardView task, String clientMessageKey, long replyCount, Long threadUnreadCount, String threadLastReadMessageId,
-        Instant sentAt) {}
+public record MessageView(
+        String id,
+        String channelId,
+        ActorSummary sender,
+        String parentId,
+        String kind,
+        String body,
+        TaskCardView task,
+        String clientMessageKey,
+        long replyCount,
+        Long threadUnreadCount,
+        String threadLastReadMessageId,
+        Instant sentAt
+) {
+}

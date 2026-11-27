@@ -23,28 +23,43 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ConversationMember {
-    @Id @Column(name = "conversation_id")
+
+    @Id
+    @Column(name = "conversation_id")
     private long conversationId;
-    @Id @Column(name = "employee_id")
+
+    @Id
+    @Column(name = "employee_id")
     private long employeeId;
+
     @Column(name = "joined_at", nullable = false, updatable = false)
     private Instant joinedAt;
+
     @Column(name = "left_at")
     private Instant leftAt;
+
     @Column(name = "last_read_message_id")
     private Long lastReadMessageId;
+
     @Column(name = "last_read_at")
     private Instant lastReadAt;
+
     @Column(name = "thread_read_baseline_message_id")
     private Long threadReadBaselineMessageId;
 
     public ConversationMember(long conversationId, long employeeId, Instant joinedAt) {
-        this.conversationId = conversationId; this.employeeId = employeeId; this.joinedAt = joinedAt;
+        this.conversationId = conversationId;
+        this.employeeId = employeeId;
+        this.joinedAt = joinedAt;
     }
 
-    public boolean active() { return leftAt == null; }
+    public boolean isActive() {
+        return leftAt == null;
+    }
 
-    public void leave(Instant at) { this.leftAt = at; }
+    public void leave(Instant at) {
+        this.leftAt = at;
+    }
 
     /**
      * M7-D09: everything sent so far counts as read, the main feed and every thread, while the earlier messages stay open
@@ -52,14 +67,22 @@ public class ConversationMember {
      */
     public void rejoin(Long latest, Instant at) {
         this.leftAt = null;
-        if (latest == null) return;
+
+        if (latest == null) {
+            return;
+        }
+
         advanceReadPosition(latest, at);
         this.threadReadBaselineMessageId = latest;
     }
 
     /** The position only moves forward; an equal or earlier message changes nothing. */
     public void advanceReadPosition(long messageId, Instant at) {
-        if (lastReadMessageId != null && messageId <= lastReadMessageId) return;
-        this.lastReadMessageId = messageId; this.lastReadAt = at;
+        if (lastReadMessageId != null && messageId <= lastReadMessageId) {
+            return;
+        }
+
+        this.lastReadMessageId = messageId;
+        this.lastReadAt = at;
     }
 }

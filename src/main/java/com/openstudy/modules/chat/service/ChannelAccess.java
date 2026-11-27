@@ -22,38 +22,53 @@ import com.openstudy.modules.chat.repository.ConversationRepository;
 @Component
 @RequiredArgsConstructor
 class ChannelAccess {
-    private final ConversationRepository channels;
-    private final ConversationMemberRepository members;
-    private final AuthorizationService policy;
 
-    /** A channel, never a DM. Decides nothing about the reader. */
-    private Conversation channel(long id) {
-        return channels.findById(id).filter(row -> row.getKind() != ConversationKind.DM)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
-    }
+    private static final String ACTIVE = "ACTIVE";
+    private static final String ALL_SCOPE = "all";
+
+    private final ConversationRepository conversationRepository;
+    private final ConversationMemberRepository conversationMemberRepository;
+    private final AuthorizationService authorizationService;
 
     /** The reader's open participation in the channel, or 404. Messages, replies and the read position all pass here. */
-    ConversationMember participation(AuthorizationState state, long id) {
-        if (!qualifies(state, channel(id))) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-        return members.findByConversationIdAndEmployeeIdAndLeftAtIsNull(id, state.employeeId())
+    ConversationMember requireParticipation(AuthorizationState state, long id) {
+        if (!qualifies(state, findChannel(id))) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+
+        return conversationMemberRepository.findByConversationIdAndEmployeeIdAndLeftAtIsNull(id, state.employeeId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
     }
 
     /** Channel settings and the member list: participants and managers. Anyone else gets 404. */
-    Conversation visible(AuthorizationState state, long id) {
-        var channel = channel(id);
+    Conversation findVisibleChannel(AuthorizationState state, long id) {
+        Conversation channel = findChannel(id);
         boolean joined = qualifies(state, channel)
-                && members.findByConversationIdAndEmployeeIdAndLeftAtIsNull(id, state.employeeId()).isPresent();
-        if (!joined && !manages(state, channel)) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+                && conversationMemberRepository.findByConversationIdAndEmployeeIdAndLeftAtIsNull(id, state.employeeId())
+                        .isPresent();
+
+        if (!joined && !manages(state, channel)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+
         return channel;
     }
 
     /** M7-D07: the channel's branch, or any branch for a channel addressed to everyone; an OWNER qualifies everywhere. */
     boolean qualifies(AuthorizationState state, Conversation channel) {
-        if (!"ACTIVE".equals(state.status())) return false;
-        if (state.owner()) return true;
-        if (channel.getKind() == ConversationKind.BRANCH_CHANNEL) return policy.permits(state, channel.getBranchId(), BranchAction.READ);
-        return !policy.scope(state, "all", BranchAction.READ).isEmpty();
+        if (!ACTIVE.equals(state.status())) {
+            return false;
+        }
+
+        if (state.owner()) {
+            return true;
+        }
+
+        if (channel.getKind() == ConversationKind.BRANCH_CHANNEL) {
+            return authorizationService.permits(state, channel.getBranchId(), BranchAction.READ);
+        }
+
+        return !authorizationService.scope(state, ALL_SCOPE, BranchAction.READ).isEmpty();
     }
 
     /** M7-D04. */
@@ -62,7 +77,21 @@ class ChannelAccess {
     }
 
     boolean manages(AuthorizationState state, ConversationKind kind, Long branch) {
-        if (!"ACTIVE".equals(state.status())) return false;
-        return kind == ConversationKind.GLOBAL_CHANNEL ? state.owner() : policy.permits(state, branch, BranchAction.MANAGE_COLLABORATION);
+        if (!ACTIVE.equals(state.status())) {
+            return false;
+        }
+
+        if (kind == ConversationKind.GLOBAL_CHANNEL) {
+            return state.owner();
+        }
+
+        return authorizationService.permits(state, branch, BranchAction.MANAGE_COLLABORATION);
+    }
+
+    /** A channel, never a DM. Decides nothing about the reader. */
+    private Conversation findChannel(long id) {
+        return conversationRepository.findById(id)
+                .filter(row -> row.getKind() != ConversationKind.DM)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
     }
 }
