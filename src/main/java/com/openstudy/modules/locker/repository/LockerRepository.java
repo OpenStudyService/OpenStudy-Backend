@@ -13,9 +13,10 @@ import org.springframework.data.repository.query.Param;
 import com.openstudy.modules.locker.entity.Locker;
 
 public interface LockerRepository extends JpaRepository<Locker, Long> {
+
     /** The branch alone, so the row is first loaded by a locking read and always holds the current values. */
     @Query("SELECT l.branchId FROM Locker l WHERE l.id = :id")
-    Optional<Long> branchOf(@Param("id") long id);
+    Optional<Long> findBranch(@Param("id") long id);
 
     /**
      * SELECT ... FOR UPDATE. Two assignments of one locker must wait for each other, because no constraint refuses
@@ -23,12 +24,12 @@ public interface LockerRepository extends JpaRepository<Locker, Long> {
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT l FROM Locker l WHERE l.id = :id")
-    Optional<Locker> locked(@Param("id") long id);
+    Optional<Locker> findLocked(@Param("id") long id);
 
     /** Every locker of a branch under FOR UPDATE, in id order like every other multi-row lock. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT l FROM Locker l WHERE l.branchId = :branch ORDER BY l.id")
-    List<Locker> lockedInBranch(@Param("branch") long branch);
+    List<Locker> findLockedInBranch(@Param("branch") long branch);
 
     /** Bumps every version, also where the rate stays the same: the command is the change (space-operations-api.md). */
     @Modifying
