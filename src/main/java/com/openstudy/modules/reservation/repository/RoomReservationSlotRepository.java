@@ -10,6 +10,7 @@ import org.springframework.data.repository.query.Param;
 import com.openstudy.modules.reservation.entity.RoomReservationSlot;
 
 public interface RoomReservationSlotRepository extends JpaRepository<RoomReservationSlot, Long> {
+
     /** A cancellation gives every hour back. */
     @Modifying
     @Query("DELETE FROM RoomReservationSlot s WHERE s.reservationId = :reservation")
