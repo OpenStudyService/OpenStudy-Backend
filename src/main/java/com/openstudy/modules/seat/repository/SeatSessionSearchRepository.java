@@ -7,6 +7,7 @@ import java.util.Set;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
+import jakarta.persistence.TypedQuery;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
@@ -20,36 +21,59 @@ import com.openstudy.modules.seat.entity.SeatSession;
 @Repository
 @RequiredArgsConstructor
 public class SeatSessionSearchRepository {
+
+    /** A customer filter includes the customers merged into it (M13-D07, #114). */
+    private static final String CUSTOMER_FAMILY = "s.customerId IN (SELECT m.id FROM Customer m"
+            + " WHERE m.id = :customerId OR m.mergedIntoCustomerId = :customerId)";
+
     private final EntityManager entityManager;
 
     /** Any of status, seatId and customerId may be null for "no restriction". */
-    public record Filter(Set<Long> branches, SeatSession.Status status, TimeRange range, Long seatId, Long customerId) {}
+    public record Filter(Set<Long> branches, SeatSession.Status status, TimeRange range, Long seatId, Long customerId) {
+    }
 
-    public record Page(List<SeatSession> rows, long total) {}
+    public record Page(List<SeatSession> rows, long total) {
+    }
 
     public Page find(Filter filter, boolean descending, long offset, int limit) {
-        if (filter.branches().isEmpty()) return new Page(List.of(), 0);
-        var where = new StringBuilder(" FROM SeatSession s WHERE s.branchId IN :branches");
-        var binds = new LinkedHashMap<String, Object>();
+        if (filter.branches().isEmpty()) {
+            return new Page(List.of(), 0);
+        }
+
+        StringBuilder where = new StringBuilder(" FROM SeatSession s WHERE s.branchId IN :branches");
+        Map<String, Object> binds = new LinkedHashMap<>();
         binds.put("branches", filter.branches());
-        add(where, binds, "s.status = :status", "status", filter.status());
-        add(where, binds, "s.checkedInAt >= :from", "from", filter.range().from());
-        add(where, binds, "s.checkedInAt < :to", "to", filter.range().to());
-        add(where, binds, "s.seatId = :seatId", "seatId", filter.seatId());
-        // A customer filter includes the customers merged into it (M13-D07, #114).
-        add(where, binds, "s.customerId IN (SELECT m.id FROM Customer m WHERE m.id = :customerId OR m.mergedIntoCustomerId = :customerId)", "customerId", filter.customerId());
+        appendCondition(where, binds, "s.status = :status", "status", filter.status());
+        appendCondition(where, binds, "s.checkedInAt >= :from", "from", filter.range().from());
+        appendCondition(where, binds, "s.checkedInAt < :to", "to", filter.range().to());
+        appendCondition(where, binds, "s.seatId = :seatId", "seatId", filter.seatId());
+        appendCondition(where, binds, CUSTOMER_FAMILY, "customerId", filter.customerId());
+
         String order = descending ? " DESC" : " ASC";
-        var rows = entityManager.createQuery("SELECT s" + where + " ORDER BY s.checkedInAt" + order + ", s.id" + order, SeatSession.class);
+        String rowsJpql = "SELECT s" + where + " ORDER BY s.checkedInAt" + order + ", s.id" + order;
+        TypedQuery<SeatSession> rows = entityManager.createQuery(rowsJpql, SeatSession.class);
         Query count = entityManager.createQuery("SELECT COUNT(s)" + where);
         binds.forEach(rows::setParameter);
         binds.forEach(count::setParameter);
         // The API allows any page; JPA offsets are ints, and no stay lives that far out.
-        var found = offset > Integer.MAX_VALUE ? List.<SeatSession>of() : rows.setFirstResult((int) offset).setMaxResults(limit).getResultList();
+        List<SeatSession> found = offset > Integer.MAX_VALUE
+                ? List.of()
+                : rows.setFirstResult((int) offset).setMaxResults(limit).getResultList();
+
         return new Page(found, ((Number) count.getSingleResult()).longValue());
     }
 
-    private static void add(StringBuilder where, Map<String, Object> binds, String clause, String name, Object value) {
-        if (value == null) return;
+    private static void appendCondition(
+            StringBuilder where,
+            Map<String, Object> binds,
+            String clause,
+            String name,
+            Object value
+    ) {
+        if (value == null) {
+            return;
+        }
+
         where.append(" AND ").append(clause);
         binds.put(name, value);
     }

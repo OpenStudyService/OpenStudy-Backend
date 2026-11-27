@@ -38,6 +38,7 @@ import org.hibernate.annotations.Immutable;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class SeatOccupancySample {
+
     @Id
     @Column(length = 64)
     @SemanticField(id = "seat_occupancy_sample.id", name = "샘플 ID", role = "ID", allowedOps = {"EQ", "NE", "IN"}, exposed = false)
