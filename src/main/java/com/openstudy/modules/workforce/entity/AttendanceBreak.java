@@ -37,32 +37,45 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class AttendanceBreak {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @SemanticField(id = "attendance_break.id", name = "휴게 ID", role = "ID", allowedOps = {"EQ", "NE", "IN"})
     private Long id;
+
     @Column(name = "attendance_id", nullable = false, updatable = false)
     @SemanticField(id = "attendance_break.attendance_id", name = "출퇴근 기록 ID", role = "FK", allowedOps = {"EQ", "NE", "IN"})
     @SemanticRelation(id = "attendance_break.attendance_record", targetEntity = "attendance_record", targetField = "id", direction = "OUTGOING", joinUse = "APPROVED", meaning = "소속 출퇴근 기록")
     private long attendanceId;
+
     @Column(name = "started_at", nullable = false)
     @SemanticField(id = "attendance_break.break_start_at", name = "휴게 시작 시각", role = "TIME", allowedOps = {"EQ", "NE", "GT", "GTE", "LT", "LTE", "BETWEEN"})
     private Instant startedAt;
+
     @Column(name = "ended_at")
     @SemanticField(id = "attendance_break.break_end_at", name = "휴게 종료 시각", role = "TIME", allowedOps = {"EQ", "NE", "GT", "GTE", "LT", "LTE", "BETWEEN", "IS_NULL"})
     private Instant endedAt;
 
     public AttendanceBreak(long attendanceId, Instant startedAt) {
-        this.attendanceId = attendanceId; this.startedAt = startedAt;
+        this.attendanceId = attendanceId;
+        this.startedAt = startedAt;
     }
 
     /** An approved break correction (M12-D01), by a holder of the attendance row lock. */
     public void correct(Instant start, Instant end) {
-        if (endedAt == null) throw new IllegalStateException("Only a closed break is corrected");
-        startedAt = start; endedAt = end;
+        if (endedAt == null) {
+            throw new IllegalStateException("Only a closed break is corrected");
+        }
+
+        startedAt = start;
+        endedAt = end;
     }
 
     public void end(Instant at) {
-        if (endedAt != null) throw new IllegalStateException("A break ends only once");
+        if (endedAt != null) {
+            throw new IllegalStateException("A break ends only once");
+        }
+
         endedAt = at;
     }
 }

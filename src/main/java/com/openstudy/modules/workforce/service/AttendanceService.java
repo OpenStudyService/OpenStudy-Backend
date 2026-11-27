@@ -9,9 +9,11 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
@@ -19,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.ObjectMapper;
+
 import com.openstudy.common.exception.ApiException;
 import com.openstudy.common.idempotency.IdempotencyRecord;
 import com.openstudy.common.idempotency.IdempotencyStore;
@@ -52,19 +55,27 @@ import com.openstudy.modules.workforce.repository.ShiftSearchRepository;
 @Service
 @RequiredArgsConstructor
 public class AttendanceService {
+
     static final String ENTITY = "attendance-records";
     private static final String CLOCK_IN = "attendance:clock-in";
     private static final String RELOAD = "/api/me/attendance/current";
-    private final AttendanceRecordRepository records;
-    private final AttendanceBreakRepository breaks;
-    private final ShiftRepository shifts;
-    private final ShiftSearchRepository search;
-    private final AttendanceViews views;
-    private final RecordScope readers;
-    private final AuthorizationService policy;
-    private final AuthorizedCommands commands;
-    private final ObjectMapper json;
-    private final IdempotencyStore requests;
+    private static final String ACTIVE = "ACTIVE";
+    /** One key space per person, not per branch. */
+    private static final String PERSONAL_SCOPE_KEY = "me";
+    private static final int CREATED_STATUS = 201;
+    private static final Duration IDEMPOTENCY_TTL = Duration.ofHours(24);
+    private static final String UNIQUE_ACTIVE_ATTENDANCE = "uk_attendance_records_1";
+
+    private final AttendanceRecordRepository attendanceRecordRepository;
+    private final AttendanceBreakRepository attendanceBreakRepository;
+    private final ShiftRepository shiftRepository;
+    private final ShiftSearchRepository shiftSearchRepository;
+    private final AttendanceViews attendanceViews;
+    private final RecordScope recordScope;
+    private final AuthorizationService authorizationService;
+    private final AuthorizedCommands authorizedCommands;
+    private final ObjectMapper objectMapper;
+    private final IdempotencyStore idempotencyStore;
     private final Clock clock;
 
     /**
@@ -73,35 +84,67 @@ public class AttendanceService {
      */
     @Transactional(readOnly = true)
     public CurrentAttendance current(long actor) {
-        var state = policy.current(actor);
-        var open = records.findFirstByEmployeeIdAndStatus(state.employeeId(), AttendanceRecord.Status.WORKING);
-        return new CurrentAttendance(open.map(views::record).orElse(null), clock.instant());
+        AuthorizationState state = authorizationService.current(actor);
+        Optional<AttendanceRecord> open = attendanceRecordRepository.findFirstByEmployeeIdAndStatus(
+                state.employeeId(),
+                AttendanceRecord.Status.WORKING
+        );
+        AttendanceRecordView view = open.map(attendanceViews::toView).orElse(null);
+
+        return new CurrentAttendance(view, clock.instant());
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<AttendanceRecordView> list(long actor, String scope, ListQuery query, String employeeId, String mine, String shiftId,
-            String status, String from, String to) {
-        Long employee = employeeId == null ? null : ShiftInputs.id(employeeId, "employeeId");
-        boolean own = ShiftInputs.flag(mine, "mine");
-        Long shift = shiftId == null ? null : ShiftInputs.id(shiftId, "shiftId");
-        var state = status == null ? null : state(status);
-        LocalDate first = from == null ? null : ShiftInputs.date(from, "from");
-        LocalDate last = to == null ? null : ShiftInputs.date(to, "to");
-        if (first != null && last != null && last.isBefore(first)) throw ApiException.validation("to", "종료 날짜는 시작 날짜보다 앞설 수 없습니다.");
-        var reader = policy.current(actor);
-        var filter = readers.filter(reader, scope, employee, own, null, first == null ? null : ShiftInputs.startOf(first),
-                last == null ? null : ShiftInputs.startOf(last.plusDays(1)));
-        var page = search.findAttendance(filter, shift, state, query.offset(), query.pageSize());
-        return new PageResponse<>(views.records(page.rows()), new PageResponse.Meta(query.page(), query.pageSize(), page.total()));
+    public PageResponse<AttendanceRecordView> list(
+            long actor,
+            String scope,
+            ListQuery query,
+            String employeeId,
+            String mine,
+            String shiftId,
+            String status,
+            String from,
+            String to
+    ) {
+        Long employee = employeeId == null ? null : ShiftInputs.parseId(employeeId, "employeeId");
+        boolean own = ShiftInputs.parseFlag(mine, "mine");
+        Long shift = shiftId == null ? null : ShiftInputs.parseId(shiftId, "shiftId");
+        ShiftSearchRepository.AttendanceState state = status == null ? null : parseState(status);
+        LocalDate first = from == null ? null : ShiftInputs.parseDate(from, "from");
+        LocalDate last = to == null ? null : ShiftInputs.parseDate(to, "to");
+
+        if (first != null && last != null && last.isBefore(first)) {
+            throw ApiException.validation("to", "종료 날짜는 시작 날짜보다 앞설 수 없습니다.");
+        }
+
+        AuthorizationState reader = authorizationService.current(actor);
+        Instant start = first == null ? null : ShiftInputs.toStartOf(first);
+        Instant end = last == null ? null : ShiftInputs.toStartOf(last.plusDays(1));
+        ShiftSearchRepository.Filter filter = recordScope.createFilter(reader, scope, employee, own, null, start, end);
+        ShiftSearchRepository.AttendancePage page = shiftSearchRepository.findAttendance(
+                filter,
+                shift,
+                state,
+                query.offset(),
+                query.pageSize()
+        );
+
+        return new PageResponse<>(
+                attendanceViews.toViews(page.rows()),
+                new PageResponse.Meta(query.page(), query.pageSize(), page.total())
+        );
     }
 
     /** 404 for a record the reader may not see, whatever the reason, so ids are not an existence oracle (M8-D02). */
     @Transactional(readOnly = true)
     public AttendanceRecordView get(long actor, long id) {
-        var state = policy.current(actor);
-        var visible = readers.readable(state);
-        return records.findById(id).filter(found -> readers.sees(state, visible, found.getBranchId(), found.getEmployeeId()))
-                .map(views::record).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        AuthorizationState state = authorizationService.current(actor);
+        Set<Long> visible = recordScope.findReadable(state);
+
+        return attendanceRecordRepository.findById(id)
+                .filter(found -> recordScope.canSee(state, visible, found.getBranchId(), found.getEmployeeId()))
+                .map(attendanceViews::toView)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
     }
 
     /**
@@ -111,42 +154,86 @@ public class AttendanceService {
      */
     public AttendanceRecordView clockIn(long actor, String key, Map<String, Object> body) {
         long branch = new StrictInput(body).only("branchId").id("branchId");
-        ShiftInputs.validKey(key);
+        ShiftInputs.validateKey(key);
+
         // Without a lock first, as the shift commands do: a request that may not clock in here waits for nothing.
-        if (!member(policy.current(actor), branch)) throw AuthorizationService.forbidden();
+        if (!isMember(authorizationService.current(actor), branch)) {
+            throw AuthorizationService.forbidden();
+        }
+
         // One key space per person, not per branch: the same key sent again with another branch is another input (409),
         // not a second clock-in.
-        String scopeKey = "me";
-        byte[] fingerprint = ShiftInputs.digest(json.writeValueAsString(List.of(branch)));
-        var prior = new AtomicReference<Optional<IdempotencyRecord>>(Optional.empty());
-        return commands.activeEmployee(actor, () -> {
-            prior.set(requests.lock(actor, CLOCK_IN, scopeKey, key));
-            shifts.lockEmployee(actor);
-        }, state -> {
-            // The membership as read under lock (FOR SHARE after the guard); only then may a stored result be replayed.
-            if (!member(state, branch)) throw AuthorizationService.forbidden();
-            var replayed = replay(prior.get(), fingerprint);
-            if (replayed.isPresent()) return replayed.get();
-            if (!"ACTIVE".equals(state.branches().get(branch)))
-                throw ApiException.conflict("BRANCH_NOT_ACTIVE", "운영 중지된 지점에서는 출근할 수 없습니다.");
-            if (records.lockedCurrent(actor).isPresent()) throw alreadyWorking();
-            Instant now = now();
-            Long shift = shifts.covering(actor, branch, ShiftStatus.SCHEDULED, now).stream().findFirst().map(found -> found.getId()).orElse(null);
-            var record = translating(() -> records.saveAndFlush(new AttendanceRecord(actor, branch, shift, now)));
-            var result = views.record(record);
-            requests.complete(actor, CLOCK_IN, scopeKey, key, fingerprint, 201, json.writeValueAsString(result),
-                    clock.instant().plus(Duration.ofHours(24)));
-            return result;
-        });
+        String scopeKey = PERSONAL_SCOPE_KEY;
+        byte[] fingerprint = ShiftInputs.digest(objectMapper.writeValueAsString(List.of(branch)));
+        AtomicReference<Optional<IdempotencyRecord>> prior = new AtomicReference<>(Optional.empty());
+
+        return authorizedCommands.activeEmployee(
+                actor,
+                () -> {
+                    prior.set(idempotencyStore.lock(actor, CLOCK_IN, scopeKey, key));
+                    shiftRepository.lockEmployee(actor);
+                },
+                state -> {
+                    // The membership as read under lock (FOR SHARE after the guard); only then may a stored result be
+                    // replayed.
+                    if (!isMember(state, branch)) {
+                        throw AuthorizationService.forbidden();
+                    }
+
+                    Optional<AttendanceRecordView> replayed = findReplay(prior.get(), fingerprint);
+
+                    if (replayed.isPresent()) {
+                        return replayed.get();
+                    }
+
+                    if (!ACTIVE.equals(state.branches().get(branch))) {
+                        throw ApiException.conflict("BRANCH_NOT_ACTIVE", "운영 중지된 지점에서는 출근할 수 없습니다.");
+                    }
+
+                    if (attendanceRecordRepository.lockedCurrent(actor).isPresent()) {
+                        throw createAlreadyWorkingError();
+                    }
+
+                    Instant now = findNow();
+                    Long shift = shiftRepository.findCovering(actor, branch, ShiftStatus.SCHEDULED, now)
+                            .stream()
+                            .findFirst()
+                            .map(found -> found.getId())
+                            .orElse(null);
+                    AttendanceRecord attendance = new AttendanceRecord(actor, branch, shift, now);
+                    AttendanceRecord record = translateDuplicate(
+                            () -> attendanceRecordRepository.saveAndFlush(attendance)
+                    );
+                    AttendanceRecordView result = attendanceViews.toView(record);
+                    idempotencyStore.complete(
+                            actor,
+                            CLOCK_IN,
+                            scopeKey,
+                            key,
+                            fingerprint,
+                            CREATED_STATUS,
+                            objectMapper.writeValueAsString(result),
+                            clock.instant().plus(IDEMPOTENCY_TTL)
+                    );
+
+                    return result;
+                }
+        );
     }
 
     /** Only while working; the attendance's branch must still be the requester's: a break is new activity there. */
     public AttendanceRecordView startBreak(long actor, Map<String, Object> body) {
-        return command(actor, body, (state, record) -> {
-            if (open(record).isPresent()) throw ApiException.conflict("ATTENDANCE_ON_BREAK", "이미 휴게 중입니다.");
+        return runCommand(actor, body, (state, record) -> {
+            if (findOpenBreak(record).isPresent()) {
+                throw ApiException.conflict("ATTENDANCE_ON_BREAK", "이미 휴게 중입니다.");
+            }
+
             return () -> {
-                if (!member(state, record.getBranchId())) throw AuthorizationService.forbidden();
-                breaks.saveAndFlush(new AttendanceBreak(record.getId(), now()));
+                if (!isMember(state, record.getBranchId())) {
+                    throw AuthorizationService.forbidden();
+                }
+
+                attendanceBreakRepository.saveAndFlush(new AttendanceBreak(record.getId(), findNow()));
                 record.touch();
             };
         });
@@ -154,11 +241,13 @@ public class AttendanceService {
 
     /** Only on a break. Also after the membership ended and at a stopped branch: closing up is always allowed. */
     public AttendanceRecordView endBreak(long actor, Map<String, Object> body) {
-        return command(actor, body, (state, record) -> {
-            var open = open(record).orElseThrow(() -> ApiException.conflict("ATTENDANCE_NOT_ON_BREAK", "휴게 중이 아닙니다."));
+        return runCommand(actor, body, (state, record) -> {
+            AttendanceBreak open = findOpenBreak(record)
+                    .orElseThrow(() -> ApiException.conflict("ATTENDANCE_NOT_ON_BREAK", "휴게 중이 아닙니다."));
+
             return () -> {
-                open.end(now());
-                breaks.saveAndFlush(open);
+                open.end(findNow());
+                attendanceBreakRepository.saveAndFlush(open);
                 record.touch();
             };
         });
@@ -166,9 +255,12 @@ public class AttendanceService {
 
     /** Not on a break: the break is ended first (M8-D07). Also after the membership ended and at a stopped branch. */
     public AttendanceRecordView clockOut(long actor, Map<String, Object> body) {
-        return command(actor, body, (state, record) -> {
-            if (open(record).isPresent()) throw ApiException.conflict("ATTENDANCE_ON_BREAK", "휴게를 먼저 종료해 주세요.");
-            return () -> record.clockOut(now());
+        return runCommand(actor, body, (state, record) -> {
+            if (findOpenBreak(record).isPresent()) {
+                throw ApiException.conflict("ATTENDANCE_ON_BREAK", "휴게를 먼저 종료해 주세요.");
+            }
+
+            return () -> record.clockOut(findNow());
         });
     }
 
@@ -177,62 +269,88 @@ public class AttendanceService {
      * the version, so a repeated command learns what happened ("이미 퇴근") rather than that its version is old. The
      * state check returns the change to make once the version has matched.
      */
-    private AttendanceRecordView command(long actor, Map<String, Object> body,
-            BiFunction<AuthorizationState, AttendanceRecord, Runnable> check) {
+    private AttendanceRecordView runCommand(
+            long actor,
+            Map<String, Object> body,
+            BiFunction<AuthorizationState, AttendanceRecord, Runnable> check
+    ) {
         long version = new StrictInput(body).only("version").version("version");
-        var locked = new AtomicReference<Optional<AttendanceRecord>>(Optional.empty());
-        return commands.activeEmployee(actor, () -> locked.set(records.lockedCurrent(actor)), state -> {
-            var record = locked.get().orElseThrow(() -> ApiException.conflict("ATTENDANCE_NOT_WORKING", "진행 중인 근태가 없습니다."));
-            var change = check.apply(state, record);
-            ApiVersion.requireCurrent(version, record.getVersion(), RELOAD);
-            change.run();
-            var saved = records.saveAndFlush(record);
-            return views.record(saved);
-        });
+        AtomicReference<Optional<AttendanceRecord>> locked = new AtomicReference<>(Optional.empty());
+
+        return authorizedCommands.activeEmployee(
+                actor,
+                () -> locked.set(attendanceRecordRepository.lockedCurrent(actor)),
+                state -> {
+                    AttendanceRecord record = locked.get()
+                            .orElseThrow(() -> ApiException.conflict("ATTENDANCE_NOT_WORKING", "진행 중인 근태가 없습니다."));
+                    Runnable change = check.apply(state, record);
+                    ApiVersion.requireCurrent(version, record.getVersion(), RELOAD);
+                    change.run();
+                    AttendanceRecord saved = attendanceRecordRepository.saveAndFlush(record);
+
+                    return attendanceViews.toView(saved);
+                }
+        );
     }
 
     /** An active membership row at the branch. The OWNER's global role does not count: it is not a membership. */
-    private static boolean member(AuthorizationState state, long branch) {
-        var membership = state.memberships().get(branch);
-        return state.branches().containsKey(branch) && membership != null && "ACTIVE".equals(membership.status());
+    private static boolean isMember(AuthorizationState state, long branch) {
+        AuthorizationState.Membership membership = state.memberships().get(branch);
+
+        return state.branches().containsKey(branch) && membership != null && ACTIVE.equals(membership.status());
     }
 
-    private Optional<AttendanceBreak> open(AttendanceRecord record) {
-        return breaks.locked(record.getId()).stream().filter(part -> part.getEndedAt() == null).findFirst();
+    private Optional<AttendanceBreak> findOpenBreak(AttendanceRecord record) {
+        return attendanceBreakRepository.findLocked(record.getId())
+                .stream()
+                .filter(part -> part.getEndedAt() == null)
+                .findFirst();
     }
 
     /** Server time without its fraction of a second, so every difference is whole seconds (M8-D07). */
-    private Instant now() { return clock.instant().truncatedTo(ChronoUnit.SECONDS); }
+    private Instant findNow() {
+        return clock.instant().truncatedTo(ChronoUnit.SECONDS);
+    }
 
-    private Optional<AttendanceRecordView> replay(Optional<IdempotencyRecord> prior, byte[] fingerprint) {
-        if (prior.isEmpty()) return Optional.empty();
-        if (!clock.instant().isBefore(prior.get().getExpiresAt())) {
-            requests.discard(prior.get());
+    private Optional<AttendanceRecordView> findReplay(Optional<IdempotencyRecord> prior, byte[] fingerprint) {
+        if (prior.isEmpty()) {
             return Optional.empty();
         }
-        if (!MessageDigest.isEqual(fingerprint, prior.get().getRequestHash()))
+
+        if (!clock.instant().isBefore(prior.get().getExpiresAt())) {
+            idempotencyStore.discard(prior.get());
+
+            return Optional.empty();
+        }
+
+        if (!MessageDigest.isEqual(fingerprint, prior.get().getRequestHash())) {
             throw ApiException.conflict("IDEMPOTENCY_CONFLICT", "같은 키로 다른 입력을 저장할 수 없습니다.");
-        return Optional.of(json.readValue(prior.get().getResponseJson(), AttendanceRecordView.class));
+        }
+
+        return Optional.of(objectMapper.readValue(prior.get().getResponseJson(), AttendanceRecordView.class));
     }
 
     /**
      * uk_attendance_records_1 is the last line of defence: should a clock-in ever get past the locked check, the client
      * gets the 409 the check would have given and the whole command rolls back.
      */
-    private static <T> T translating(Supplier<T> insert) {
+    private static <T> T translateDuplicate(Supplier<T> insert) {
         try {
             return DuplicateKeys.translate(insert);
         } catch (DuplicateKeyException exception) {
-            if (String.valueOf(exception.getMessage()).contains("uk_attendance_records_1")) throw alreadyWorking();
+            if (String.valueOf(exception.getMessage()).contains(UNIQUE_ACTIVE_ATTENDANCE)) {
+                throw createAlreadyWorkingError();
+            }
+
             throw exception;
         }
     }
 
-    private static ApiException alreadyWorking() {
+    private static ApiException createAlreadyWorkingError() {
         return ApiException.conflict("ATTENDANCE_ALREADY_WORKING", "이미 출근 중입니다. 먼저 퇴근해 주세요.");
     }
 
-    private static ShiftSearchRepository.AttendanceState state(String value) {
+    private static ShiftSearchRepository.AttendanceState parseState(String value) {
         return switch (value) {
             case "근무 중" -> ShiftSearchRepository.AttendanceState.WORKING;
             case "휴게 중" -> ShiftSearchRepository.AttendanceState.ON_BREAK;

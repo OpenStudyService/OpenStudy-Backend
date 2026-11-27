@@ -26,35 +26,66 @@ import org.hibernate.generator.EventType;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class LeaveBalanceEvent {
+
     public enum Type {
-        GRANT("부여"), ADJUST("보정"), USE("사용"), RESTORE("복원");
+
+        GRANT("부여"),
+        ADJUST("보정"),
+        USE("사용"),
+        RESTORE("복원");
 
         public final String label;
-        Type(String label) { this.label = label; }
+
+        Type(String label) {
+            this.label = label;
+        }
     }
 
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
     @Column(name = "leave_grant_id", nullable = false, updatable = false)
     private long leaveGrantId;
+
     @Column(name = "leave_request_id", updatable = false)
     private Long leaveRequestId;
-    @Enumerated(EnumType.STRING) @Column(name = "event_type", nullable = false, updatable = false)
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "event_type", nullable = false, updatable = false)
     private Type eventType;
+
     @Column(name = "delta_days", nullable = false, updatable = false, precision = 7, scale = 1)
     private BigDecimal deltaDays;
+
     @Column(updatable = false, length = 500)
     private String reason;
+
     @Column(name = "actor_employee_id", nullable = false, updatable = false)
     private long actorEmployeeId;
+
     @Column(name = "event_key", nullable = false, updatable = false, length = 120)
     private String eventKey;
-    @Generated(event = EventType.INSERT) @Column(name = "created_at", insertable = false, updatable = false)
+
+    @Generated(event = EventType.INSERT)
+    @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 
-    public LeaveBalanceEvent(long leaveGrantId, Long leaveRequestId, Type eventType, BigDecimal deltaDays, String reason,
-            long actorEmployeeId, String eventKey) {
-        this.leaveGrantId = leaveGrantId; this.leaveRequestId = leaveRequestId; this.eventType = eventType;
-        this.deltaDays = deltaDays; this.reason = reason; this.actorEmployeeId = actorEmployeeId; this.eventKey = eventKey;
+    public LeaveBalanceEvent(
+            long leaveGrantId,
+            Long leaveRequestId,
+            Type eventType,
+            BigDecimal deltaDays,
+            String reason,
+            long actorEmployeeId,
+            String eventKey
+    ) {
+        this.leaveGrantId = leaveGrantId;
+        this.leaveRequestId = leaveRequestId;
+        this.eventType = eventType;
+        this.deltaDays = deltaDays;
+        this.reason = reason;
+        this.actorEmployeeId = actorEmployeeId;
+        this.eventKey = eventKey;
     }
 }

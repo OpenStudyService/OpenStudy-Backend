@@ -1,5 +1,6 @@
 package com.openstudy.modules.workforce.repository;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 
@@ -8,8 +9,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import com.openstudy.modules.workforce.entity.ShiftEvent;
 
 public interface ShiftEventRepository extends JpaRepository<ShiftEvent, Long> {
+
     List<ShiftEvent> findByShiftIdInAndEventTypeOrderByIdAsc(Collection<Long> shiftIds, ShiftEvent.Type eventType);
 
     /** Whether the shift changed after this instant: a swap approval refuses a shift changed since the request. */
-    boolean existsByShiftIdAndCreatedAtAfter(long shiftId, java.time.Instant since);
+    boolean existsByShiftIdAndCreatedAtAfter(long shiftId, Instant since);
 }

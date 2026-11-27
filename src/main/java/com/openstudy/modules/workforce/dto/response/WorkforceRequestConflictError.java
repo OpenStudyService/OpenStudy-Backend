@@ -12,7 +12,22 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * use are left out.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record WorkforceRequestConflictError(String code, String message, String requestId, Map<String, String> fieldErrors,
-        Long latestVersion, String reloadUrl, List<ShiftConflict> conflicts, List<AttendanceConflict> attendanceConflicts,
-        List<String> breakIds, BigDecimal requiredDays, BigDecimal availableDays, List<String> overlappingRequestIds,
-        String pendingCorrectionId, String pendingSwapId, String shiftId, Long approvedVersion) {}
+public record WorkforceRequestConflictError(
+        String code,
+        String message,
+        String requestId,
+        Map<String, String> fieldErrors,
+        Long latestVersion,
+        String reloadUrl,
+        List<ShiftConflict> conflicts,
+        List<AttendanceConflict> attendanceConflicts,
+        List<String> breakIds,
+        BigDecimal requiredDays,
+        BigDecimal availableDays,
+        List<String> overlappingRequestIds,
+        String pendingCorrectionId,
+        String pendingSwapId,
+        String shiftId,
+        Long approvedVersion
+) {
+}

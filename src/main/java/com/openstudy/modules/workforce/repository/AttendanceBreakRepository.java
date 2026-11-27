@@ -12,6 +12,7 @@ import org.springframework.data.repository.query.Param;
 import com.openstudy.modules.workforce.entity.AttendanceBreak;
 
 public interface AttendanceBreakRepository extends JpaRepository<AttendanceBreak, Long> {
+
     List<AttendanceBreak> findByAttendanceIdInOrderByStartedAtAscIdAsc(Collection<Long> attendanceIds);
 
     /**
@@ -20,5 +21,5 @@ public interface AttendanceBreakRepository extends JpaRepository<AttendanceBreak
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT b FROM AttendanceBreak b WHERE b.attendanceId = :attendance ORDER BY b.startedAt, b.id")
-    List<AttendanceBreak> locked(@Param("attendance") long attendanceId);
+    List<AttendanceBreak> findLocked(@Param("attendance") long attendanceId);
 }

@@ -24,27 +24,50 @@ import org.hibernate.type.SqlTypes;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ShiftEvent {
-    public enum Type { CREATED, CHANGED, CANCELLED, SWAPPED }
 
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    public enum Type {
+
+        CREATED,
+        CHANGED,
+        CANCELLED,
+        SWAPPED
+    }
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
     @Column(name = "shift_id", nullable = false, updatable = false)
     private long shiftId;
+
     @Column(name = "actor_employee_id", nullable = false, updatable = false)
     private long actorEmployeeId;
-    @Enumerated(EnumType.STRING) @Column(name = "event_type", nullable = false, updatable = false)
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "event_type", nullable = false, updatable = false)
     private Type eventType;
-    @JdbcTypeCode(SqlTypes.JSON) @Column(name = "before_json", updatable = false)
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "before_json", updatable = false)
     private String beforeJson;
-    @JdbcTypeCode(SqlTypes.JSON) @Column(name = "after_json", updatable = false)
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "after_json", updatable = false)
     private String afterJson;
+
     @Column(length = 500, updatable = false)
     private String reason;
-    @Generated(event = EventType.INSERT) @Column(name = "created_at", insertable = false, updatable = false)
+
+    @Generated(event = EventType.INSERT)
+    @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 
     public ShiftEvent(long shiftId, long actor, Type eventType, String beforeJson, String afterJson, String reason) {
-        this.shiftId = shiftId; this.actorEmployeeId = actor; this.eventType = eventType;
-        this.beforeJson = beforeJson; this.afterJson = afterJson; this.reason = reason;
+        this.shiftId = shiftId;
+        this.actorEmployeeId = actor;
+        this.eventType = eventType;
+        this.beforeJson = beforeJson;
+        this.afterJson = afterJson;
+        this.reason = reason;
     }
 }

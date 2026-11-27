@@ -15,21 +15,29 @@ import com.openstudy.modules.workforce.entity.Shift;
 import com.openstudy.modules.workforce.entity.ShiftStatus;
 
 public interface ShiftRepository extends JpaRepository<Shift, Long> {
+
     /**
      * Home card exception (2026-11-05 user decision, M9-D08): scheduled shifts at these branches that overlap [start, end),
      * of employees who are active members of the shift's branch, the viewer's own left out. Native for the join with the
      * membership table of the authorization module.
      */
-    @Query(value = "SELECT s.id FROM shifts s JOIN branch_memberships m ON m.employee_id = s.employee_id "
-            + "AND m.branch_id = s.branch_id AND m.status = 'ACTIVE' WHERE s.branch_id IN (:branches) AND s.status = 'SCHEDULED' "
-            + "AND s.starts_at < :end AND s.ends_at > :start AND s.employee_id <> :viewer", nativeQuery = true)
-    List<Number> colleagueShiftIds(@Param("branches") Collection<Long> branches, @Param("viewer") long viewer,
-            @Param("start") Instant start, @Param("end") Instant end);
+    @Query(value = """
+            SELECT s.id FROM shifts s JOIN branch_memberships m ON m.employee_id = s.employee_id \
+            AND m.branch_id = s.branch_id AND m.status = 'ACTIVE' WHERE s.branch_id IN (:branches) \
+            AND s.status = 'SCHEDULED' \
+            AND s.starts_at < :end AND s.ends_at > :start AND s.employee_id <> :viewer
+            """, nativeQuery = true)
+    List<Number> findColleagueShiftIds(
+            @Param("branches") Collection<Long> branches,
+            @Param("viewer") long viewer,
+            @Param("start") Instant start,
+            @Param("end") Instant end
+    );
 
     /** SELECT ... FOR UPDATE, for a change or a cancellation, after the employee row. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT s FROM Shift s WHERE s.id = :id")
-    Optional<Shift> locked(@Param("id") long id);
+    Optional<Shift> findLocked(@Param("id") long id);
 
     /**
      * The employee's shifts in this status at every branch that overlap [start, end), for a caller holding the employee
@@ -37,10 +45,17 @@ public interface ShiftRepository extends JpaRepository<Shift, Long> {
      * could miss the shift the employee lock waited for (workforce-api.md "트랜잭션 경계와 동시성").
      */
     @Lock(LockModeType.PESSIMISTIC_READ)
-    @Query("SELECT s FROM Shift s WHERE s.employeeId = :employee AND s.status = :status AND s.startsAt < :end AND s.endsAt > :start "
-            + "ORDER BY s.startsAt, s.id")
-    List<Shift> overlapping(@Param("employee") long employee, @Param("status") ShiftStatus status, @Param("start") Instant start,
-            @Param("end") Instant end);
+    @Query("""
+            SELECT s FROM Shift s WHERE s.employeeId = :employee AND s.status = :status AND s.startsAt < :end \
+            AND s.endsAt > :start \
+            ORDER BY s.startsAt, s.id
+            """)
+    List<Shift> findOverlapping(
+            @Param("employee") long employee,
+            @Param("status") ShiftStatus status,
+            @Param("start") Instant start,
+            @Param("end") Instant end
+    );
 
     /**
      * The shift a clock-in at this instant belongs to: the employee's, at the clock-in branch, with startsAt ≤ at &lt; endsAt
@@ -48,10 +63,16 @@ public interface ShiftRepository extends JpaRepository<Shift, Long> {
      * being committed is waited for, and a clock-in never links to a shift that has just been cancelled.
      */
     @Lock(LockModeType.PESSIMISTIC_READ)
-    @Query("SELECT s FROM Shift s WHERE s.employeeId = :employee AND s.branchId = :branch AND s.status = :status "
-            + "AND s.startsAt <= :at AND s.endsAt > :at ORDER BY s.startsAt, s.id")
-    List<Shift> covering(@Param("employee") long employee, @Param("branch") long branch, @Param("status") ShiftStatus status,
-            @Param("at") Instant at);
+    @Query("""
+            SELECT s FROM Shift s WHERE s.employeeId = :employee AND s.branchId = :branch AND s.status = :status \
+            AND s.startsAt <= :at AND s.endsAt > :at ORDER BY s.startsAt, s.id
+            """)
+    List<Shift> findCovering(
+            @Param("employee") long employee,
+            @Param("branch") long branch,
+            @Param("status") ShiftStatus status,
+            @Param("at") Instant at
+    );
 
     /**
      * JPA-01 native exception: the employee module owns employees, and this is a step of the shift lock order, not a
@@ -66,7 +87,9 @@ public interface ShiftRepository extends JpaRepository<Shift, Long> {
      * employee row lock. A shift's employee is an active account with an active membership at the shift's branch
      * (M8-D01, fk_shifts_1); an OWNER without a membership row is not one.
      */
-    @Query(value = "SELECT e.id FROM employees e JOIN branch_memberships m ON m.employee_id=e.id "
-            + "WHERE e.id=:employee AND e.status='ACTIVE' AND m.status='ACTIVE' AND m.branch_id=:branch FOR SHARE", nativeQuery = true)
-    List<Object> activeMember(@Param("employee") long employeeId, @Param("branch") long branchId);
+    @Query(value = """
+            SELECT e.id FROM employees e JOIN branch_memberships m ON m.employee_id=e.id \
+            WHERE e.id=:employee AND e.status='ACTIVE' AND m.status='ACTIVE' AND m.branch_id=:branch FOR SHARE
+            """, nativeQuery = true)
+    List<Object> findActiveMember(@Param("employee") long employeeId, @Param("branch") long branchId);
 }
