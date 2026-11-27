@@ -21,24 +21,34 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class RoomUsage {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
     @Column(name = "reservation_id", nullable = false, updatable = false)
     private long reservationId;
+
     @Column(name = "started_at", nullable = false, updatable = false)
     private Instant startedAt;
+
     @Column(name = "ended_at")
     private Instant endedAt;
+
     @Column(name = "started_by", updatable = false)
     private Long startedBy;
+
     @Column(name = "ended_by")
     private Long endedBy;
 
     public RoomUsage(long reservationId, Instant startedAt, long actor) {
-        this.reservationId = reservationId; this.startedAt = startedAt; this.startedBy = actor;
+        this.reservationId = reservationId;
+        this.startedAt = startedAt;
+        this.startedBy = actor;
     }
 
     public void end(Instant at, long actor) {
-        endedAt = at; endedBy = actor;
+        endedAt = at;
+        endedBy = actor;
     }
 }
