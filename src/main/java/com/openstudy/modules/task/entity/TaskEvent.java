@@ -22,23 +22,37 @@ import org.hibernate.type.SqlTypes;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class TaskEvent {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
     @Column(name = "task_id", nullable = false, updatable = false)
     private long taskId;
+
     @Column(name = "actor_employee_id", updatable = false)
     private Long actorEmployeeId;
+
     @Column(name = "event_type", nullable = false, length = 50, updatable = false)
     private String eventType;
-    @JdbcTypeCode(SqlTypes.JSON) @Column(name = "before_json", updatable = false)
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "before_json", updatable = false)
     private String beforeJson;
-    @JdbcTypeCode(SqlTypes.JSON) @Column(name = "after_json", updatable = false)
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "after_json", updatable = false)
     private String afterJson;
-    @Generated(event = EventType.INSERT) @Column(name = "created_at", insertable = false, updatable = false)
+
+    @Generated(event = EventType.INSERT)
+    @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 
     public TaskEvent(long taskId, long actor, String eventType, String beforeJson, String afterJson) {
-        this.taskId = taskId; this.actorEmployeeId = actor; this.eventType = eventType;
-        this.beforeJson = beforeJson; this.afterJson = afterJson;
+        this.taskId = taskId;
+        this.actorEmployeeId = actor;
+        this.eventType = eventType;
+        this.beforeJson = beforeJson;
+        this.afterJson = afterJson;
     }
 }
