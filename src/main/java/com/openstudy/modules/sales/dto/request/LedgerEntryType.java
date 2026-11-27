@@ -8,9 +8,15 @@ public enum LedgerEntryType {
     REFUND("환불");
 
     public final String label;
-    LedgerEntryType(String label) { this.label = label; }
+
+    LedgerEntryType(String label) {
+        this.label = label;
+    }
 
     public static LedgerEntryType fromLabel(String value) {
-        return Arrays.stream(values()).filter(type -> type.label.equals(value)).findFirst().orElse(null);
+        return Arrays.stream(values())
+                .filter(type -> type.label.equals(value))
+                .findFirst()
+                .orElse(null);
     }
 }

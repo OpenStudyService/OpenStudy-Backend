@@ -12,8 +12,8 @@ import jakarta.persistence.Query;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
-import com.openstudy.modules.sales.dto.request.LedgerEntryType;
 import com.openstudy.modules.sales.dto.request.AdvancedFilter;
+import com.openstudy.modules.sales.dto.request.LedgerEntryType;
 import com.openstudy.modules.sales.dto.request.RefundBasis;
 import com.openstudy.modules.sales.dto.request.SalesPurpose;
 
@@ -37,6 +37,7 @@ import com.openstudy.modules.sales.dto.request.SalesPurpose;
 @Repository
 @RequiredArgsConstructor
 public class SalesSourceRepository {
+
     /** Read as text so no driver or JVM time zone can shift a DATETIME(6) that is stored in UTC. */
     private static final String UTC_TEXT = "'%Y-%m-%dT%H:%i:%s.%fZ'";
     private static final String PASS_SNAPSHOT = " LEFT JOIN passes x ON x.purchase_payment_id = p.id";
@@ -47,9 +48,17 @@ public class SalesSourceRepository {
      */
     private static final String SEOUL_DAY = "DATE_FORMAT(DATE_ADD(%s, INTERVAL 9 HOUR), '%%Y-%%m-%%d')";
     /** The snapshot key of a pass row, aliased so GROUP BY uses the binary expressions and not the ci columns. */
-    private static final String SNAPSHOT_KEY = " x.product_id AS g_product, x.snapshot_product_name" + BINARY + " AS g_name,"
+    private static final String SNAPSHOT_KEY = " x.product_id AS g_product,"
+            + " x.snapshot_product_name" + BINARY + " AS g_name,"
             + " x.snapshot_category_code" + BINARY + " AS g_code, x.snapshot_category_name" + BINARY + " AS g_category,"
             + " x.kind AS g_kind";
+    private static final String TOTAL_COLUMNS = "SELECT p.branch_id, p.purpose, COUNT(*), ";
+    private static final String TOTAL_GROUP = " GROUP BY p.branch_id, p.purpose";
+    private static final String DAY_GROUP = ", g_day";
+    private static final String LEDGER_COLUMNS = " p.id AS payment_id, p.branch_id, p.purpose, p.product_id,"
+            + " p.product_name_snapshot, p.issued_pass_quantity, p.approved_at, x.snapshot_category_code,"
+            + " x.snapshot_category_name,";
+    private static final int APPROVAL_KIND = 0;
 
     private final EntityManager entityManager;
 
@@ -57,29 +66,62 @@ public class SalesSourceRepository {
      * The applied condition of one aggregation. branchIds are already authorized and non-empty. productId and categoryCode
      * are only ever set for pass metrics; the revenue reads never see them (the resolver refuses them there).
      */
-    public record SourceFilter(List<Long> branchIds, Instant from, Instant to, RefundBasis refundBasis, SalesPurpose purpose,
-            Long productId, String categoryCode, AdvancedFilter advanced) {
+    public record SourceFilter(
+            List<Long> branchIds,
+            Instant from,
+            Instant to,
+            RefundBasis refundBasis,
+            SalesPurpose purpose,
+            Long productId,
+            String categoryCode,
+            AdvancedFilter advanced
+    ) {
+
         public SourceFilter {
             branchIds = List.copyOf(branchIds);
             advanced = advanced == null ? AdvancedFilter.NONE : advanced;
         }
 
-        public SourceFilter(List<Long> branchIds, Instant from, Instant to, RefundBasis refundBasis, SalesPurpose purpose,
-                Long productId, String categoryCode) {
+        public SourceFilter(
+                List<Long> branchIds,
+                Instant from,
+                Instant to,
+                RefundBasis refundBasis,
+                SalesPurpose purpose,
+                Long productId,
+                String categoryCode
+        ) {
             this(branchIds, from, to, refundBasis, purpose, productId, categoryCode, AdvancedFilter.NONE);
         }
     }
 
     /** One (branch, purpose, item type) group: how many source rows and the sum of their amount_krw. */
-    public record SourceTotal(long branchId, SalesPurpose purpose, LedgerEntryType type, long count, long amountKrw) {}
+    public record SourceTotal(long branchId, SalesPurpose purpose, LedgerEntryType type, long count, long amountKrw) {
+    }
 
     /** One ledger item. amountKrw and passQuantity are the stored, unsigned values; the sign is the caller's. */
-    public record LedgerRow(LedgerEntryType type, long paymentId, Long refundId, long branchId, Long processingBranchId,
-            SalesPurpose purpose, Long productId, String productName, String categoryCode, String categoryName,
-            int passQuantity, long amountKrw, Instant approvedAt, Instant refundedAt, Instant basisAt) {}
+    public record LedgerRow(
+            LedgerEntryType type,
+            long paymentId,
+            Long refundId,
+            long branchId,
+            Long processingBranchId,
+            SalesPurpose purpose,
+            Long productId,
+            String productName,
+            String categoryCode,
+            String categoryName,
+            int passQuantity,
+            long amountKrw,
+            Instant approvedAt,
+            Instant refundedAt,
+            Instant basisAt
+    ) {
+    }
 
     /** A {@link SourceTotal} of one Asia/Seoul day: approvals by approved_at, refunds by the refund basis time. */
-    public record DayTotal(LocalDate day, SourceTotal total) {}
+    public record DayTotal(LocalDate day, SourceTotal total) {
+    }
 
     /**
      * One (sale-time snapshot, item type[, day]) group of pass items. For approvals count is the approved PASS payments,
@@ -87,34 +129,33 @@ public class SalesSourceRepository {
      * refund rows, quantity the sum of the original payment's issued_pass_quantity and issued 0. day is null unless
      * grouped by day.
      */
-    public record PassTotal(LocalDate day, LedgerEntryType type, long productId, String productName, String categoryCode,
-            String categoryName, String kind, long count, long quantity, long issued) {}
+    public record PassTotal(
+            LocalDate day,
+            LedgerEntryType type,
+            long productId,
+            String productName,
+            String categoryCode,
+            String categoryName,
+            String kind,
+            long count,
+            long quantity,
+            long issued
+    ) {
+    }
 
-    private record Fragment(String from, String where, List<Object> binds) {}
+    private record Fragment(String from, String where, List<Object> binds) {
+    }
 
     public List<SourceTotal> totals(SourceFilter filter) {
-        return grouped(filter, false).stream().map(DayTotal::total).toList();
+        return findGroupedTotals(filter, false)
+                .stream()
+                .map(DayTotal::total)
+                .toList();
     }
 
     /** The same groups as {@link #totals} split by Asia/Seoul day, for a trend. */
-    public List<DayTotal> dayTotals(SourceFilter filter) { return grouped(filter, true); }
-
-    @SuppressWarnings("unchecked")
-    private List<DayTotal> grouped(SourceFilter filter, boolean byDay) {
-        var result = new ArrayList<DayTotal>();
-        var approvals = approvals(filter);
-        Query approved = bind(entityManager.createNativeQuery("SELECT p.branch_id, p.purpose, COUNT(*), "
-                + "COALESCE(SUM(p.amount_krw), 0)" + day(byDay, "p.approved_at") + approvals.from() + approvals.where()
-                + " GROUP BY p.branch_id, p.purpose" + (byDay ? ", g_day" : "")), approvals.binds());
-        for (Object[] row : (List<Object[]>) approved.getResultList())
-            result.add(new DayTotal(byDay ? LocalDate.parse(row[4].toString()) : null, total(row, LedgerEntryType.APPROVAL)));
-        var refunds = refunds(filter);
-        Query refunded = bind(entityManager.createNativeQuery("SELECT p.branch_id, p.purpose, COUNT(*), "
-                + "COALESCE(SUM(r.amount_krw), 0)" + day(byDay, refundBasis(filter)) + refunds.from() + refunds.where()
-                + " GROUP BY p.branch_id, p.purpose" + (byDay ? ", g_day" : "")), refunds.binds());
-        for (Object[] row : (List<Object[]>) refunded.getResultList())
-            result.add(new DayTotal(byDay ? LocalDate.parse(row[4].toString()) : null, total(row, LedgerEntryType.REFUND)));
-        return result;
+    public List<DayTotal> dayTotals(SourceFilter filter) {
+        return findGroupedTotals(filter, true);
     }
 
     /**
@@ -124,48 +165,29 @@ public class SalesSourceRepository {
      */
     @SuppressWarnings("unchecked")
     public List<PassTotal> passTotals(SourceFilter filter, boolean byDay) {
-        var result = new ArrayList<PassTotal>();
-        String group = " GROUP BY g_product, g_name, g_code, g_category, g_kind" + (byDay ? ", g_day" : "");
-        var approvals = passes(approvals(filter), filter);
-        Query approved = bind(entityManager.createNativeQuery("SELECT" + SNAPSHOT_KEY + ", COUNT(*),"
-                + " COALESCE(SUM(p.issued_pass_quantity), 0), COUNT(x.id)" + day(byDay, "p.approved_at")
-                + approvals.from() + approvals.where() + group), approvals.binds());
-        for (Object[] row : (List<Object[]>) approved.getResultList()) result.add(passTotal(row, LedgerEntryType.APPROVAL, byDay));
-        var refunds = passes(refunds(filter), filter);
-        Query refunded = bind(entityManager.createNativeQuery("SELECT" + SNAPSHOT_KEY + ", COUNT(*),"
-                + " COALESCE(SUM(p.issued_pass_quantity), 0), 0" + day(byDay, refundBasis(filter))
-                + refunds.from() + refunds.where() + group), refunds.binds());
-        for (Object[] row : (List<Object[]>) refunded.getResultList()) result.add(passTotal(row, LedgerEntryType.REFUND, byDay));
+        List<PassTotal> result = new ArrayList<>();
+        String group = " GROUP BY g_product, g_name, g_code, g_category, g_kind" + (byDay ? DAY_GROUP : "");
+        Fragment approvals = toPassFragment(toApprovalFragment(filter), filter);
+        String approvedSql = "SELECT" + SNAPSHOT_KEY + ", COUNT(*),"
+                + " COALESCE(SUM(p.issued_pass_quantity), 0), COUNT(x.id)" + toDayColumn(byDay, "p.approved_at")
+                + approvals.from() + approvals.where() + group;
+        Query approved = bindAll(entityManager.createNativeQuery(approvedSql), approvals.binds());
+
+        for (Object[] row : (List<Object[]>) approved.getResultList()) {
+            result.add(toPassTotal(row, LedgerEntryType.APPROVAL, byDay));
+        }
+
+        Fragment refunds = toPassFragment(toRefundFragment(filter), filter);
+        String refundedSql = "SELECT" + SNAPSHOT_KEY + ", COUNT(*),"
+                + " COALESCE(SUM(p.issued_pass_quantity), 0), 0" + toDayColumn(byDay, toRefundBasisColumn(filter))
+                + refunds.from() + refunds.where() + group;
+        Query refunded = bindAll(entityManager.createNativeQuery(refundedSql), refunds.binds());
+
+        for (Object[] row : (List<Object[]>) refunded.getResultList()) {
+            result.add(toPassTotal(row, LedgerEntryType.REFUND, byDay));
+        }
+
         return result;
-    }
-
-    private static String day(boolean byDay, String column) {
-        return byDay ? ", " + SEOUL_DAY.formatted(column) + " AS g_day" : "";
-    }
-
-    /** A pass fragment: the snapshot join, purpose PASS and the product filters, after the shared WHERE. */
-    private static Fragment passes(Fragment base, SourceFilter filter) {
-        var binds = new ArrayList<Object>(base.binds());
-        var where = new StringBuilder(base.where()).append(" AND p.purpose = 'PASS'");
-        if (filter.productId() != null) {
-            where.append(" AND x.product_id = ?");
-            binds.add(filter.productId());
-        }
-        if (filter.categoryCode() != null) {
-            where.append(" AND x.snapshot_category_code").append(BINARY).append(" = ?");
-            binds.add(filter.categoryCode());
-        }
-        return new Fragment(base.from() + PASS_SNAPSHOT, where.toString(), binds);
-    }
-
-    /**
-     * Every approved PASS payment issues its pass in the same transaction (PaymentService), so a missing snapshot is a
-     * broken invariant: failing beats ranking a row without a product.
-     */
-    private static PassTotal passTotal(Object[] row, LedgerEntryType type, boolean byDay) {
-        if (row[0] == null) throw new IllegalStateException("An approved pass payment has no issued pass");
-        return new PassTotal(byDay ? LocalDate.parse(row[8].toString()) : null, type, number(row[0]), (String) row[1],
-                (String) row[2], (String) row[3], row[4].toString(), number(row[5]), exact(row[6]), number(row[7]));
     }
 
     /**
@@ -173,77 +195,195 @@ public class SalesSourceRepository {
      * every key in the requested direction. entryType null means both kinds.
      */
     @SuppressWarnings("unchecked")
-    public List<LedgerRow> ledger(SourceFilter filter, LedgerEntryType entryType, boolean descending, long offset, int limit) {
-        var parts = new ArrayList<String>();
-        var binds = new ArrayList<Object>();
-        String columns = " p.id AS payment_id, p.branch_id, p.purpose, p.product_id, p.product_name_snapshot,"
-                + " p.issued_pass_quantity, p.approved_at, x.snapshot_category_code, x.snapshot_category_name,";
+    public List<LedgerRow> ledger(
+            SourceFilter filter,
+            LedgerEntryType entryType,
+            boolean descending,
+            long offset,
+            int limit
+    ) {
+        List<String> parts = new ArrayList<>();
+        List<Object> binds = new ArrayList<>();
+
         if (entryType != LedgerEntryType.REFUND) {
-            var approvals = approvals(filter);
-            parts.add("SELECT 0 AS kind, p.id AS source_id, NULL AS refund_id, NULL AS processing_branch_id," + columns
+            Fragment approvals = toApprovalFragment(filter);
+            parts.add("SELECT 0 AS kind, p.id AS source_id, NULL AS refund_id, NULL AS processing_branch_id"
+                    + "," + LEDGER_COLUMNS
                     + " p.amount_krw AS amount_krw, NULL AS refunded_at, p.approved_at AS basis_at"
                     + approvals.from() + PASS_SNAPSHOT + approvals.where());
             binds.addAll(approvals.binds());
         }
+
         if (entryType != LedgerEntryType.APPROVAL) {
-            var refunds = refunds(filter);
-            parts.add("SELECT 1 AS kind, r.id AS source_id, r.id AS refund_id, r.processing_branch_id," + columns
-                    + " r.amount_krw AS amount_krw, r.refunded_at AS refunded_at, " + refundBasis(filter) + " AS basis_at"
-                    + refunds.from() + PASS_SNAPSHOT + refunds.where());
+            Fragment refunds = toRefundFragment(filter);
+            parts.add("SELECT 1 AS kind, r.id AS source_id, r.id AS refund_id, r.processing_branch_id"
+                    + "," + LEDGER_COLUMNS
+                    + " r.amount_krw AS amount_krw, r.refunded_at AS refunded_at, " + toRefundBasisColumn(filter)
+                    + " AS basis_at" + refunds.from() + PASS_SNAPSHOT + refunds.where());
             binds.addAll(refunds.binds());
         }
+
         String order = descending ? " DESC" : " ASC";
-        Query query = entityManager.createNativeQuery("SELECT e.kind, e.payment_id, e.refund_id, e.branch_id,"
+        String sql = "SELECT e.kind, e.payment_id, e.refund_id, e.branch_id,"
                 + " e.processing_branch_id, e.purpose, e.product_id, e.product_name_snapshot, e.snapshot_category_code,"
-                + " e.snapshot_category_name, e.issued_pass_quantity, e.amount_krw, DATE_FORMAT(e.approved_at, " + UTC_TEXT + "),"
+                + " e.snapshot_category_name, e.issued_pass_quantity, e.amount_krw,"
+                + " DATE_FORMAT(e.approved_at, " + UTC_TEXT + "),"
                 + " DATE_FORMAT(e.refunded_at, " + UTC_TEXT + "), DATE_FORMAT(e.basis_at, " + UTC_TEXT + ") FROM ("
                 + String.join(" UNION ALL ", parts) + ") e ORDER BY e.basis_at" + order + ", e.kind" + order
-                + ", e.source_id" + order + " LIMIT ? OFFSET ?");
+                + ", e.source_id" + order + " LIMIT ? OFFSET ?";
+        Query query = entityManager.createNativeQuery(sql);
         binds.add(limit);
         binds.add(offset);
-        var rows = new ArrayList<LedgerRow>();
-        for (Object[] row : (List<Object[]>) bind(query, binds).getResultList()) {
-            var purpose = purpose(row[5]);
-            boolean pass = purpose == SalesPurpose.PASS;
-            rows.add(new LedgerRow(((Number) row[0]).intValue() == 0 ? LedgerEntryType.APPROVAL : LedgerEntryType.REFUND,
-                    number(row[1]), row[2] == null ? null : number(row[2]), number(row[3]),
-                    row[4] == null ? null : number(row[4]), purpose, pass && row[6] != null ? number(row[6]) : null,
-                    pass ? (String) row[7] : null, pass ? (String) row[8] : null, pass ? (String) row[9] : null,
-                    pass ? ((Number) row[10]).intValue() : 0, exact(row[11]), instant(row[12]), instant(row[13]),
-                    instant(row[14])));
+        List<LedgerRow> rows = new ArrayList<>();
+
+        for (Object[] row : (List<Object[]>) bindAll(query, binds).getResultList()) {
+            rows.add(toLedgerRow(row));
         }
+
         return rows;
     }
 
-    private static Fragment approvals(SourceFilter filter) {
-        var binds = new ArrayList<Object>(filter.branchIds());
-        var where = new StringBuilder(" WHERE p.branch_id IN (").append(placeholders(filter.branchIds().size()))
+    @SuppressWarnings("unchecked")
+    private List<DayTotal> findGroupedTotals(SourceFilter filter, boolean byDay) {
+        List<DayTotal> result = new ArrayList<>();
+        Fragment approvals = toApprovalFragment(filter);
+        String approvedSql = TOTAL_COLUMNS
+                + "COALESCE(SUM(p.amount_krw), 0)" + toDayColumn(byDay, "p.approved_at") + approvals.from()
+                + approvals.where() + TOTAL_GROUP + (byDay ? DAY_GROUP : "");
+        Query approved = bindAll(entityManager.createNativeQuery(approvedSql), approvals.binds());
+
+        for (Object[] row : (List<Object[]>) approved.getResultList()) {
+            LocalDate day = byDay ? LocalDate.parse(row[4].toString()) : null;
+            result.add(new DayTotal(day, toSourceTotal(row, LedgerEntryType.APPROVAL)));
+        }
+
+        Fragment refunds = toRefundFragment(filter);
+        String refundedSql = TOTAL_COLUMNS
+                + "COALESCE(SUM(r.amount_krw), 0)" + toDayColumn(byDay, toRefundBasisColumn(filter)) + refunds.from()
+                + refunds.where() + TOTAL_GROUP + (byDay ? DAY_GROUP : "");
+        Query refunded = bindAll(entityManager.createNativeQuery(refundedSql), refunds.binds());
+
+        for (Object[] row : (List<Object[]>) refunded.getResultList()) {
+            LocalDate day = byDay ? LocalDate.parse(row[4].toString()) : null;
+            result.add(new DayTotal(day, toSourceTotal(row, LedgerEntryType.REFUND)));
+        }
+
+        return result;
+    }
+
+    private static String toDayColumn(boolean byDay, String column) {
+        return byDay ? ", " + SEOUL_DAY.formatted(column) + " AS g_day" : "";
+    }
+
+    /** A pass fragment: the snapshot join, purpose PASS and the product filters, after the shared WHERE. */
+    private static Fragment toPassFragment(Fragment base, SourceFilter filter) {
+        List<Object> binds = new ArrayList<>(base.binds());
+        StringBuilder where = new StringBuilder(base.where()).append(" AND p.purpose = 'PASS'");
+
+        if (filter.productId() != null) {
+            where.append(" AND x.product_id = ?");
+            binds.add(filter.productId());
+        }
+
+        if (filter.categoryCode() != null) {
+            where.append(" AND x.snapshot_category_code")
+                    .append(BINARY)
+                    .append(" = ?");
+            binds.add(filter.categoryCode());
+        }
+
+        return new Fragment(base.from() + PASS_SNAPSHOT, where.toString(), binds);
+    }
+
+    /**
+     * Every approved PASS payment issues its pass in the same transaction (PaymentService), so a missing snapshot is a
+     * broken invariant: failing beats ranking a row without a product.
+     */
+    private static PassTotal toPassTotal(Object[] row, LedgerEntryType type, boolean byDay) {
+        if (row[0] == null) {
+            throw new IllegalStateException("An approved pass payment has no issued pass");
+        }
+
+        return new PassTotal(
+                byDay ? LocalDate.parse(row[8].toString()) : null,
+                type,
+                toLong(row[0]),
+                (String) row[1],
+                (String) row[2],
+                (String) row[3],
+                row[4].toString(),
+                toLong(row[5]),
+                toExactLong(row[6]),
+                toLong(row[7])
+        );
+    }
+
+    private static LedgerRow toLedgerRow(Object[] row) {
+        SalesPurpose purpose = toPurpose(row[5]);
+        boolean pass = purpose == SalesPurpose.PASS;
+        LedgerEntryType type = ((Number) row[0]).intValue() == APPROVAL_KIND
+                ? LedgerEntryType.APPROVAL
+                : LedgerEntryType.REFUND;
+
+        return new LedgerRow(
+                type,
+                toLong(row[1]),
+                row[2] == null ? null : toLong(row[2]),
+                toLong(row[3]),
+                row[4] == null ? null : toLong(row[4]),
+                purpose,
+                pass && row[6] != null ? toLong(row[6]) : null,
+                pass ? (String) row[7] : null,
+                pass ? (String) row[8] : null,
+                pass ? (String) row[9] : null,
+                pass ? ((Number) row[10]).intValue() : 0,
+                toExactLong(row[11]),
+                toInstant(row[12]),
+                toInstant(row[13]),
+                toInstant(row[14])
+        );
+    }
+
+    private static Fragment toApprovalFragment(SourceFilter filter) {
+        List<Object> binds = new ArrayList<>(filter.branchIds());
+        StringBuilder where = new StringBuilder(" WHERE p.branch_id IN (")
+                .append(placeholders(filter.branchIds().size()))
                 .append(") AND p.approved_at IS NOT NULL AND p.approved_at >= ? AND p.approved_at < ?");
         binds.add(filter.from());
         binds.add(filter.to());
-        purpose(where, binds, filter);
-        advanced(where, binds, filter, "p.created_by", false);
+        appendPurpose(where, binds, filter);
+        appendAdvanced(where, binds, filter, "p.created_by", false);
+
         return new Fragment(" FROM payments p", where.toString(), binds);
     }
 
-    private static Fragment refunds(SourceFilter filter) {
-        var binds = new ArrayList<Object>(filter.branchIds());
-        String basis = refundBasis(filter);
-        var where = new StringBuilder(" WHERE p.branch_id IN (").append(placeholders(filter.branchIds().size()))
-                .append(") AND ").append(basis).append(" >= ? AND ").append(basis).append(" < ?");
+    private static Fragment toRefundFragment(SourceFilter filter) {
+        List<Object> binds = new ArrayList<>(filter.branchIds());
+        String basis = toRefundBasisColumn(filter);
+        StringBuilder where = new StringBuilder(" WHERE p.branch_id IN (")
+                .append(placeholders(filter.branchIds().size()))
+                .append(") AND ")
+                .append(basis)
+                .append(" >= ? AND ")
+                .append(basis)
+                .append(" < ?");
         binds.add(filter.from());
         binds.add(filter.to());
-        purpose(where, binds, filter);
-        advanced(where, binds, filter, "r.processed_by", true);
+        appendPurpose(where, binds, filter);
+        appendAdvanced(where, binds, filter, "r.processed_by", true);
+
         return new Fragment(" FROM refunds r JOIN payments p ON p.id = r.payment_id", where.toString(), binds);
     }
 
-    private static String refundBasis(SourceFilter filter) {
+    private static String toRefundBasisColumn(SourceFilter filter) {
         return filter.refundBasis() == RefundBasis.PAYMENT_DATE ? "p.approved_at" : "r.refunded_at";
     }
 
-    private static void purpose(StringBuilder where, List<Object> binds, SourceFilter filter) {
-        if (filter.purpose() == null) return;
+    private static void appendPurpose(StringBuilder where, List<Object> binds, SourceFilter filter) {
+        if (filter.purpose() == null) {
+            return;
+        }
+
         where.append(" AND p.purpose = ?");
         binds.add(filter.purpose().name());
     }
@@ -253,46 +393,80 @@ public class SalesSourceRepository {
      * the operator the payment's creator or the refund's processor, the processing branch only narrows refunds, and a
      * product kind or category matches the sale-time snapshot of the pass the payment issued.
      */
-    private static void advanced(StringBuilder where, List<Object> binds, SourceFilter filter, String operator, boolean refund) {
-        var advanced = filter.advanced();
-        in(where, binds, "p.method", advanced.methods());
-        in(where, binds, operator, advanced.operatorIds());
-        if (refund) in(where, binds, "r.processing_branch_id", advanced.processingBranchIds());
+    private static void appendAdvanced(
+            StringBuilder where,
+            List<Object> binds,
+            SourceFilter filter,
+            String operator,
+            boolean refund
+    ) {
+        AdvancedFilter advanced = filter.advanced();
+        appendIn(where, binds, "p.method", advanced.methods());
+        appendIn(where, binds, operator, advanced.operatorIds());
+
+        if (refund) {
+            appendIn(where, binds, "r.processing_branch_id", advanced.processingBranchIds());
+        }
+
         if (!advanced.productKinds().isEmpty()) {
             where.append(" AND EXISTS (SELECT 1 FROM passes k WHERE k.purchase_payment_id = p.id AND k.kind IN (")
-                    .append(placeholders(advanced.productKinds().size())).append("))");
+                    .append(placeholders(advanced.productKinds().size()))
+                    .append("))");
             binds.addAll(advanced.productKinds());
         }
+
         if (filter.categoryCode() != null) {
-            where.append(" AND EXISTS (SELECT 1 FROM passes k WHERE k.purchase_payment_id = p.id AND k.snapshot_category_code")
-                    .append(BINARY).append(" = ?)");
+            where.append(" AND EXISTS (SELECT 1 FROM passes k WHERE k.purchase_payment_id = p.id")
+                    .append(" AND k.snapshot_category_code")
+                    .append(BINARY)
+                    .append(" = ?)");
             binds.add(filter.categoryCode());
         }
     }
 
-    private static void in(StringBuilder where, List<Object> binds, String column, List<?> values) {
-        if (values.isEmpty()) return;
-        where.append(" AND ").append(column).append(" IN (").append(placeholders(values.size())).append(")");
+    private static void appendIn(StringBuilder where, List<Object> binds, String column, List<?> values) {
+        if (values.isEmpty()) {
+            return;
+        }
+
+        where.append(" AND ")
+                .append(column)
+                .append(" IN (")
+                .append(placeholders(values.size()))
+                .append(")");
         binds.addAll(values);
     }
 
-    private static String placeholders(int count) { return String.join(",", Collections.nCopies(count, "?")); }
+    private static String placeholders(int count) {
+        return String.join(",", Collections.nCopies(count, "?"));
+    }
 
-    private static Query bind(Query query, List<Object> binds) {
-        for (int index = 0; index < binds.size(); index++) query.setParameter(index + 1, binds.get(index));
+    private static Query bindAll(Query query, List<Object> binds) {
+        for (int index = 0; index < binds.size(); index++) {
+            query.setParameter(index + 1, binds.get(index));
+        }
+
         return query;
     }
 
-    private static SourceTotal total(Object[] row, LedgerEntryType type) {
-        return new SourceTotal(number(row[0]), purpose(row[1]), type, number(row[2]), exact(row[3]));
+    private static SourceTotal toSourceTotal(Object[] row, LedgerEntryType type) {
+        return new SourceTotal(toLong(row[0]), toPurpose(row[1]), type, toLong(row[2]), toExactLong(row[3]));
     }
 
-    private static SalesPurpose purpose(Object value) { return SalesPurpose.valueOf(value.toString()); }
+    private static SalesPurpose toPurpose(Object value) {
+        return SalesPurpose.valueOf(value.toString());
+    }
 
-    private static long number(Object value) { return ((Number) value).longValue(); }
+    private static long toLong(Object value) {
+        return ((Number) value).longValue();
+    }
 
     /** SUM over BIGINT UNSIGNED is DECIMAL; anything that does not fit a long fails instead of wrapping. */
-    private static long exact(Object value) { return new BigDecimal(value.toString()).longValueExact(); }
+    private static long toExactLong(Object value) {
+        return new BigDecimal(value.toString()).longValueExact();
+    }
 
-    private static Instant instant(Object value) { return value == null ? null : Instant.parse(value.toString()); }
+    private static Instant toInstant(Object value) {
+        return value == null ? null : Instant.parse(value.toString());
+    }
 }

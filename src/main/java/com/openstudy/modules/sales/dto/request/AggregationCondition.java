@@ -21,8 +21,18 @@ import java.util.List;
  * Validation, defaults and authorization all happen behind the service boundary, so a caller that skips HTTP gets the
  * same 422 and 403 decisions.
  */
-public record AggregationCondition(List<Long> branchIds, Instant from, Instant to, RefundBasis refundBasis,
-        SalesPurpose purpose, Long productId, String categoryCode, AggregationGranularity granularity, AdvancedFilter advanced) {
+public record AggregationCondition(
+        List<Long> branchIds,
+        Instant from,
+        Instant to,
+        RefundBasis refundBasis,
+        SalesPurpose purpose,
+        Long productId,
+        String categoryCode,
+        AggregationGranularity granularity,
+        AdvancedFilter advanced
+) {
+
     public AggregationCondition {
         // A null element is kept as a validation failure of the resolver, so copy without List.copyOf.
         branchIds = branchIds == null ? null : Collections.unmodifiableList(new ArrayList<>(branchIds));
@@ -30,28 +40,49 @@ public record AggregationCondition(List<Long> branchIds, Instant from, Instant t
     }
 
     /** The M9 condition without the M13 advanced filters (#116). */
-    public AggregationCondition(List<Long> branchIds, Instant from, Instant to, RefundBasis refundBasis, SalesPurpose purpose,
-            Long productId, String categoryCode, AggregationGranularity granularity) {
+    public AggregationCondition(
+            List<Long> branchIds,
+            Instant from,
+            Instant to,
+            RefundBasis refundBasis,
+            SalesPurpose purpose,
+            Long productId,
+            String categoryCode,
+            AggregationGranularity granularity
+    ) {
         this(branchIds, from, to, refundBasis, purpose, productId, categoryCode, granularity, AdvancedFilter.NONE);
     }
 
-    public AggregationCondition withAdvanced(AdvancedFilter value) {
-        return new AggregationCondition(branchIds, from, to, refundBasis, purpose, productId, categoryCode, granularity, value);
-    }
-
     /** Only the parameters of the revenue operations (#87). */
-    public static AggregationCondition revenue(List<Long> branchIds, Instant from, Instant to, RefundBasis refundBasis,
-            SalesPurpose purpose) {
+    public static AggregationCondition revenue(
+            List<Long> branchIds,
+            Instant from,
+            Instant to,
+            RefundBasis refundBasis,
+            SalesPurpose purpose
+    ) {
         return new AggregationCondition(branchIds, from, to, refundBasis, purpose, null, null, null);
     }
 
     /** Only the parameters of the pass operations (#88): never purpose or granularity. */
-    public static AggregationCondition passes(List<Long> branchIds, Instant from, Instant to, RefundBasis refundBasis,
-            Long productId, String categoryCode) {
+    public static AggregationCondition passes(
+            List<Long> branchIds,
+            Instant from,
+            Instant to,
+            RefundBasis refundBasis,
+            Long productId,
+            String categoryCode
+    ) {
         return new AggregationCondition(branchIds, from, to, refundBasis, null, productId, categoryCode, null);
     }
 
+    public AggregationCondition withAdvanced(AdvancedFilter value) {
+        return new AggregationCondition(branchIds, from, to, refundBasis, purpose, productId, categoryCode, granularity,
+                value);
+    }
+
     public AggregationCondition withGranularity(AggregationGranularity value) {
-        return new AggregationCondition(branchIds, from, to, refundBasis, purpose, productId, categoryCode, value, advanced);
+        return new AggregationCondition(branchIds, from, to, refundBasis, purpose, productId, categoryCode, value,
+                advanced);
     }
 }

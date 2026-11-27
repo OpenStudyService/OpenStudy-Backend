@@ -14,9 +14,15 @@ public enum BranchRevenueSort {
     REQUESTED("requested");
 
     public final String wire;
-    BranchRevenueSort(String wire) { this.wire = wire; }
+
+    BranchRevenueSort(String wire) {
+        this.wire = wire;
+    }
 
     public static BranchRevenueSort fromWire(String value) {
-        return Arrays.stream(values()).filter(sort -> sort.wire.equals(value)).findFirst().orElse(null);
+        return Arrays.stream(values())
+                .filter(sort -> sort.wire.equals(value))
+                .findFirst()
+                .orElse(null);
     }
 }

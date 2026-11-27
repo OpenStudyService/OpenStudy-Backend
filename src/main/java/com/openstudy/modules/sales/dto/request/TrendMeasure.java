@@ -11,9 +11,15 @@ public enum TrendMeasure {
     PASSES("passes");
 
     public final String wire;
-    TrendMeasure(String wire) { this.wire = wire; }
+
+    TrendMeasure(String wire) {
+        this.wire = wire;
+    }
 
     public static TrendMeasure fromWire(String value) {
-        return Arrays.stream(values()).filter(measure -> measure.wire.equals(value)).findFirst().orElse(null);
+        return Arrays.stream(values())
+                .filter(measure -> measure.wire.equals(value))
+                .findFirst()
+                .orElse(null);
     }
 }

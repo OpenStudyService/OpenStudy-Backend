@@ -9,9 +9,15 @@ public enum AggregationGranularity {
     MONTH("month");
 
     public final String wire;
-    AggregationGranularity(String wire) { this.wire = wire; }
+
+    AggregationGranularity(String wire) {
+        this.wire = wire;
+    }
 
     public static AggregationGranularity fromWire(String value) {
-        return Arrays.stream(values()).filter(granularity -> granularity.wire.equals(value)).findFirst().orElse(null);
+        return Arrays.stream(values())
+                .filter(granularity -> granularity.wire.equals(value))
+                .findFirst()
+                .orElse(null);
     }
 }

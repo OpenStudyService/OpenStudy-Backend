@@ -3,6 +3,7 @@ package com.openstudy.modules.sales.service;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,7 @@ import com.openstudy.modules.sales.dto.response.PassProductSales;
 import com.openstudy.modules.sales.dto.response.PassProductSalesPage;
 import com.openstudy.modules.sales.dto.response.PassVolumeSummary;
 import com.openstudy.modules.sales.repository.SalesSourceRepository;
+import com.openstudy.modules.sales.repository.SalesSourceRepository.PassTotal;
 import com.openstudy.modules.sales.service.PassTally.Ranked;
 import com.openstudy.modules.sales.service.PassTally.Snapshot;
 import com.openstudy.modules.sales.service.PassTally.Volume;
@@ -29,16 +31,34 @@ import com.openstudy.modules.sales.service.PassTally.Volume;
 @Service
 @RequiredArgsConstructor
 public class PassSalesService {
-    private final AggregationConditions conditions;
-    private final SalesSourceRepository sources;
+
+    private static final int VOLUME_ROW_COUNT = 1;
+
+    private final AggregationConditions aggregationConditions;
+    private final SalesSourceRepository salesSourceRepository;
 
     /** GET /sales/passes/volume: the three pass numbers kept apart (M9-D06). */
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PassVolumeSummary volume(long requester, AggregationCondition condition) {
-        var scope = conditions.resolve(requester, condition, AggregationConditions.Target.PASSES, false);
-        var totals = Volume.sum(sources.passTotals(scope.sourceFilter(), false));
-        return new PassVolumeSummary(AggregationMetas.of(scope, 1, totals.sourceRows(), AggregationMetas.PASS_METRICS,
-                null, null), totals.view());
+        AggregationScope scope = aggregationConditions.resolve(
+                requester,
+                condition,
+                AggregationConditions.Target.PASSES,
+                false
+        );
+        Volume totals = Volume.sum(salesSourceRepository.passTotals(scope.sourceFilter(), false));
+
+        return new PassVolumeSummary(
+                AggregationMetas.of(
+                        scope,
+                        VOLUME_ROW_COUNT,
+                        totals.sourceRows(),
+                        AggregationMetas.PASS_METRICS,
+                        null,
+                        null
+                ),
+                totals.toView()
+        );
     }
 
     /**
@@ -48,37 +68,77 @@ public class PassSalesService {
      */
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PassProductSalesPage products(long requester, AggregationCondition condition, ListQuery page) {
-        var scope = conditions.resolve(requester, condition, AggregationConditions.Target.PASSES, false);
-        var groups = sources.passTotals(scope.sourceFilter(), false);
-        var bySnapshot = new LinkedHashMap<Snapshot, Volume>();
-        for (var group : groups) bySnapshot.merge(Snapshot.of(group), Volume.of(group), Volume::plus);
-        var rows = new ArrayList<Ranked>();
+        AggregationScope scope = aggregationConditions.resolve(
+                requester,
+                condition,
+                AggregationConditions.Target.PASSES,
+                false
+        );
+        List<PassTotal> groups = salesSourceRepository.passTotals(scope.sourceFilter(), false);
+        List<PassProductSales> ranked = toRankedRows(groups);
+        long total = ranked.size();
+        boolean pageBeyondTotal = page.offset() >= total;
+        List<PassProductSales> items = pageBeyondTotal
+                ? List.of()
+                : ranked.subList((int) page.offset(), (int) Math.min(total, page.offset() + page.pageSize()));
+        Volume totals = Volume.sum(groups);
+
+        return new PassProductSalesPage(
+                items,
+                new PageResponse.Meta(page.page(), page.pageSize(), total),
+                AggregationMetas.of(scope, total, totals.sourceRows(), AggregationMetas.PASS_METRICS, null, null),
+                totals.toView()
+        );
+    }
+
+    private static List<PassProductSales> toRankedRows(List<PassTotal> groups) {
+        Map<Snapshot, Volume> bySnapshot = new LinkedHashMap<>();
+
+        for (PassTotal group : groups) {
+            bySnapshot.merge(Snapshot.of(group), Volume.of(group), Volume::plus);
+        }
+
+        List<Ranked> rows = new ArrayList<>();
         bySnapshot.forEach((snapshot, volume) -> rows.add(new Ranked(snapshot, volume)));
         rows.sort(PassTally.ORDER);
 
-        var ranked = new ArrayList<PassProductSales>(rows.size());
+        List<PassProductSales> ranked = new ArrayList<>(rows.size());
         long rank = 0;
+
         for (int position = 0; position < rows.size(); position++) {
-            var row = rows.get(position);
+            Ranked row = rows.get(position);
             // Competition rank: a tie shares the rank and the next value skips as many (10, 7, 7, 3 -> 1, 2, 2, 4).
-            if (position == 0 || rows.get(position - 1).volume().netSoldQuantity() != row.volume().netSoldQuantity())
+            boolean first = position == 0;
+            boolean newValue = first
+                    || rows.get(position - 1).volume().netSoldQuantity() != row.volume().netSoldQuantity();
+
+            if (newValue) {
                 rank = position + 1;
-            ranked.add(view(rank, row));
+            }
+
+            ranked.add(toView(rank, row));
         }
-        long total = ranked.size();
-        List<PassProductSales> items = page.offset() >= total ? List.of()
-                : ranked.subList((int) page.offset(), (int) Math.min(total, page.offset() + page.pageSize()));
-        var totals = Volume.sum(groups);
-        return new PassProductSalesPage(items, new PageResponse.Meta(page.page(), page.pageSize(), total),
-                AggregationMetas.of(scope, total, totals.sourceRows(), AggregationMetas.PASS_METRICS, null, null),
-                totals.view());
+
+        return ranked;
     }
 
-    private static PassProductSales view(long rank, Ranked row) {
-        var snapshot = row.snapshot();
-        var volume = row.volume();
-        return new PassProductSales(rank, Long.toString(snapshot.productId()), snapshot.productName(), snapshot.categoryCode(),
-                snapshot.categoryName(), snapshot.kindLabel(), volume.paymentCount(), volume.soldQuantity(),
-                volume.refundedQuantity(), volume.netSoldQuantity(), volume.issuedCount(), volume.dataStatus());
+    private static PassProductSales toView(long rank, Ranked row) {
+        Snapshot snapshot = row.snapshot();
+        Volume volume = row.volume();
+
+        return new PassProductSales(
+                rank,
+                Long.toString(snapshot.productId()),
+                snapshot.productName(),
+                snapshot.categoryCode(),
+                snapshot.categoryName(),
+                snapshot.kindLabel(),
+                volume.paymentCount(),
+                volume.soldQuantity(),
+                volume.refundedQuantity(),
+                volume.netSoldQuantity(),
+                volume.issuedCount(),
+                volume.dataStatus()
+        );
     }
 }

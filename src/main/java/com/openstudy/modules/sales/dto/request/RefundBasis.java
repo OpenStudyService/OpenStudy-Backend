@@ -10,10 +10,16 @@ public enum RefundBasis {
     PAYMENT_DATE("paymentDate");
 
     public final String wire;
-    RefundBasis(String wire) { this.wire = wire; }
+
+    RefundBasis(String wire) {
+        this.wire = wire;
+    }
 
     /** null when the token is not a contract value; the caller turns that into its own 422. */
     public static RefundBasis fromWire(String value) {
-        return Arrays.stream(values()).filter(basis -> basis.wire.equals(value)).findFirst().orElse(null);
+        return Arrays.stream(values())
+                .filter(basis -> basis.wire.equals(value))
+                .findFirst()
+                .orElse(null);
     }
 }

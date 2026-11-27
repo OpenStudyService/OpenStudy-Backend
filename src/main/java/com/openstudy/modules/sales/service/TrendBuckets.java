@@ -19,38 +19,66 @@ import com.openstudy.modules.sales.dto.request.AggregationGranularity;
  * because every bucket boundary is a Seoul midnight, so each source row lands in one bucket only.
  */
 final class TrendBuckets {
-    record Bucket(LocalDate key, String label, Instant bucketStart, Instant bucketEnd, Instant start, Instant end) {
-        boolean partial() { return !start.equals(bucketStart) || !end.equals(bucketEnd); }
-    }
 
     private final AggregationGranularity granularity;
     private final List<Bucket> buckets = new ArrayList<>();
-    private final Map<LocalDate, Integer> index = new HashMap<>();
+    private final Map<LocalDate, Integer> positions = new HashMap<>();
+
+    record Bucket(
+            LocalDate key,
+            String label,
+            Instant bucketStart,
+            Instant bucketEnd,
+            Instant start,
+            Instant end
+    ) {
+
+        boolean partial() {
+            boolean cutAtStart = !start.equals(bucketStart);
+            boolean cutAtEnd = !end.equals(bucketEnd);
+
+            return cutAtStart || cutAtEnd;
+        }
+    }
 
     TrendBuckets(Instant from, Instant to, AggregationGranularity granularity) {
         this.granularity = granularity;
-        LocalDate key = key(LocalDate.ofInstant(from, AggregationConditions.SEOUL));
-        Instant bucketStart = start(key);
+        LocalDate key = toKey(LocalDate.ofInstant(from, AggregationConditions.SEOUL));
+        Instant bucketStart = toStart(key);
+
         while (bucketStart.isBefore(to)) {
-            LocalDate next = next(key);
-            Instant bucketEnd = start(next);
-            index.put(key, buckets.size());
-            buckets.add(new Bucket(key, label(key), bucketStart, bucketEnd, max(bucketStart, from), min(bucketEnd, to)));
-            key = next;
+            LocalDate nextKey = toNextKey(key);
+            Instant bucketEnd = toStart(nextKey);
+            positions.put(key, buckets.size());
+            buckets.add(new Bucket(
+                    key,
+                    toLabel(key),
+                    bucketStart,
+                    bucketEnd,
+                    max(bucketStart, from),
+                    min(bucketEnd, to)
+            ));
+            key = nextKey;
             bucketStart = bucketEnd;
         }
     }
 
-    List<Bucket> buckets() { return List.copyOf(buckets); }
+    List<Bucket> buckets() {
+        return List.copyOf(buckets);
+    }
 
     /** The position of the bucket holding an Asia/Seoul day of a source row inside the period. */
-    int of(LocalDate day) {
-        Integer position = index.get(key(day));
-        if (position == null) throw new IllegalStateException("A source day " + day + " lies outside the trend period");
+    int findPosition(LocalDate day) {
+        Integer position = positions.get(toKey(day));
+
+        if (position == null) {
+            throw new IllegalStateException("A source day " + day + " lies outside the trend period");
+        }
+
         return position;
     }
 
-    private LocalDate key(LocalDate day) {
+    private LocalDate toKey(LocalDate day) {
         return switch (granularity) {
             case DAY -> day;
             case WEEK -> day.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
@@ -58,7 +86,7 @@ final class TrendBuckets {
         };
     }
 
-    private LocalDate next(LocalDate key) {
+    private LocalDate toNextKey(LocalDate key) {
         return switch (granularity) {
             case DAY -> key.plusDays(1);
             case WEEK -> key.plusWeeks(1);
@@ -67,11 +95,19 @@ final class TrendBuckets {
     }
 
     /** day: YYYY-MM-DD, week: its Monday YYYY-MM-DD, month: YYYY-MM, all Asia/Seoul. */
-    private String label(LocalDate key) {
+    private String toLabel(LocalDate key) {
         return granularity == AggregationGranularity.MONTH ? YearMonth.from(key).toString() : key.toString();
     }
 
-    private static Instant start(LocalDate day) { return day.atStartOfDay(AggregationConditions.SEOUL).toInstant(); }
-    private static Instant max(Instant a, Instant b) { return a.isAfter(b) ? a : b; }
-    private static Instant min(Instant a, Instant b) { return a.isBefore(b) ? a : b; }
+    private static Instant toStart(LocalDate day) {
+        return day.atStartOfDay(AggregationConditions.SEOUL).toInstant();
+    }
+
+    private static Instant max(Instant a, Instant b) {
+        return a.isAfter(b) ? a : b;
+    }
+
+    private static Instant min(Instant a, Instant b) {
+        return a.isBefore(b) ? a : b;
+    }
 }

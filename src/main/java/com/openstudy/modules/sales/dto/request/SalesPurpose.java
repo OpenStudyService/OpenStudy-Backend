@@ -9,10 +9,16 @@ public enum SalesPurpose {
     LOCKER("사물함");
 
     public final String label;
-    SalesPurpose(String label) { this.label = label; }
+
+    SalesPurpose(String label) {
+        this.label = label;
+    }
 
     /** null when the label is not a contract value; the caller turns that into its own 422. */
     public static SalesPurpose fromLabel(String value) {
-        return Arrays.stream(values()).filter(purpose -> purpose.label.equals(value)).findFirst().orElse(null);
+        return Arrays.stream(values())
+                .filter(purpose -> purpose.label.equals(value))
+                .findFirst()
+                .orElse(null);
     }
 }
