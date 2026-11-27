@@ -10,36 +10,77 @@ import com.openstudy.modules.ticket.entity.SaleStatus;
 
 /** Entity ↔ service value mapping for the ticket module. Entities never leave the service layer (M1-04). */
 final class ProductViews {
-    private ProductViews() {}
 
-    static ProductRecord record(Product p) {
-        ProductTerms terms = switch (p.getKind()) {
-            case TIME -> ProductTerms.Time.of(p.getIncludedMinutes(), p.getValidDays());
-            case PERIOD -> ProductTerms.Period.of(p.getPeriodDays());
-            case STORED_VALUE -> ProductTerms.StoredValue.of(p.getCreditKrw(), p.getHourlyRateKrw(), p.getValidDays());
-        };
-        return new ProductRecord(p.getId(), p.getVersion(), p.getCreatedAt(), p.getUpdatedAt(), p.getCode(), p.getName(),
-                p.getPriceKrw(), terms, p.getSaleStatus() == SaleStatus.ON_SALE, category(p.getCategory()), p.getBranchIds(),
-                new ProductRecord.Sales(p.getSalesStartsAt(), p.getSalesEndsAt(), p.getSalesLimit()));
+    private static final String ACTIVE_LABEL = "활성";
+    private static final String INACTIVE_LABEL = "비활성";
+
+    private ProductViews() {
     }
 
-    static ProductCategory category(com.openstudy.modules.ticket.entity.ProductCategory c) {
-        return new ProductCategory(Long.toString(c.getId()), ApiVersion.fromDatabase(c.getVersion()),
-                c.getCreatedAt().toString(), c.getUpdatedAt().toString(), c.getCode(), c.getName(), apiKind(c.getKind()),
-                c.getStatus() == CategoryStatus.ACTIVE ? "활성" : "비활성");
+    static ProductRecord toRecord(Product product) {
+        ProductTerms terms = switch (product.getKind()) {
+            case TIME -> ProductTerms.Time.of(product.getIncludedMinutes(), product.getValidDays());
+            case PERIOD -> ProductTerms.Period.of(product.getPeriodDays());
+            case STORED_VALUE -> ProductTerms.StoredValue.of(
+                    product.getCreditKrw(),
+                    product.getHourlyRateKrw(),
+                    product.getValidDays()
+            );
+        };
+        ProductRecord.Sales sales = new ProductRecord.Sales(
+                product.getSalesStartsAt(),
+                product.getSalesEndsAt(),
+                product.getSalesLimit()
+        );
+
+        return new ProductRecord(
+                product.getId(),
+                product.getVersion(),
+                product.getCreatedAt(),
+                product.getUpdatedAt(),
+                product.getCode(),
+                product.getName(),
+                product.getPriceKrw(),
+                terms,
+                product.getSaleStatus() == SaleStatus.ON_SALE,
+                toCategory(product.getCategory()),
+                product.getBranchIds(),
+                sales
+        );
+    }
+
+    static ProductCategory toCategory(com.openstudy.modules.ticket.entity.ProductCategory category) {
+        return new ProductCategory(
+                Long.toString(category.getId()),
+                ApiVersion.fromDatabase(category.getVersion()),
+                category.getCreatedAt().toString(),
+                category.getUpdatedAt().toString(),
+                category.getCode(),
+                category.getName(),
+                toApiKind(category.getKind()),
+                category.getStatus() == CategoryStatus.ACTIVE ? ACTIVE_LABEL : INACTIVE_LABEL
+        );
     }
 
     /** The product kind never changes (Q9), so only the term columns of that kind are set. */
-    static Product.Terms columns(ProductTerms terms) {
+    static Product.Terms toColumns(ProductTerms terms) {
         return switch (terms) {
-            case ProductTerms.Time time -> new Product.Terms(time.includedMinutes(), null, null, null, time.validDays());
-            case ProductTerms.Period period -> new Product.Terms(null, period.periodDays(), null, null, null);
-            case ProductTerms.StoredValue stored -> new Product.Terms(null, null, stored.creditKrw(), stored.hourlyRateKrw(),
-                    stored.validDays());
+            case ProductTerms.Time time -> Product.Terms.builder()
+                    .includedMinutes(time.includedMinutes())
+                    .validDays(time.validDays())
+                    .build();
+            case ProductTerms.Period period -> Product.Terms.builder()
+                    .periodDays(period.periodDays())
+                    .build();
+            case ProductTerms.StoredValue stored -> Product.Terms.builder()
+                    .creditKrw(stored.creditKrw())
+                    .hourlyRateKrw(stored.hourlyRateKrw())
+                    .validDays(stored.validDays())
+                    .build();
         };
     }
 
-    static String apiKind(ProductKind kind) {
+    static String toApiKind(ProductKind kind) {
         return switch (kind) {
             case TIME -> ProductTerms.TIME;
             case PERIOD -> ProductTerms.PERIOD;
@@ -47,7 +88,7 @@ final class ProductViews {
         };
     }
 
-    static ProductKind kind(String apiKind) {
+    static ProductKind toKind(String apiKind) {
         return switch (apiKind) {
             case ProductTerms.TIME -> ProductKind.TIME;
             case ProductTerms.PERIOD -> ProductKind.PERIOD;
