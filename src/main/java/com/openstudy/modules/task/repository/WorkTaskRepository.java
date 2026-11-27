@@ -10,6 +10,7 @@ import org.springframework.data.repository.query.Param;
 import com.openstudy.modules.task.entity.WorkTask;
 
 public interface WorkTaskRepository extends JpaRepository<WorkTask, Long> {
+
     /**
      * Parent lock for AuthorizedCommands, taken after the guard/employee/branch locks and before checklist rows.
      * JPA-01 native exception: the lock order is part of the contract, so the statement stays explicit.

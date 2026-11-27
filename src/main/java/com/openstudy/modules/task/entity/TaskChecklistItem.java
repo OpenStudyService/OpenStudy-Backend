@@ -20,26 +20,40 @@ import org.hibernate.generator.EventType;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class TaskChecklistItem {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
     @Column(name = "task_id", nullable = false, updatable = false)
     private long taskId;
+
     @Column(nullable = false, length = 500)
     private String body;
+
     @Column(name = "sort_order", nullable = false, columnDefinition = "int unsigned", updatable = false)
     private int sortOrder;
+
     @Column(name = "is_done", nullable = false)
     private boolean done;
+
     @Column(name = "updated_by")
     private Long updatedBy;
-    @Generated(event = {EventType.INSERT, EventType.UPDATE}) @Column(name = "updated_at", insertable = false, updatable = false)
+
+    @Generated(event = {EventType.INSERT, EventType.UPDATE})
+    @Column(name = "updated_at", insertable = false, updatable = false)
     private Instant updatedAt;
 
     public TaskChecklistItem(long taskId, String body, int sortOrder, long actor) {
-        this.taskId = taskId; this.body = body; this.sortOrder = sortOrder; this.updatedBy = actor;
+        this.taskId = taskId;
+        this.body = body;
+        this.sortOrder = sortOrder;
+        this.updatedBy = actor;
     }
 
     public void change(String body, boolean done, long actor) {
-        this.body = body; this.done = done; this.updatedBy = actor;
+        this.body = body;
+        this.done = done;
+        this.updatedBy = actor;
     }
 }

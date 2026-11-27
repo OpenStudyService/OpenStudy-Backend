@@ -2,6 +2,7 @@ package com.openstudy.modules.task.service;
 
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -26,35 +27,64 @@ import com.openstudy.modules.task.repository.WorkTaskRepository;
 @Service
 @RequiredArgsConstructor
 public class TaskCardService {
-    private final WorkTaskRepository tasks;
-    private final EmployeeAccountService employees;
-    private final AuthorizationService policy;
+
+    private final WorkTaskRepository workTaskRepository;
+    private final EmployeeAccountService employeeAccountService;
+    private final AuthorizationService authorizationService;
 
     /** Whether this reader can open the task right now; a task that does not exist is not accessible. */
     @Transactional(readOnly = true)
     public boolean accessible(AuthorizationState state, long taskId) {
-        return tasks.findById(taskId).filter(task -> permits(state, task)).isPresent();
+        return workTaskRepository.findById(taskId)
+                .filter(task -> canRead(state, task))
+                .isPresent();
     }
 
     /** One card per requested task ID, in two queries however many there are. */
     @Transactional(readOnly = true)
     public Map<Long, TaskCardView> cards(AuthorizationState state, Collection<Long> taskIds) {
         Map<Long, TaskCardView> result = new HashMap<>();
-        if (taskIds.isEmpty()) return result;
-        var found = tasks.findAllById(Set.copyOf(taskIds));
-        var names = employees.names(found.stream().filter(task -> permits(state, task)).map(WorkTask::getAssigneeEmployeeId).toList());
-        for (WorkTask task : found) {
-            result.put(task.getId(), !permits(state, task) ? TaskCardView.inaccessible()
-                    : new TaskCardView(true, task.getId().toString(), Long.toString(task.getBranchId()), task.getTitle(),
-                    TaskInputs.label(task.getStatus()), TaskInputs.label(task.getPriority()),
-                    new ActorSummary(Long.toString(task.getAssigneeEmployeeId()), names.getOrDefault(task.getAssigneeEmployeeId(), "")),
-                    task.getDueAt()));
+
+        if (taskIds.isEmpty()) {
+            return result;
         }
-        for (Long id : taskIds) result.putIfAbsent(id, TaskCardView.inaccessible());
+
+        List<WorkTask> found = workTaskRepository.findAllById(Set.copyOf(taskIds));
+        List<Long> assigneeIds = found.stream()
+                .filter(task -> canRead(state, task))
+                .map(WorkTask::getAssigneeEmployeeId)
+                .toList();
+        Map<Long, String> names = employeeAccountService.names(assigneeIds);
+
+        for (WorkTask task : found) {
+            TaskCardView card = canRead(state, task) ? toCard(task, names) : TaskCardView.inaccessible();
+            result.put(task.getId(), card);
+        }
+
+        for (Long id : taskIds) {
+            result.putIfAbsent(id, TaskCardView.inaccessible());
+        }
+
         return result;
     }
 
-    private boolean permits(AuthorizationState state, WorkTask task) {
-        return policy.permits(state, task.getBranchId(), BranchAction.READ);
+    private boolean canRead(AuthorizationState state, WorkTask task) {
+        return authorizationService.permits(state, task.getBranchId(), BranchAction.READ);
+    }
+
+    private static TaskCardView toCard(WorkTask task, Map<Long, String> names) {
+        long assigneeId = task.getAssigneeEmployeeId();
+        ActorSummary assignee = new ActorSummary(Long.toString(assigneeId), names.getOrDefault(assigneeId, ""));
+
+        return new TaskCardView(
+                true,
+                task.getId().toString(),
+                Long.toString(task.getBranchId()),
+                task.getTitle(),
+                TaskInputs.toLabel(task.getStatus()),
+                TaskInputs.toLabel(task.getPriority()),
+                assignee,
+                task.getDueAt()
+        );
     }
 }
