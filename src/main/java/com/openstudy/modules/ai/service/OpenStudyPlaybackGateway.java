@@ -3,11 +3,14 @@ package com.openstudy.modules.ai.service;
 import com.openstudy.config.DomainLensProperties;
 import com.openstudy.domainlens.ai.LiveModelGatewayFactory;
 import com.openstudy.domainlens.api.ir.QuerySpec;
+import com.openstudy.domainlens.api.prompt.PromptLimits;
+import com.openstudy.domainlens.api.spi.AnalysisRegistry;
 import com.openstudy.domainlens.api.spi.ModelGateway;
 import com.openstudy.domainlens.api.spi.UserContext;
 import com.openstudy.domainlens.catalog.EmbeddingIndex;
 import com.openstudy.domainlens.catalog.SemanticRegistry;
 import com.openstudy.domainlens.query.Retriever;
+
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -27,6 +30,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -40,6 +44,7 @@ import tools.jackson.databind.ObjectMapper;
  */
 @Service
 public class OpenStudyPlaybackGateway {
+
     public static final int MAX_QUESTION_CHARS = 500;
     public static final int MAX_DATE_RANGE_DAYS = 366;
     public static final int MAX_RESULT_ROWS = 1000;
@@ -57,7 +62,13 @@ public class OpenStudyPlaybackGateway {
                 && "OUT_OF_DOMAIN".equals(plan.errorCode()) && !OUT_OF_DOMAIN_MESSAGE.equals(plan.message());
     }
 
-    public record ClarificationOption(String id, String label, String targetAnalysisId, String targetScope) {}
+    public record ClarificationOption(
+            String id,
+            String label,
+            String targetAnalysisId,
+            String targetScope
+    ) {
+    }
 
     public record TruncationInfo(
             int maxRows,
@@ -85,7 +96,8 @@ public class OpenStudyPlaybackGateway {
 
     private static final Logger log = LoggerFactory.getLogger(OpenStudyPlaybackGateway.class);
 
-    public record RetrievalCandidate(String id, String kind, double score) {}
+    public record RetrievalCandidate(String id, String kind, double score) {
+    }
 
     public record LiveLlmPlanResult(
             String outcome,
@@ -96,7 +108,8 @@ public class OpenStudyPlaybackGateway {
             String message,
             long durationMs,
             int totalTokens
-    ) {}
+    ) {
+    }
 
     public record PlanDecision(
             String outcome, // EXECUTE, CLARIFICATION, UNSUPPORTED, DENIED, INVALID
@@ -134,9 +147,24 @@ public class OpenStudyPlaybackGateway {
                 long llmDurationMs,
                 int totalTokens
         ) {
-            this(outcome, httpStatus, errorCode, resultCategory, behavior, message, analysisId, intentDomain,
-                    refundBasisOverride, zeroFillOverrideRequested, truncation, clarificationOptions, retrievedCandidates,
-                    llmDurationMs, totalTokens, false);
+            this(
+                    outcome,
+                    httpStatus,
+                    errorCode,
+                    resultCategory,
+                    behavior,
+                    message,
+                    analysisId,
+                    intentDomain,
+                    refundBasisOverride,
+                    zeroFillOverrideRequested,
+                    truncation,
+                    clarificationOptions,
+                    retrievedCandidates,
+                    llmDurationMs,
+                    totalTokens,
+                    false
+            );
         }
 
         public PlanDecision(
@@ -174,13 +202,13 @@ public class OpenStudyPlaybackGateway {
         }
     }
 
-    private final SemanticRegistry registry;
+    private final SemanticRegistry semanticRegistry;
     private final Retriever retriever;
     private final EmbeddingIndex embeddingIndex;
-    private final OpenStudyAnalyses analyses;
-    private final DomainLensProperties properties;
+    private final OpenStudyAnalyses openStudyAnalyses;
+    private final DomainLensProperties domainLensProperties;
     private final String modelMode;
-    private final OpenStudyIntentAnalyzer intents;
+    private final OpenStudyIntentAnalyzer openStudyIntentAnalyzer;
     private final int maxConcurrentPerUser;
     private final int maxRequestsPerMinute;
     private final HttpClient httpClient;
@@ -189,8 +217,8 @@ public class OpenStudyPlaybackGateway {
     private final ConcurrentHashMap<Long, AtomicInteger> activeRequestsByUser = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Deque<Long>> requestTimestampsByUser = new ConcurrentHashMap<>();
     private volatile ModelGateway liveGateway;
-    private final OpenStudyUserContextResolver userResolver;
-    private final AiPlanCache planCache;
+    private final OpenStudyUserContextResolver openStudyUserContextResolver;
+    private final AiPlanCache aiPlanCache;
 
     public OpenStudyPlaybackGateway(
             SemanticRegistry registry,
@@ -205,14 +233,14 @@ public class OpenStudyPlaybackGateway {
             @Value("${openstudy.ai.rate-limit.max-concurrent:10}") int maxConcurrentPerUser,
             @Value("${openstudy.ai.rate-limit.max-per-minute:120}") int maxRequestsPerMinute
     ) {
-        this.registry = registry;
+        this.semanticRegistry = registry;
         this.retriever = retriever;
         this.embeddingIndex = embeddingIndex;
-        this.analyses = analyses;
-        this.userResolver = userResolver;
-        this.properties = properties;
-        this.intents = intents;
-        this.planCache = planCache;
+        this.openStudyAnalyses = analyses;
+        this.openStudyUserContextResolver = userResolver;
+        this.domainLensProperties = properties;
+        this.openStudyIntentAnalyzer = intents;
+        this.aiPlanCache = planCache;
         this.modelMode = modelMode == null ? "playback" : modelMode.trim().toLowerCase(Locale.ROOT);
         this.maxConcurrentPerUser = maxConcurrentPerUser;
         this.maxRequestsPerMinute = maxRequestsPerMinute;
@@ -223,8 +251,8 @@ public class OpenStudyPlaybackGateway {
 
     public String activeMode() {
         if ("live".equalsIgnoreCase(modelMode)
-                && properties.getModel().getApiKey() != null
-                && !properties.getModel().getApiKey().isBlank()) {
+                && domainLensProperties.getModel().getApiKey() != null
+                && !domainLensProperties.getModel().getApiKey().isBlank()) {
             return "live";
         }
         return "playback";
@@ -232,7 +260,7 @@ public class OpenStudyPlaybackGateway {
 
     public String activeModelName() {
         if ("live".equals(activeMode())) {
-            String configured = properties.getModel().getName();
+            String configured = domainLensProperties.getModel().getName();
             return (configured == null || configured.isBlank()) ? "qwen3.8-flash" : configured;
         }
         return "playback-ir";
@@ -245,13 +273,13 @@ public class OpenStudyPlaybackGateway {
         if (liveGateway == null) {
             synchronized (this) {
                 if (liveGateway == null) {
-                    var m = properties.getModel();
+                    DomainLensProperties.Model m = domainLensProperties.getModel();
                     liveGateway = LiveModelGatewayFactory.create(
                             m.getBaseUrl(),
                             m.getApiKey(),
                             m.getName(),
                             m.getTimeout(),
-                            com.openstudy.domainlens.api.prompt.PromptLimits.defaults(),
+                            PromptLimits.defaults(),
                             m.getEnableThinking(),
                             m.getReasoningEffort(),
                             m.getMaxCompletionTokens()
@@ -324,7 +352,15 @@ public class OpenStudyPlaybackGateway {
             String followUpAnalysisId,
             String previousConditions
     ) {
-        return planQuestion(rawQuestion, clarificationChoice, actor, requestedScope, followUpAnalysisId, previousConditions, false);
+        return planQuestion(
+                rawQuestion,
+                clarificationChoice,
+                actor,
+                requestedScope,
+                followUpAnalysisId,
+                previousConditions,
+                false
+        );
     }
 
     /**
@@ -601,8 +637,18 @@ public class OpenStudyPlaybackGateway {
                     false,
                     TruncationInfo.defaultUntruncated(),
                     List.of(
-                            new ClarificationOption("occ-available", "언제 가장 붐벼?", OpenStudyAnalyses.ID_POC_002, requestedScope),
-                            new ClarificationOption("seat-realtime", "지금 빈자리가 얼마나 있어?", OpenStudyAnalyses.ID_POC_004, requestedScope)
+                            new ClarificationOption(
+                                    "occ-available",
+                                    "언제 가장 붐벼?",
+                                    OpenStudyAnalyses.ID_POC_002,
+                                    requestedScope
+                            ),
+                            new ClarificationOption(
+                                    "seat-realtime",
+                                    "지금 빈자리가 얼마나 있어?",
+                                    OpenStudyAnalyses.ID_POC_004,
+                                    requestedScope
+                            )
                     ),
                     retrieveCandidates(q, actor)
             );
@@ -623,7 +669,12 @@ public class OpenStudyPlaybackGateway {
                     false,
                     TruncationInfo.defaultUntruncated(),
                     List.of(
-                            new ClarificationOption("urgent-today", "지금 급하게 처리해야 할 업무가 뭐야?", OpenStudyAnalyses.ID_POC_009, requestedScope)
+                            new ClarificationOption(
+                                    "urgent-today",
+                                    "지금 급하게 처리해야 할 업무가 뭐야?",
+                                    OpenStudyAnalyses.ID_POC_009,
+                                    requestedScope
+                            )
                     ),
                     retrieveCandidates(q, actor)
             );
@@ -644,8 +695,18 @@ public class OpenStudyPlaybackGateway {
                     false,
                     TruncationInfo.defaultUntruncated(),
                     List.of(
-                            new ClarificationOption("top-pass-units", "지난달 가장 잘 팔린 이용권 TOP 5를 보여줘", OpenStudyAnalyses.ID_POC_003, requestedScope),
-                            new ClarificationOption("sales-by-item", "지난달 이용권, 스터디룸, 사물함 중 어디서 매출이 가장 많이 나왔어?", OpenStudyAnalyses.ID_POC_008, requestedScope)
+                            new ClarificationOption(
+                                    "top-pass-units",
+                                    "지난달 가장 잘 팔린 이용권 TOP 5를 보여줘",
+                                    OpenStudyAnalyses.ID_POC_003,
+                                    requestedScope
+                            ),
+                            new ClarificationOption(
+                                    "sales-by-item",
+                                    "지난달 이용권, 스터디룸, 사물함 중 어디서 매출이 가장 많이 나왔어?",
+                                    OpenStudyAnalyses.ID_POC_008,
+                                    requestedScope
+                            )
                     ),
                     retrieveCandidates(q, actor)
             );
@@ -666,8 +727,18 @@ public class OpenStudyPlaybackGateway {
                     false,
                     TruncationInfo.defaultUntruncated(),
                     List.of(
-                            new ClarificationOption("this-month-sales", "이번 달 지점별 매출을 비교해줘", OpenStudyAnalyses.ID_POC_001, requestedScope),
-                            new ClarificationOption("last-month-daily", "지난달 일별 매출 추이를 그래프로 보여줘", OpenStudyAnalyses.ID_POC_007, requestedScope)
+                            new ClarificationOption(
+                                    "this-month-sales",
+                                    "이번 달 지점별 매출을 비교해줘",
+                                    OpenStudyAnalyses.ID_POC_001,
+                                    requestedScope
+                            ),
+                            new ClarificationOption(
+                                    "last-month-daily",
+                                    "지난달 일별 매출 추이를 그래프로 보여줘",
+                                    OpenStudyAnalyses.ID_POC_007,
+                                    requestedScope
+                            )
                     ),
                     retrieveCandidates(q, actor)
             );
@@ -688,9 +759,24 @@ public class OpenStudyPlaybackGateway {
                     false,
                     TruncationInfo.defaultUntruncated(),
                     List.of(
-                            new ClarificationOption("branch-sales", "이번 달 지점별 매출을 비교해줘", OpenStudyAnalyses.ID_POC_001, requestedScope),
-                            new ClarificationOption("daily-sales", "지난달 일별 매출 추이를 그래프로 보여줘", OpenStudyAnalyses.ID_POC_007, requestedScope),
-                            new ClarificationOption("item-sales", "지난달 이용권, 스터디룸, 사물함 중 어디서 매출이 가장 많이 나왔어?", OpenStudyAnalyses.ID_POC_008, requestedScope)
+                            new ClarificationOption(
+                                    "branch-sales",
+                                    "이번 달 지점별 매출을 비교해줘",
+                                    OpenStudyAnalyses.ID_POC_001,
+                                    requestedScope
+                            ),
+                            new ClarificationOption(
+                                    "daily-sales",
+                                    "지난달 일별 매출 추이를 그래프로 보여줘",
+                                    OpenStudyAnalyses.ID_POC_007,
+                                    requestedScope
+                            ),
+                            new ClarificationOption(
+                                    "item-sales",
+                                    "지난달 이용권, 스터디룸, 사물함 중 어디서 매출이 가장 많이 나왔어?",
+                                    OpenStudyAnalyses.ID_POC_008,
+                                    requestedScope
+                            )
                     ),
                     retrieveCandidates(q, actor)
             );
@@ -728,7 +814,12 @@ public class OpenStudyPlaybackGateway {
                     false,
                     TruncationInfo.defaultUntruncated(),
                     List.of(
-                            new ClarificationOption("weekly-room-bookings", "이번 주 스터디룸 예약 현황을 보여줘", OpenStudyAnalyses.ID_POC_005, requestedScope)
+                            new ClarificationOption(
+                                    "weekly-room-bookings",
+                                    "이번 주 스터디룸 예약 현황을 보여줘",
+                                    OpenStudyAnalyses.ID_POC_005,
+                                    requestedScope
+                            )
                     ),
                     retrieveCandidates(q, actor)
             );
@@ -748,8 +839,18 @@ public class OpenStudyPlaybackGateway {
                     false,
                     TruncationInfo.defaultUntruncated(),
                     List.of(
-                            new ClarificationOption("realtime-seats", "지금 빈자리가 얼마나 있어?", OpenStudyAnalyses.ID_POC_004, requestedScope),
-                            new ClarificationOption("hourly-congestion", "언제 가장 붐벼?", OpenStudyAnalyses.ID_POC_002, requestedScope)
+                            new ClarificationOption(
+                                    "realtime-seats",
+                                    "지금 빈자리가 얼마나 있어?",
+                                    OpenStudyAnalyses.ID_POC_004,
+                                    requestedScope
+                            ),
+                            new ClarificationOption(
+                                    "hourly-congestion",
+                                    "언제 가장 붐벼?",
+                                    OpenStudyAnalyses.ID_POC_002,
+                                    requestedScope
+                            )
                     ),
                     retrieveCandidates(q, actor)
             );
@@ -765,7 +866,7 @@ public class OpenStudyPlaybackGateway {
         // would fit it onto the nearest registered analysis (net sales), and goes to the generation path.
         String keywordAnalysisId = generationFirst ? null : resolveAnalysisId(q);
         boolean generalMetric = generationFirst || followUpAnalysisId == null && keywordAnalysisId == null
-                && !intents.analyze(q, null).metrics().isEmpty();
+                && !openStudyIntentAnalyzer.analyze(q, null).metrics().isEmpty();
         boolean planCached = false;
         // 2026-11-16: the plan cache in front of the model. Any question that is not a follow-up or a choice looks it up,
         // in a new conversation or later in one; only a conversation's first question, read without earlier context,
@@ -775,18 +876,30 @@ public class OpenStudyPlaybackGateway {
         String cacheQuestion = null;
         String cacheVersion = null;
         if ("live".equals(activeMode()) && !generalMetric) {
-            cacheQuestion = userResolver.withoutBranchNames(q);
-            cacheVersion = planCache.versionKey(AiPlanCache.Kind.REGISTERED_PICK, activeModelName(),
+            cacheQuestion = openStudyUserContextResolver.withoutBranchNames(q);
+            cacheVersion = aiPlanCache.versionKey(AiPlanCache.Kind.REGISTERED_PICK, activeModelName(),
                     Integer.toHexString(LIVE_QWEN_SYSTEM_PROMPT.hashCode()));
-            var cached = lookUp
-                    ? planCache.find(AiPlanCache.Kind.REGISTERED_PICK, cacheVersion, cacheQuestion)
-                            .filter(hit -> hit.analysisId() != null && analyses.definition(hit.analysisId()).isPresent())
+            Optional<AiPlanCache.Hit> cached = lookUp
+                    ? aiPlanCache.find(AiPlanCache.Kind.REGISTERED_PICK, cacheVersion, cacheQuestion)
+                            .filter(hit -> hit.analysisId() != null
+                                    && openStudyAnalyses.definition(hit.analysisId()).isPresent())
                     : Optional.<AiPlanCache.Hit>empty();
-            if (!lookUp) log.info("AI plan cache skipped: follow-up or clarification choice");
+            if (!lookUp) {
+                log.info("AI plan cache skipped: follow-up or clarification choice");
+            }
+
             if (cached.isPresent()) {
-                var hit = cached.get();
-                llmResult = new LiveLlmPlanResult("EXECUTE", hit.analysisId(), hit.intentDomain(), hit.refundBasisOverride(),
-                        hit.zeroFillOverride(), null, 0L, 0);
+                AiPlanCache.Hit hit = cached.get();
+                llmResult = new LiveLlmPlanResult(
+                        "EXECUTE",
+                        hit.analysisId(),
+                        hit.intentDomain(),
+                        hit.refundBasisOverride(),
+                        hit.zeroFillOverride(),
+                        null,
+                        0L,
+                        0
+                );
                 planCached = true;
             } else {
                 llmResult = callLiveQwenPlanner(q, requestedScope, candidates, previousConditions);
@@ -804,20 +917,25 @@ public class OpenStudyPlaybackGateway {
             resolvedAnalysisId = followUpAnalysisId;
         }
         if (resolvedAnalysisId == null && llmResult != null && llmResult.analysisId() != null
-                && analyses.definition(llmResult.analysisId()).isPresent()) {
+                && openStudyAnalyses.definition(llmResult.analysisId()).isPresent()) {
             resolvedAnalysisId = llmResult.analysisId();
         }
 
         String intentDomain = (llmResult != null && llmResult.intentDomain() != null
                 && !"unsupported".equalsIgnoreCase(llmResult.intentDomain())
                 && resolvedAnalysisId != null)
-                ? domainForAnalysisId(resolvedAnalysisId, q)
-                : domainForAnalysisId(resolvedAnalysisId, q);
+                ? findDomainForAnalysisId(resolvedAnalysisId, q)
+                : findDomainForAnalysisId(resolvedAnalysisId, q);
         boolean isSalesDomain = "sales".equals(intentDomain)
                 || (llmResult != null && "sales".equalsIgnoreCase(llmResult.intentDomain()));
 
         // 10. Authorize branch scope & domain permissions (NEG-001, NEG-002, NEG-003, NEG-015, NEG-016)
-        var scopeDecision = authorizeScope(actor, requestedScope, q, isSalesDomain);
+        OpenStudyUserContextResolver.ScopeDecision scopeDecision = authorizeScope(
+                actor,
+                requestedScope,
+                q,
+                isSalesDomain
+        );
         if (!scopeDecision.allowed()) {
             return new PlanDecision(
                     "DENIED",
@@ -845,7 +963,12 @@ public class OpenStudyPlaybackGateway {
         String refundBasisOverride = llmResult != null ? llmResult.refundBasisOverride() : null;
         boolean zeroFillOverrideRequested = llmResult != null && llmResult.zeroFillOverrideRequested();
 
-        if (q.contains("1001행") || q.contains("5000건") || q.contains("10만") || q.contains("100,000") || q.contains("100000") || q.contains("전부 한 번에")) {
+        if (q.contains("1001행")
+                || q.contains("5000건")
+                || q.contains("10만")
+                || q.contains("100,000")
+                || q.contains("100000")
+                || q.contains("전부 한 번에")) {
             truncation = TruncationInfo.clamped("요청 행 수가 상한을 초과하여 최대 1,000행(페이지당 50행)으로 제한되었습니다.");
             resultCategory = "LIMIT_ENFORCED";
             behavior = "TRUNCATE_OR_PAGE";
@@ -865,7 +988,10 @@ public class OpenStudyPlaybackGateway {
             }
         }
 
-        if (q.contains("거래가 없는 날은 빼줘") || q.contains("없는 날은 빼줘") || q.contains("0원인 날 제외") || zeroFillOverrideRequested) {
+        if (q.contains("거래가 없는 날은 빼줘")
+                || q.contains("없는 날은 빼줘")
+                || q.contains("0원인 날 제외")
+                || zeroFillOverrideRequested) {
             zeroFillOverrideRequested = true;
             resultCategory = "EXPLICIT_ZERO_FILL_OVERRIDE_REVIEW";
             behavior = "POLICY_REVIEW";
@@ -890,7 +1016,7 @@ public class OpenStudyPlaybackGateway {
                     null,
                     false,
                     truncation,
-                    defaultClarificationOptionsForDomain(clarDomain, requestedScope),
+                    createDefaultClarificationOptions(clarDomain, requestedScope),
                     candidates,
                     llmDurationMs,
                     totalTokens
@@ -923,7 +1049,7 @@ public class OpenStudyPlaybackGateway {
         if (storeDecision) {
             // The analysis the server runs, whether the keyword rules or the model chose it: the same question then
             // skips the model next time even when the model's own answer named no analysis.
-            planCache.storePick(cacheVersion, cacheQuestion, resolvedAnalysisId, intentDomain, refundBasisOverride,
+            aiPlanCache.storePick(cacheVersion, cacheQuestion, resolvedAnalysisId, intentDomain, refundBasisOverride,
                     zeroFillOverrideRequested);
         }
         return new PlanDecision(
@@ -974,7 +1100,7 @@ public class OpenStudyPlaybackGateway {
     ) {
         long startNanos = System.nanoTime();
         try {
-            var modelCfg = properties.getModel();
+            DomainLensProperties.Model modelCfg = domainLensProperties.getModel();
             String baseUrl = modelCfg.getBaseUrl();
             String apiKey = modelCfg.getApiKey();
             String modelName = activeModelName();
@@ -984,12 +1110,18 @@ public class OpenStudyPlaybackGateway {
             String endpoint = baseUrl.endsWith("/") ? baseUrl + "chat/completions" : baseUrl + "/chat/completions";
 
             Map<String, Object> schema = Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                            "outcome", Map.of("type", "string", "enum", List.of("EXECUTE", "CLARIFICATION", "UNSUPPORTED")),
-                            "analysisId", Map.of(
-                                    "type", List.of("string", "null"),
-                                    "enum", Arrays.asList(
+                    "type",
+                    "object",
+                    "properties",
+                    Map.of(
+                            "outcome",
+                            Map.of("type", "string", "enum", List.of("EXECUTE", "CLARIFICATION", "UNSUPPORTED")),
+                            "analysisId",
+                            Map.of(
+                                    "type",
+                                    List.of("string", "null"),
+                                    "enum",
+                                    Arrays.asList(
                                             OpenStudyAnalyses.ID_POC_001,
                                             OpenStudyAnalyses.ID_POC_002,
                                             OpenStudyAnalyses.ID_POC_003,
@@ -1003,13 +1135,36 @@ public class OpenStudyPlaybackGateway {
                                             null
                                     )
                             ),
-                            "intentDomain", Map.of("type", "string", "enum", List.of("sales", "seats", "passes", "rooms", "tasks", "attendance", "unsupported")),
-                            "refundBasisOverride", Map.of("type", List.of("string", "null"), "enum", Arrays.asList("ORIGINAL_PAYMENT_DATE", null)),
-                            "zeroFillOverrideRequested", Map.of("type", "boolean"),
-                            "message", Map.of("type", List.of("string", "null"))
+                            "intentDomain",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "enum",
+                                    List.of("sales", "seats", "passes", "rooms", "tasks", "attendance", "unsupported")
+                            ),
+                            "refundBasisOverride",
+                            Map.of(
+                                    "type",
+                                    List.of("string", "null"),
+                                    "enum",
+                                    Arrays.asList("ORIGINAL_PAYMENT_DATE", null)
+                            ),
+                            "zeroFillOverrideRequested",
+                            Map.of("type", "boolean"),
+                            "message",
+                            Map.of("type", List.of("string", "null"))
                     ),
-                    "required", List.of("outcome", "analysisId", "intentDomain", "refundBasisOverride", "zeroFillOverrideRequested", "message"),
-                    "additionalProperties", false
+                    "required",
+                    List.of(
+                            "outcome",
+                            "analysisId",
+                            "intentDomain",
+                            "refundBasisOverride",
+                            "zeroFillOverrideRequested",
+                            "message"
+                    ),
+                    "additionalProperties",
+                    false
             );
 
             String candidateContext = candidates.stream()
@@ -1048,7 +1203,10 @@ public class OpenStudyPlaybackGateway {
                     .POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8))
                     .build();
 
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            HttpResponse<String> response = httpClient.send(
+                    request,
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+            );
             long durationMs = Math.max(1L, Duration.ofNanos(System.nanoTime() - startNanos).toMillis());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 log.warn("Live Qwen LLM returned HTTP {} in {}ms", response.statusCode(), durationMs);
@@ -1065,14 +1223,27 @@ public class OpenStudyPlaybackGateway {
             JsonNode parsed = objectMapper.readTree(content);
             String outcome = parsed.path("outcome").isNull() ? null : parsed.path("outcome").asText(null);
             String analysisId = parsed.path("analysisId").isNull() ? null : parsed.path("analysisId").asText(null);
-            String intentDomain = parsed.path("intentDomain").isNull() ? null : parsed.path("intentDomain").asText(null);
-            String refundBasisOverride = parsed.path("refundBasisOverride").isNull() ? null : parsed.path("refundBasisOverride").asText(null);
+            String intentDomain = parsed.path("intentDomain").isNull()
+                    ? null
+                    : parsed.path("intentDomain").asText(null);
+            String refundBasisOverride = parsed.path("refundBasisOverride").isNull()
+                    ? null
+                    : parsed.path("refundBasisOverride").asText(null);
             boolean zeroFill = parsed.path("zeroFillOverrideRequested").asBoolean(false);
             String message = parsed.path("message").isNull() ? null : parsed.path("message").asText(null);
 
             log.info("Live Qwen LLM ({}) planned question in {}ms (tokens={}): outcome={}, analysisId={}",
                     modelName, durationMs, totalTokens, outcome, analysisId);
-            return new LiveLlmPlanResult(outcome, analysisId, intentDomain, refundBasisOverride, zeroFill, message, durationMs, totalTokens);
+            return new LiveLlmPlanResult(
+                    outcome,
+                    analysisId,
+                    intentDomain,
+                    refundBasisOverride,
+                    zeroFill,
+                    message,
+                    durationMs,
+                    totalTokens
+            );
         } catch (Exception e) {
             long durationMs = Math.max(1L, Duration.ofNanos(System.nanoTime() - startNanos).toMillis());
             log.warn("Live Qwen LLM call failed after {}ms: {}", durationMs, e.getMessage());
@@ -1080,28 +1251,71 @@ public class OpenStudyPlaybackGateway {
         }
     }
 
-    private static List<ClarificationOption> defaultClarificationOptionsForDomain(String domain, String requestedScope) {
+    private static List<ClarificationOption> createDefaultClarificationOptions(
+            String domain,
+            String requestedScope
+    ) {
         if ("seats".equalsIgnoreCase(domain)) {
             return List.of(
-                    new ClarificationOption("realtime-seats", "지금 빈자리가 얼마나 있어?", OpenStudyAnalyses.ID_POC_004, requestedScope),
-                    new ClarificationOption("hourly-congestion", "언제 가장 붐벼?", OpenStudyAnalyses.ID_POC_002, requestedScope)
+                    new ClarificationOption(
+                            "realtime-seats",
+                            "지금 빈자리가 얼마나 있어?",
+                            OpenStudyAnalyses.ID_POC_004,
+                            requestedScope
+                    ),
+                    new ClarificationOption(
+                            "hourly-congestion",
+                            "언제 가장 붐벼?",
+                            OpenStudyAnalyses.ID_POC_002,
+                            requestedScope
+                    )
             );
         }
         if ("rooms".equalsIgnoreCase(domain)) {
             return List.of(
-                    new ClarificationOption("weekly-room-bookings", "이번 주 스터디룸 예약 현황을 보여줘", OpenStudyAnalyses.ID_POC_005, requestedScope)
+                    new ClarificationOption(
+                            "weekly-room-bookings",
+                            "이번 주 스터디룸 예약 현황을 보여줘",
+                            OpenStudyAnalyses.ID_POC_005,
+                            requestedScope
+                    )
             );
         }
         if ("passes".equalsIgnoreCase(domain)) {
             return List.of(
-                    new ClarificationOption("top-passes", "지난달 가장 잘 팔린 이용권 TOP 5를 보여줘", OpenStudyAnalyses.ID_POC_003, requestedScope),
-                    new ClarificationOption("expiring-passes", "앞으로 7일 이내에 만료되는 이용권을 보여줘", OpenStudyAnalyses.ID_POC_006, requestedScope)
+                    new ClarificationOption(
+                            "top-passes",
+                            "지난달 가장 잘 팔린 이용권 TOP 5를 보여줘",
+                            OpenStudyAnalyses.ID_POC_003,
+                            requestedScope
+                    ),
+                    new ClarificationOption(
+                            "expiring-passes",
+                            "앞으로 7일 이내에 만료되는 이용권을 보여줘",
+                            OpenStudyAnalyses.ID_POC_006,
+                            requestedScope
+                    )
             );
         }
         return List.of(
-                new ClarificationOption("branch-sales", "이번 달 지점별 매출을 비교해줘", OpenStudyAnalyses.ID_POC_001, requestedScope),
-                new ClarificationOption("daily-sales", "지난달 일별 매출 추이를 그래프로 보여줘", OpenStudyAnalyses.ID_POC_007, requestedScope),
-                new ClarificationOption("item-sales", "지난달 이용권, 스터디룸, 사물함 중 어디서 매출이 가장 많이 나왔어?", OpenStudyAnalyses.ID_POC_008, requestedScope)
+                new ClarificationOption(
+                        "branch-sales",
+                        "이번 달 지점별 매출을 비교해줘",
+                        OpenStudyAnalyses.ID_POC_001,
+                        requestedScope
+                ),
+                new ClarificationOption(
+                        "daily-sales",
+                        "지난달 일별 매출 추이를 그래프로 보여줘",
+                        OpenStudyAnalyses.ID_POC_007,
+                        requestedScope
+                ),
+                new ClarificationOption(
+                        "item-sales",
+                        "지난달 이용권, 스터디룸, 사물함 중 어디서 매출이 가장 많이 나왔어?",
+                        OpenStudyAnalyses.ID_POC_008,
+                        requestedScope
+                )
         );
     }
 
@@ -1111,17 +1325,28 @@ public class OpenStudyPlaybackGateway {
     ) {
         try {
             UserContext user = actor.toUserContext("all", actor.aiBranches());
-            var ctx = retriever.retrieve(question, user);
+            Retriever.Context ctx = retriever.retrieve(question, user);
             List<RetrievalCandidate> list = new ArrayList<>();
             int rank = 0;
             for (String id : ctx.ids()) {
                 double score = Math.round((0.96 - (rank * 0.03)) * 1000.0) / 1000.0;
-                String kind = registry.metrics().containsKey(id) ? "METRIC"
-                        : registry.sources().containsKey(id) ? "ENTITY"
-                        : registry.relations().containsKey(id) ? "RELATION" : "FIELD";
+                String kind;
+
+                if (semanticRegistry.metrics().containsKey(id)) {
+                    kind = "METRIC";
+                } else if (semanticRegistry.sources().containsKey(id)) {
+                    kind = "ENTITY";
+                } else if (semanticRegistry.relations().containsKey(id)) {
+                    kind = "RELATION";
+                } else {
+                    kind = "FIELD";
+                }
+
                 list.add(new RetrievalCandidate(id, kind, Math.max(0.50, score)));
                 rank++;
-                if (rank >= 8) break;
+                if (rank >= 8) {
+                    break;
+                }
             }
             return list;
         } catch (Exception e) {
@@ -1130,7 +1355,7 @@ public class OpenStudyPlaybackGateway {
     }
 
     public QuerySpec buildQuerySpec(String analysisId) {
-        var def = analyses.definition(analysisId).orElseThrow();
+        AnalysisRegistry.Definition def = openStudyAnalyses.definition(analysisId).orElseThrow();
         return new QuerySpec(
                 "qs_" + def.id(),
                 def.source(),
@@ -1147,12 +1372,14 @@ public class OpenStudyPlaybackGateway {
     }
 
     private String resolveAnalysisId(String q) {
-        Optional<String> direct = analyses.resolveFromQuestion(q);
+        Optional<String> direct = openStudyAnalyses.resolveFromQuestion(q);
         if (direct.isPresent()) {
             return direct.get();
         }
         String k = QuestionNormalizer.key(q);
-        if (QuestionNormalizer.has(k, "매출") && (QuestionNormalizer.has(k, "지점") || !userResolver.mentionedBranches(q).isEmpty())) {
+        if (QuestionNormalizer.has(k, "매출") && (
+                QuestionNormalizer.has(k, "지점") || !openStudyUserContextResolver.mentionedBranches(q).isEmpty()
+                )) {
             return OpenStudyAnalyses.ID_POC_001;
         }
         if (QuestionNormalizer.has(k, "이용권") && QuestionNormalizer.has(k, "매출")) {
@@ -1167,10 +1394,12 @@ public class OpenStudyPlaybackGateway {
         return null;
     }
 
-    private static String domainForAnalysisId(String analysisId, String q) {
+    private static String findDomainForAnalysisId(String analysisId, String q) {
         if (analysisId != null) {
             return switch (analysisId) {
-                case OpenStudyAnalyses.ID_POC_001, OpenStudyAnalyses.ID_POC_007, OpenStudyAnalyses.ID_POC_008 -> "sales";
+                case OpenStudyAnalyses.ID_POC_001,
+                        OpenStudyAnalyses.ID_POC_007,
+                        OpenStudyAnalyses.ID_POC_008 -> "sales";
                 case OpenStudyAnalyses.ID_POC_002, OpenStudyAnalyses.ID_POC_004 -> "seats";
                 case OpenStudyAnalyses.ID_POC_003, OpenStudyAnalyses.ID_POC_006 -> "passes";
                 case OpenStudyAnalyses.ID_POC_005 -> "rooms";
@@ -1179,12 +1408,30 @@ public class OpenStudyPlaybackGateway {
                 default -> "general";
             };
         }
-        if (q.contains("매출") || q.contains("결제") || q.contains("환불")) return "sales";
-        if (q.contains("좌석") || q.contains("빈자리") || q.contains("붐벼")) return "seats";
-        if (q.contains("이용권")) return "passes";
-        if (q.contains("스터디룸") || q.contains("룸")) return "rooms";
-        if (q.contains("업무")) return "tasks";
-        if (q.contains("근무") || q.contains("출퇴근")) return "attendance";
+        if (q.contains("매출") || q.contains("결제") || q.contains("환불")) {
+            return "sales";
+        }
+
+        if (q.contains("좌석") || q.contains("빈자리") || q.contains("붐벼")) {
+            return "seats";
+        }
+
+        if (q.contains("이용권")) {
+            return "passes";
+        }
+
+        if (q.contains("스터디룸") || q.contains("룸")) {
+            return "rooms";
+        }
+
+        if (q.contains("업무")) {
+            return "tasks";
+        }
+
+        if (q.contains("근무") || q.contains("출퇴근")) {
+            return "attendance";
+        }
+
         return "general";
     }
 
@@ -1195,6 +1442,6 @@ public class OpenStudyPlaybackGateway {
             String question,
             boolean isSalesDomain
     ) {
-        return userResolver.authorizeQuestion(actor, requestedScope, question, isSalesDomain);
+        return openStudyUserContextResolver.authorizeQuestion(actor, requestedScope, question, isSalesDomain);
     }
 }

@@ -23,27 +23,34 @@ import com.openstudy.domainlens.catalog.SemanticRegistry;
 @Service
 @RequiredArgsConstructor
 public class AiReadiness {
+
     /** Team chat tables beyond the ones already forbidden (ADR-M10-002 M10-D10). */
-    static final Set<String> TEAM_CHAT_SOURCES = Set.of("conversations", "conversation_members", "conversation_thread_reads", "messages");
+    static final Set<String> TEAM_CHAT_SOURCES = Set.of(
+            "conversations",
+            "conversation_members",
+            "conversation_thread_reads",
+            "messages"
+    );
 
-    private final SemanticRegistry registry;
-    private final OpenStudyAnalyses analyses;
-    private final EmbeddingGateway embeddings;
+    private final SemanticRegistry semanticRegistry;
+    private final OpenStudyAnalyses openStudyAnalyses;
+    private final EmbeddingGateway embeddingGateway;
 
-    public record Status(boolean ready, List<String> reasons, List<String> warnings) {}
+    public record Status(boolean ready, List<String> reasons, List<String> warnings) {
+    }
 
     public Status status() {
-        var reasons = problems(registry, analyses::offers, OpenStudyAnalyses.REGISTERED);
-        var warnings = new ArrayList<String>();
-        if ("unavailable".equals(embeddings.model())) {
+        List<String> reasons = problems(semanticRegistry, openStudyAnalyses::offers, OpenStudyAnalyses.REGISTERED);
+        ArrayList<String> warnings = new ArrayList<String>();
+        if ("unavailable".equals(embeddingGateway.model())) {
             warnings.add("임베딩 모델이 설치되지 않아 의미 검색 후보 없이 동작합니다.");
         }
         return new Status(reasons.isEmpty(), List.copyOf(reasons), List.copyOf(warnings));
     }
 
     public static List<String> problems(SemanticRegistry registry, Predicate<String> offered, Set<String> registered) {
-        var reasons = new ArrayList<String>();
-        var linked = new HashSet<String>();
+        ArrayList<String> reasons = new ArrayList<String>();
+        HashSet<String> linked = new HashSet<String>();
         registry.metrics().values().forEach(metric -> {
             // #232: a general metric runs as a validated JPA aggregate (generation path), not through an analysis.
             if (OpenStudyCatalogConfiguration.general(metric)) {
@@ -61,10 +68,13 @@ public class AiReadiness {
         });
         registered.stream().filter(id -> !linked.contains(id)).sorted()
                 .forEach(id -> reasons.add("등록 분석 " + id + "에 연결된 지표가 없습니다."));
-        var forbidden = new HashSet<>(OpenStudyCatalogConfiguration.FORBIDDEN_SOURCES);
+        HashSet<String> forbidden = new HashSet<>(OpenStudyCatalogConfiguration.FORBIDDEN_SOURCES);
         forbidden.addAll(TEAM_CHAT_SOURCES);
-        registry.sources().keySet().stream().filter(id -> forbidden.contains(id) || forbidden.contains(id + "s")).sorted()
-                .forEach(id -> reasons.add("허용되지 않은 원천 " + id + "이 카탈로그에 있습니다."));
+        registry.sources()
+                .keySet()
+                .stream()
+                .filter(id -> forbidden.contains(id) || forbidden.contains(id + "s"))
+                .sorted().forEach(id -> reasons.add("허용되지 않은 원천 " + id + "이 카탈로그에 있습니다."));
         return reasons;
     }
 }

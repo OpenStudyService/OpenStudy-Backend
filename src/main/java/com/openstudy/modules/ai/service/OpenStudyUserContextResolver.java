@@ -6,15 +6,20 @@ import com.openstudy.modules.authorization.dto.AuthorizationState;
 import com.openstudy.modules.authorization.dto.BranchAction;
 import com.openstudy.modules.authorization.service.AuthorizationService;
 import com.openstudy.modules.branch.service.SessionBranchService;
+
 import jakarta.persistence.EntityManager;
+
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -46,12 +51,28 @@ public class OpenStudyUserContextResolver {
             scopeMap.put("salesBranches", List.copyOf(salesBranches));
             scopeMap.put("grants", Set.copyOf(allGrants));
             return new UserContext() {
-                @Override public String subjectId() { return Long.toString(employeeId); }
-                @Override public Set<String> roles() { return roles; }
-                @Override public PolicyBinding policyBinding() {
+                @Override
+                public String subjectId() {
+                    return Long.toString(employeeId);
+                }
+
+                @Override
+                public Set<String> roles() {
+                    return roles;
+                }
+
+                @Override
+                public PolicyBinding policyBinding() {
                     return new PolicyBinding() {
-                        @Override public String roleKey() { return owner ? "OWNER" : "EMPLOYEE"; }
-                        @Override public Map<String, Object> scope() { return scopeMap; }
+                        @Override
+                        public String roleKey() {
+                            return owner ? "OWNER" : "EMPLOYEE";
+                        }
+
+                        @Override
+                        public Map<String, Object> scope() {
+                            return scopeMap;
+                        }
                     };
                 }
             };
@@ -79,13 +100,16 @@ public class OpenStudyUserContextResolver {
     private final AuthorizationService authorizationService;
     private final EntityManager entityManager;
 
-    private final SessionBranchService branches;
+    private final SessionBranchService sessionBranchService;
 
-    public OpenStudyUserContextResolver(AuthorizationService authorizationService, EntityManager entityManager,
-            SessionBranchService branches) {
+    public OpenStudyUserContextResolver(
+            AuthorizationService authorizationService,
+            EntityManager entityManager,
+            SessionBranchService branches
+    ) {
         this.authorizationService = authorizationService;
         this.entityManager = entityManager;
-        this.branches = branches;
+        this.sessionBranchService = branches;
     }
 
     /**
@@ -139,7 +163,7 @@ public class OpenStudyUserContextResolver {
                 salesBranches.add(branchId);
                 grants.add("sales:read");
             }
-            var m = state.memberships().get(branchId);
+            AuthorizationState.Membership m = state.memberships().get(branchId);
             if (m != null && "ACTIVE".equals(m.status())) {
                 grants.addAll(m.grants());
             }
@@ -185,7 +209,10 @@ public class OpenStudyUserContextResolver {
 
         // 2. Detect explicit branch mentions in question text
         Set<Long> mentionedBranches = mentionedBranches(q);
-        boolean mentionsAllBranches = q.contains("모든 지점") || q.contains("전 지점") || q.contains("전체 지점") || q.contains("지점별");
+        boolean mentionsAllBranches = q.contains("모든 지점")
+                || q.contains("전 지점")
+                || q.contains("전체 지점")
+                || q.contains("지점별");
 
         // 3. Explicit branch scope parameter if numeric
         Long explicitScopeBranch = null;
@@ -236,7 +263,9 @@ public class OpenStudyUserContextResolver {
         }
 
         // 5. If non-owner asks for "모든 지점" / "지점별" when they only have single-branch access (NEG-001, NEG-004)
-        if (!actor.owner() && mentionsAllBranches && !actor.aiBranches().containsAll(branches.allNames().keySet())) {
+        if (!actor.owner() && mentionsAllBranches && !actor.aiBranches().containsAll(
+                sessionBranchService.allNames().keySet()
+                )) {
             return ScopeDecision.denied(
                     403,
                     "BRANCH_SCOPE_DENIED",
@@ -290,13 +319,21 @@ public class OpenStudyUserContextResolver {
      * requester cannot read is refused without repeating its name (#94).
      */
     public Set<Long> mentionedBranches(String question) {
-        if (question == null || question.isBlank()) return Set.of();
+        if (question == null || question.isBlank()) {
+            return Set.of();
+        }
+
         Set<Long> found = new LinkedHashSet<>();
-        branches.allNames().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(branch -> {
+        sessionBranchService.allNames().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(branch -> {
             String name = branch.getValue() == null ? "" : branch.getValue().trim();
-            if (name.isEmpty()) return;
+            if (name.isEmpty()) {
+                return;
+            }
+
             String stem = name.endsWith("점") && name.length() >= 3 ? name.substring(0, name.length() - 1) : null;
-            if (question.contains(name) || (stem != null && question.contains(stem))) found.add(branch.getKey());
+            if (question.contains(name) || (stem != null && question.contains(stem))) {
+                found.add(branch.getKey());
+            }
         });
         return Set.copyOf(found);
     }
@@ -307,25 +344,42 @@ public class OpenStudyUserContextResolver {
      * the text, the model looks for a branch filter it has no field for and abstains ("강남점은 언제 가장 붐벼?").
      */
     public String withoutBranchNames(String question) {
-        if (question == null || question.isBlank()) return question;
+        if (question == null || question.isBlank()) {
+            return question;
+        }
+
         String result = question;
-        var names = branches.allNames().values().stream().filter(java.util.Objects::nonNull).map(String::trim)
-                .filter(name -> !name.isEmpty()).sorted(java.util.Comparator.comparingInt(String::length).reversed()).toList();
-        for (String name : names) result = result.replace(name, "선택 지점");
+        List<String> names =
+                sessionBranchService.allNames()
+                        .values()
+                        .stream()
+                        .filter(Objects::nonNull)
+                        .map(String::trim).filter(name -> !name.isEmpty())
+                        .sorted(Comparator.comparingInt(String::length).reversed())
+                        .toList();
+        for (String name : names) {
+            result = result.replace(name, "선택 지점");
+        }
+
         for (String name : names) {
             String stem = name.endsWith("점") && name.length() >= 3 ? name.substring(0, name.length() - 1) : null;
-            if (stem != null && !"선택 지".equals(stem)) result = result.replace(stem, "선택 지점");
+            if (stem != null && !"선택 지".equals(stem)) {
+                result = result.replace(stem, "선택 지점");
+            }
         }
         return result;
     }
 
     /** The branch's real name, for result titles and choices the requester may already see. */
     public String branchName(long branchId) {
-        return branches.names(List.of(branchId)).getOrDefault(branchId, "지점 " + branchId);
+        return sessionBranchService.names(List.of(branchId)).getOrDefault(branchId, "지점 " + branchId);
     }
 
     public static String toCsv(Collection<Long> branchIds) {
-        if (branchIds == null || branchIds.isEmpty()) return "";
+        if (branchIds == null || branchIds.isEmpty()) {
+            return "";
+        }
+
         return branchIds.stream().sorted().map(String::valueOf).reduce((a, b) -> a + "," + b).orElse("");
     }
 }

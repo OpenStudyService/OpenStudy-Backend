@@ -10,10 +10,12 @@ import com.openstudy.domainlens.catalog.EmbeddingIndex;
 import com.openstudy.domainlens.catalog.SemanticRegistry;
 import com.openstudy.domainlens.query.Retriever;
 import com.openstudy.domainlens.security.PolicyEngine;
+
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -22,6 +24,7 @@ import org.springframework.context.annotation.Configuration;
  */
 @Configuration(proxyBeanMethods = false)
 public class OpenStudyPolicies {
+
     public static final String POLICY_VERSION = "openstudy-policy-v1";
 
     private static final Set<String> FORBIDDEN_FIELD_IDS = Set.of(
@@ -152,8 +155,14 @@ public class OpenStudyPolicies {
 
     @SuppressWarnings("unchecked")
     private static boolean hasGrant(UserContext user, String grant) {
-        if (user == null) return false;
-        if (user.roles() != null && user.roles().contains("OWNER")) return true;
+        if (user == null) {
+            return false;
+        }
+
+        if (user.roles() != null && user.roles().contains("OWNER")) {
+            return true;
+        }
+
         if (user.policyBinding() != null && user.policyBinding().scope() != null) {
             Object grants = user.policyBinding().scope().get("grants");
             if (grants instanceof Collection<?> col) {
