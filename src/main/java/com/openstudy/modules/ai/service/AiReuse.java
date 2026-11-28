@@ -171,8 +171,16 @@ final class AiReuse {
 
         Set<Long> ids = new LinkedHashSet<>();
         for (Object item : list) {
-            String text = item instanceof Number number && !(item instanceof Double || item instanceof Float)
-                    ? Long.toString(number.longValue()) : item instanceof String s ? s : "";
+            String text;
+
+            if (item instanceof Number number && !(item instanceof Double || item instanceof Float)) {
+                text = Long.toString(number.longValue());
+            } else if (item instanceof String s) {
+                text = s;
+            } else {
+                text = "";
+            }
+
             if (!ID.matcher(text).matches()) {
                 throw ApiException.validation(field, "ID 형식을 확인해 주세요.");
             }
@@ -204,9 +212,15 @@ final class AiReuse {
                 String refundBasis,
                 Boolean zeroFill
         ) {
-            LocalDate from = period == null ? null : period.startDateKst();
-            LocalDate to = period == null ? null : period.endExclusiveKst().toLocalTime().equals(LocalTime.MIDNIGHT)
-                    ? period.endDateExclusiveKst().minusDays(1) : period.endDateExclusiveKst();
+            LocalDate from = null;
+            LocalDate to = null;
+
+            if (period != null) {
+                from = period.startDateKst();
+                boolean endsAtMidnight = period.endExclusiveKst().toLocalTime().equals(LocalTime.MIDNIGHT);
+                to = endsAtMidnight ? period.endDateExclusiveKst().minusDays(1) : period.endDateExclusiveKst();
+            }
+
             return new Conditions(analysisId, from, to, periodEdited, Set.copyOf(branchIds), Set.copyOf(productIds),
                     refundBasis, zeroFill);
         }
@@ -247,7 +261,13 @@ final class AiReuse {
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("analysisId", analysisId);
             map.put("period", from == null ? null : Map.of("from", from.toString(), "to", to.toString()));
-            map.put("periodSource", from == null ? null : periodEdited ? "EDITED" : "DEFAULT");
+            String periodSource = null;
+
+            if (from != null) {
+                periodSource = periodEdited ? "EDITED" : "DEFAULT";
+            }
+
+            map.put("periodSource", periodSource);
             map.put("branchIds", branchIds.stream().sorted().map(String::valueOf).toList());
             map.put("productIds", productIds.stream().sorted().map(String::valueOf).toList());
             map.put("refundBasis", refundBasis);

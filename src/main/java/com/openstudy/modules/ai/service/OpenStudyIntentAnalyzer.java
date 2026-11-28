@@ -310,6 +310,10 @@ public class OpenStudyIntentAnalyzer implements QueryIntent.Analyzer {
     static QuerySpec.Direction order(String key) {
         boolean desc = key.contains("많은순") || key.contains("높은순") || key.contains("큰순") || key.contains("내림차순");
         boolean asc = key.contains("적은순") || key.contains("낮은순") || key.contains("작은순") || key.contains("오름차순");
-        return desc == asc ? null : desc ? QuerySpec.Direction.DESC : QuerySpec.Direction.ASC;
+        if (desc == asc) {
+            return null;
+        }
+
+        return desc ? QuerySpec.Direction.DESC : QuerySpec.Direction.ASC;
     }
 }

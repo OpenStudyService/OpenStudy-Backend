@@ -679,13 +679,18 @@ public class AiWorkspaceService {
         Optional<AiExecutionEntity> prior = existing.isEmpty() ? Optional.<AiExecutionEntity>empty()
                 : aiExecutionRepository.findFirstByConversationIdAndStatusOrderByCreatedAtDescIdDesc(convId, "READY")
                         .filter(e -> e.getAnalysisId() != null);
-        String resetReason = prior.isEmpty()
-                ? "NO_PRIOR_RESULT"
-                : !Objects.equals(prior.get().getScopeKey(), scope)
-                ? "SCOPE_CHANGED"
-                : isPermitted(actor, prior.get(), "sales".equals(prior.get().getIntentDomain()))
-                ? null
-                : "PERMISSION_LOST";
+        String resetReason;
+
+        if (prior.isEmpty()) {
+            resetReason = "NO_PRIOR_RESULT";
+        } else if (!Objects.equals(prior.get().getScopeKey(), scope)) {
+            resetReason = "SCOPE_CHANGED";
+        } else if (isPermitted(actor, prior.get(), "sales".equals(prior.get().getIntentDomain()))) {
+            resetReason = null;
+        } else {
+            resetReason = "PERMISSION_LOST";
+        }
+
         AiExecutionEntity basis = resetReason == null ? prior.get() : null;
         Set<Long> namedBranches = rawQuestion == null
                 ? Set.of()
@@ -765,21 +770,34 @@ public class AiWorkspaceService {
         // registered analysis POC-002 instead of ending as "no analysis found".
         boolean generationAbstained = generationFirst
                 && OpenStudyPlaybackGateway.noRegisteredAnalysis(firstPlan, clarificationChoice);
-        final OpenStudyPlaybackGateway.PlanDecision plan = generationAbstained
-                ? openStudyPlaybackGateway.planQuestion(
-                        rawQuestion,
-                        clarificationChoice,
-                        actor,
-                        scope,
-                        followUp,
-                        basis == null ? null : findPreviousConditions(basis),
-                        false
-                )
-                : firstPlan;
+        OpenStudyPlaybackGateway.PlanDecision chosenPlan = firstPlan;
+
+        if (generationAbstained) {
+            String previousConditions = basis == null ? null : findPreviousConditions(basis);
+            chosenPlan = openStudyPlaybackGateway.planQuestion(
+                    rawQuestion,
+                    clarificationChoice,
+                    actor,
+                    scope,
+                    followUp,
+                    previousConditions,
+                    false
+            );
+        }
+
+        final OpenStudyPlaybackGateway.PlanDecision plan = chosenPlan;
 
         if (!"EXECUTE".equals(plan.outcome())) {
-            String stageStatus = "CLARIFICATION".equals(plan.outcome()) ? "CLARIFICATION"
-                    : "UNSUPPORTED".equals(plan.outcome()) ? "UNSUPPORTED" : "REJECTED";
+            String stageStatus;
+
+            if ("CLARIFICATION".equals(plan.outcome())) {
+                stageStatus = "CLARIFICATION";
+            } else if ("UNSUPPORTED".equals(plan.outcome())) {
+                stageStatus = "UNSUPPORTED";
+            } else {
+                stageStatus = "REJECTED";
+            }
+
             long genMs = plan.llmDurationMs() > 0 ? plan.llmDurationMs() : 3L;
             String genLabel = plan.llmDurationMs() > 0
                     ? "Qwen LLM 조회 명세(QuerySpec) 생성 (" + openStudyPlaybackGateway.activeModelName() + ")"
@@ -991,17 +1009,21 @@ public class AiWorkspaceService {
             securityGate.put("planCache", "HIT");
         }
 
-        String genLabel = plan.planCached()
-                ? "저장된 조회 계획 재사용 (LLM 호출 없음)"
-                : plan.llmDurationMs() > 0
-                ? "Qwen LLM 조회 명세(QuerySpec) 생성 (" + openStudyPlaybackGateway.activeModelName() + ")"
-                : "조회 명세(QuerySpec) 생성";
-        String genDetail = plan.planCached()
-                ? "같은 뜻의 이전 질문에서 고른 분석: " + plan.analysisId()
-                : plan.llmDurationMs() > 0
-                ? "Model: " + openStudyPlaybackGateway.activeModelName() + " · " + plan.analysisId()
-                        + (plan.totalTokens() > 0 ? " · " + plan.totalTokens() + " tokens" : "")
-                : "Registered analysis: " + plan.analysisId();
+        String genLabel;
+        String genDetail;
+
+        if (plan.planCached()) {
+            genLabel = "저장된 조회 계획 재사용 (LLM 호출 없음)";
+            genDetail = "같은 뜻의 이전 질문에서 고른 분석: " + plan.analysisId();
+        } else if (plan.llmDurationMs() > 0) {
+            genLabel = "Qwen LLM 조회 명세(QuerySpec) 생성 (" + openStudyPlaybackGateway.activeModelName() + ")";
+            String tokens = plan.totalTokens() > 0 ? " · " + plan.totalTokens() + " tokens" : "";
+            genDetail = "Model: " + openStudyPlaybackGateway.activeModelName() + " · " + plan.analysisId() + tokens;
+        } else {
+            genLabel = "조회 명세(QuerySpec) 생성";
+            genDetail = "Registered analysis: " + plan.analysisId();
+        }
+
         stages.add(new StageSpan("generating", genLabel, "COMPLETED", genMs, genDetail));
         long execStart = System.nanoTime();
         stages.add(new StageSpan("validating", "권한·스코프·예산 가드레일 검증", "COMPLETED", elapsedMs(planEnd, execStart),
@@ -1875,8 +1897,17 @@ public class AiWorkspaceService {
         ArrayList<String> parts = new ArrayList<String>();
         parts.add(conditions.analysisId() == null ? "AI 생성 조회" : "분석 " + conditions.analysisId());
         parts.add("데이터셋 " + datasetId);
-        parts.add("기간 " + (conditions.from() != null ? conditions.from() + "~" + conditions.to() + " (Asia/Seoul)"
-                : conditions.analysisId() == null ? "질문 기준, 지금 시각으로 다시 계산 (Asia/Seoul)" : "지금 기준"));
+        String periodText;
+
+        if (conditions.from() != null) {
+            periodText = conditions.from() + "~" + conditions.to() + " (Asia/Seoul)";
+        } else if (conditions.analysisId() == null) {
+            periodText = "질문 기준, 지금 시각으로 다시 계산 (Asia/Seoul)";
+        } else {
+            periodText = "지금 기준";
+        }
+
+        parts.add("기간 " + periodText);
         parts.add(
                 "지점 " + String.join(
                         ", ",
@@ -1907,13 +1938,18 @@ public class AiWorkspaceService {
         OpenStudyClock.KstPeriod edited = readSavedPeriod(execution);
         String analysisId = execution.getAnalysisId();
         // The refund basis is a condition of the registered sales analyses; a generated query has none.
-        String refundBasis = !"sales".equals(execution.getIntentDomain()) || analysisId == null ? null
-                : "ORIGINAL_PAYMENT_DATE".equals(execution.getRefundBasis()) ? "original" : "processed";
-        OpenStudyClock.KstPeriod period = edited != null
-                ? edited
-                : analysisId == null
-                ? null
-                : openStudyAnalyses.defaultPeriod(analysisId);
+        String refundBasis = null;
+
+        if ("sales".equals(execution.getIntentDomain()) && analysisId != null) {
+            refundBasis = "ORIGINAL_PAYMENT_DATE".equals(execution.getRefundBasis()) ? "original" : "processed";
+        }
+
+        OpenStudyClock.KstPeriod period = edited;
+
+        if (edited == null && analysisId != null) {
+            period = openStudyAnalyses.defaultPeriod(analysisId);
+        }
+
         return AiReuse.Conditions.of(analysisId, period, edited != null, parseBranchCsv(execution.getBranchIdsCsv()),
                 parseBranchCsv(execution.getProductIdsCsv()), refundBasis,
                 OpenStudyAnalyses.ID_POC_007.equals(analysisId) ? execution.isZeroFillRequested() : null);

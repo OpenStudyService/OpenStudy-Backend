@@ -47,6 +47,7 @@
 - 주입 필드 53개(선언·참조 377곳), private 메서드 36개(선언·참조 257곳)의 이름을 바꿨다.
 - 한 줄 `if`·`for`·`else`와 한 줄 메서드·익명 클래스 메서드를 블록으로 풀었다.
 - 120자를 넘는 줄을 인자 한 줄에 하나, 메서드 연결 한 줄에 하나, 삼항·논리 연산자 앞 줄바꿈으로 나눴다. 읽기 어려운 조건 두 곳은 이름 있는 boolean(`followUpAsked`, `generationAbstained`)으로 뺐다(단락 평가 순서는 그대로).
+- #250 인수 조건에 맞춰 중첩·연쇄 삼항 연산자 12곳을 `if`/`else if`로 바꿨다(`AiWorkspaceService`의 초기화 사유·단계 상태·생성 라벨·기간 문구·환불 기준·기간, `AiReuse`, `OpenStudyIntentAnalyzer`, `OpenStudyPlaybackGateway`). 각 분기의 호출(`isPermitted`, `defaultPeriod`, `findPreviousConditions` 등)은 원래처럼 해당 분기에서만 실행된다. `OpenStudyPlaybackGateway`의 프롬프트 문자열 연결은 서로 독립된 괄호 삼항이라 그대로 두었다.
 - 엔티티 7개: 필드 어노테이션을 한 줄에 하나씩 썼다.
 - enum·레코드: 상수·구성 요소를 한 줄에 하나씩, 빈 본문은 두 줄로 썼다.
 - import 그룹 사이에 빈 줄을 넣었다.
@@ -54,9 +55,9 @@
 ## 5. 검증 결과
 
 - `./gradlew compileJava compileTestJava`: 통과.
-- ai `src/main`에 `var`, 중괄호 없는 `if`·`for`·`else`가 남아 있지 않은 것을 확인했다. 120자를 넘는 코드 줄은 파생 쿼리 이름 두 줄과 LLM 프롬프트 text block뿐이다.
+- ai `src/main`에 `var`, 중괄호 없는 `if`·`for`·`else`, 중첩 삼항 연산자가 남아 있지 않은 것을 확인했다. 120자를 넘는 코드 줄은 파생 쿼리 이름 두 줄과 LLM 프롬프트 text block뿐이다.
 - JPQL·SQL 리터럴 토큰 비교(`origin/main` 대비): `OpenStudyAnalyses`, `OpenStudyUserContextResolver`, `AiPlanCacheRepository` 모두 차이 없음.
-- ai·domainlens·architecture 테스트 전체와 AI 매출 동등성(`AiSalesEquivalenceIntegrationTests`), 근태 정정 통합 테스트: 45개 클래스, 259개 테스트, 실패 0, 건너뜀 27. 마지막 형식 수정 뒤 같은 범위를 한 번 더 실행해 같은 결과를 확인했다.
+- ai·domainlens·architecture 테스트 전체와 AI 매출 동등성(`AiSalesEquivalenceIntegrationTests`), 근태 정정 통합 테스트: 45개 클래스, 259개 테스트, 실패 0, 건너뜀 27. 삼항 연산자 정리 뒤 같은 범위를 다시 실행해 같은 결과를 확인했다.
   - 건너뜀 27은 모두 로컬 AI 환경 변수(`OPENSTUDY_AI_LOCAL_TESTS`)나 실제 모델 연결로 켜는 테스트다.
 - `OPENSTUDY_AI_LOCAL_TESTS=true`로 켜서 다시 실행한 결과
   - `DomainLensPipelineIntegrationTests`(11개, 건너뜀 1)·`AiGeneratedCongestionIntegrationTests`(6개, 건너뜀 1): 통과.

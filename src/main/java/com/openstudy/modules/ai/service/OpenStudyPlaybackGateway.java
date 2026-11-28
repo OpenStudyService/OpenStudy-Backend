@@ -1330,9 +1330,18 @@ public class OpenStudyPlaybackGateway {
             int rank = 0;
             for (String id : ctx.ids()) {
                 double score = Math.round((0.96 - (rank * 0.03)) * 1000.0) / 1000.0;
-                String kind = semanticRegistry.metrics().containsKey(id) ? "METRIC"
-                        : semanticRegistry.sources().containsKey(id) ? "ENTITY"
-                        : semanticRegistry.relations().containsKey(id) ? "RELATION" : "FIELD";
+                String kind;
+
+                if (semanticRegistry.metrics().containsKey(id)) {
+                    kind = "METRIC";
+                } else if (semanticRegistry.sources().containsKey(id)) {
+                    kind = "ENTITY";
+                } else if (semanticRegistry.relations().containsKey(id)) {
+                    kind = "RELATION";
+                } else {
+                    kind = "FIELD";
+                }
+
                 list.add(new RetrievalCandidate(id, kind, Math.max(0.50, score)));
                 rank++;
                 if (rank >= 8) {
