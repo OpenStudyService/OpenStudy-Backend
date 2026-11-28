@@ -6,15 +6,19 @@ import com.openstudy.domainlens.api.ir.ViewSpec;
 import com.openstudy.domainlens.api.retrieval.EmbeddingGateway;
 import com.openstudy.domainlens.catalog.SearchText;
 import com.openstudy.domainlens.catalog.SemanticRegistry;
+import com.openstudy.domainlens.query.QueryIntent;
 import com.openstudy.modules.ai.entity.AiPlanCacheEntity;
 import com.openstudy.modules.ai.repository.AiPlanCacheRepository;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.TreeSet;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -39,7 +43,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class AiPlanCache {
-    public enum Kind { REGISTERED_PICK, GENERATED }
+
+    public enum Kind {
+
+        REGISTERED_PICK,
+        GENERATED
+    }
 
     /** Bump when a prompt or the meaning of a stored plan changes; older plans are then ignored. */
     static final String FORMAT = "plan-cache-1";
@@ -61,45 +70,77 @@ public class AiPlanCache {
             new String[] {"NOW", "지금", "현재", "실시간"});
 
     /** A plan found for a question. */
-    public record Hit(Long id, String analysisId, String intentDomain, String refundBasisOverride,
-            boolean zeroFillOverride, List<QuerySpec> queries, ViewSpec view, double similarity) {}
+    public record Hit(
+            Long id,
+            String analysisId,
+            String intentDomain,
+            String refundBasisOverride,
+            boolean zeroFillOverride,
+            List<QuerySpec> queries,
+            ViewSpec view,
+            double similarity
+    ) {
+    }
 
-    private final AiPlanCacheRepository repository;
-    private final EmbeddingGateway embeddings;
-    private final OpenStudyIntentAnalyzer intents;
-    private final SemanticRegistry registry;
-    private final OpenStudyClock clock;
+    private final AiPlanCacheRepository aiPlanCacheRepository;
+    private final EmbeddingGateway embeddingGateway;
+    private final OpenStudyIntentAnalyzer openStudyIntentAnalyzer;
+    private final SemanticRegistry semanticRegistry;
+    private final OpenStudyClock openStudyClock;
 
     /** The plans of this kind made with this model and prompt; {@code promptKey} names the prompt version. */
     public String versionKey(Kind kind, String modelName, String promptKey) {
-        return SearchText.hash(String.join("|", FORMAT, kind.name(), registry.version(),
-                OpenStudyAnalyses.CATALOG_VERSION, modelName == null ? "" : modelName, promptKey == null ? "" : promptKey));
+        return SearchText.hash(
+                String.join(
+                        "|",
+                        FORMAT,
+                        kind.name(),
+                        semanticRegistry.version(),
+                        OpenStudyAnalyses.CATALOG_VERSION,
+                        modelName == null ? "" : modelName,
+                        promptKey == null ? "" : promptKey
+                )
+        );
     }
 
     /** The cached plan for a question, if one is close enough and read the same way. Never throws. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Optional<Hit> find(Kind kind, String versionKey, String question) {
         try {
-            if (question == null || question.isBlank()) return Optional.empty();
-            Instant now = clock.asOf();
-            var candidates = repository.findByKindAndVersionKeyAndExpiresAtAfterOrderByLastUsedAtDesc(kind.name(),
-                    versionKey, now, PageRequest.of(0, MAX_PER_KIND));
+            if (question == null || question.isBlank()) {
+                return Optional.empty();
+            }
+
+            Instant now = openStudyClock.asOf();
+            List<AiPlanCacheEntity> candidates =
+                    aiPlanCacheRepository.findByKindAndVersionKeyAndExpiresAtAfterOrderByLastUsedAtDesc(
+                            kind.name(),
+                            versionKey,
+                            now,
+                            PageRequest.of(0, MAX_PER_KIND)
+                    );
             if (candidates.isEmpty()) {
                 log.info("AI plan cache miss: kind={} no plans for this version", kind);
                 return Optional.empty();
             }
             String reading = reading(question);
-            var exact = candidates.stream().filter(c -> c.getQuestionKey().equals(questionKey(versionKey, question))).findFirst();
+            Optional<AiPlanCacheEntity> exact =
+                    candidates.stream()
+                            .filter(c -> c.getQuestionKey().equals(toQuestionKey(versionKey, question)))
+                            .findFirst();
             AiPlanCacheEntity best = exact.orElse(null);
             double bestScore = exact.isPresent() ? 1.0 : -1.0;
             double closest = -1.0;
             int readDifferently = 0;
             if (best == null) {
-                var vector = embeddings.embedQuery(question);
-                for (var candidate : candidates) {
+                List<Double> vector = embeddingGateway.embedQuery(question);
+                for (AiPlanCacheEntity candidate : candidates) {
                     double score = cosine(vector, parse(candidate.getVectorJson()));
                     closest = Math.max(closest, score);
-                    if (score < MIN_SIMILARITY || score <= bestScore) continue;
+                    if (score < MIN_SIMILARITY || score <= bestScore) {
+                        continue;
+                    }
+
                     if (!reading.equals(reading(candidate.getQuestionText()))) {
                         readDifferently++;
                         continue;
@@ -119,7 +160,7 @@ public class AiPlanCache {
             log.info("AI plan cache hit: kind={} plan={} similarity={}", kind, best.getId(),
                     Math.round(bestScore * 1000) / 1000.0);
             best.used(now);
-            return Optional.of(hit(best, bestScore));
+            return Optional.of(toHit(best, bestScore));
         } catch (RuntimeException ex) {
             log.atWarn().setCause(ex).log("AI plan cache lookup skipped: {}", ex.getClass().getSimpleName());
             return Optional.empty();
@@ -128,39 +169,63 @@ public class AiPlanCache {
 
     /** Keeps the analysis the model picked for a question. Never throws. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void storePick(String versionKey, String question, String analysisId, String intentDomain,
-            String refundBasisOverride, boolean zeroFillOverride) {
+    public void storePick(
+            String versionKey,
+            String question,
+            String analysisId,
+            String intentDomain,
+            String refundBasisOverride,
+            boolean zeroFillOverride
+    ) {
         store(Kind.REGISTERED_PICK, versionKey, question,
                 entity -> entity.pick(analysisId, intentDomain, refundBasisOverride, zeroFillOverride));
     }
 
     /** Keeps the QuerySpec·ViewSpec the generation path compiled for a question. Never throws. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void storeGenerated(String versionKey, String question, List<QuerySpec> queries, ViewSpec view, String domain) {
+    public void storeGenerated(
+            String versionKey,
+            String question,
+            List<QuerySpec> queries,
+            ViewSpec view,
+            String domain
+    ) {
         store(Kind.GENERATED, versionKey, question,
                 entity -> entity.specs(ContractJson.write(queries), ContractJson.write(view), domain));
     }
 
-    private void store(Kind kind, String versionKey, String question,
-            java.util.function.Consumer<AiPlanCacheEntity> payload) {
+    private void store(
+            Kind kind,
+            String versionKey,
+            String question,
+            Consumer<AiPlanCacheEntity> payload
+    ) {
         try {
-            if (question == null || question.isBlank() || question.length() > 500) return;
-            Instant now = clock.asOf();
-            repository.deleteExpired(now);
-            String vector = ContractJson.write(embeddings.embedQuery(question));
-            String key = questionKey(versionKey, question);
-            var entity = repository.findByQuestionKey(key).orElse(null);
+            if (question == null || question.isBlank() || question.length() > 500) {
+                return;
+            }
+
+            Instant now = openStudyClock.asOf();
+            aiPlanCacheRepository.deleteExpired(now);
+            String vector = ContractJson.write(embeddingGateway.embedQuery(question));
+            String key = toQuestionKey(versionKey, question);
+            AiPlanCacheEntity entity = aiPlanCacheRepository.findByQuestionKey(key).orElse(null);
             if (entity == null) {
                 entity = new AiPlanCacheEntity(kind.name(), versionKey, key, question, vector, now, now.plus(TTL));
             } else {
                 entity.renew(vector, now, now.plus(TTL));
             }
             payload.accept(entity);
-            repository.save(entity);
+            aiPlanCacheRepository.save(entity);
             log.info("AI plan cache stored: kind={} plan={}", kind, entity.getId());
-            long excess = repository.countByKind(kind.name()) - MAX_PER_KIND;
+            long excess = aiPlanCacheRepository.countByKind(kind.name()) - MAX_PER_KIND;
             if (excess > 0) {
-                repository.deleteAll(repository.findByKindOrderByLastUsedAtAsc(kind.name(), PageRequest.of(0, (int) excess)));
+                aiPlanCacheRepository.deleteAll(
+                        aiPlanCacheRepository.findByKindOrderByLastUsedAtAsc(
+                                kind.name(),
+                                PageRequest.of(0, (int) excess)
+                        )
+                );
             }
         } catch (RuntimeException ex) {
             log.atWarn().log("AI plan cache store skipped: {}", ex.getClass().getSimpleName());
@@ -173,42 +238,52 @@ public class AiPlanCache {
      */
     public String reading(String question) {
         String key = QuestionNormalizer.key(question);
-        var intent = intents.analyze(question, null);
-        var parts = new ArrayList<String>();
+        QueryIntent intent = openStudyIntentAnalyzer.analyze(question, null);
+        ArrayList<String> parts = new ArrayList<String>();
         parts.add("metrics=" + new TreeSet<>(intent.metrics()));
         parts.add("dimensions=" + new TreeSet<>(intent.dimensions()));
         parts.add("period=" + (intent.period() == null ? "" : ContractJson.canonical(intent.period())));
         parts.add("order=" + intent.order() + ":" + intent.orderField() + ":" + intent.total());
-        parts.add("periods=" + intents.periodReadings(question));
-        var numbers = new ArrayList<String>();
+        parts.add("periods=" + openStudyIntentAnalyzer.periodReadings(question));
+        ArrayList<String> numbers = new ArrayList<String>();
         NUMBER.matcher(key).results().forEach(m -> numbers.add(m.group()));
         parts.add("numbers=" + numbers);
-        var groupings = new TreeSet<String>();
+        TreeSet<String> groupings = new TreeSet<String>();
         GROUPING.matcher(key).results().forEach(m -> groupings.add(m.group(1)));
         parts.add("groupings=" + groupings);
-        var modifiers = new TreeSet<String>();
-        for (var words : MODIFIERS) {
+        TreeSet<String> modifiers = new TreeSet<String>();
+        for (String[] words : MODIFIERS) {
             for (int i = 1; i < words.length; i++) {
-                if (key.contains(words[i])) modifiers.add(words[0]);
+                if (key.contains(words[i])) {
+                    modifiers.add(words[0]);
+                }
             }
         }
         parts.add("modifiers=" + modifiers);
         return String.join("|", parts);
     }
 
-    private static String questionKey(String versionKey, String question) {
+    private static String toQuestionKey(String versionKey, String question) {
         return SearchText.hash(versionKey + "|" + QuestionNormalizer.key(question));
     }
 
-    private Hit hit(AiPlanCacheEntity entity, double similarity) {
+    private Hit toHit(AiPlanCacheEntity entity, double similarity) {
         List<QuerySpec> queries = null;
         ViewSpec view = null;
         if (entity.getQuerySpecJson() != null) {
             queries = List.of(ContractJson.read(entity.getQuerySpecJson(), QuerySpec[].class));
             view = ContractJson.read(entity.getViewSpecJson(), ViewSpec.class);
         }
-        return new Hit(entity.getId(), entity.getAnalysisId(), entity.getIntentDomain(), entity.getRefundBasisOverride(),
-                entity.isZeroFillOverride(), queries, view, similarity);
+        return new Hit(
+                entity.getId(),
+                entity.getAnalysisId(),
+                entity.getIntentDomain(),
+                entity.getRefundBasisOverride(),
+                entity.isZeroFillOverride(),
+                queries,
+                view,
+                similarity
+        );
     }
 
     private static List<Double> parse(String json) {
@@ -216,7 +291,10 @@ public class AiPlanCache {
     }
 
     static double cosine(List<Double> a, List<Double> b) {
-        if (a.size() != b.size() || a.isEmpty()) return -1.0;
+        if (a.size() != b.size() || a.isEmpty()) {
+            return -1.0;
+        }
+
         double dot = 0.0;
         double na = 0.0;
         double nb = 0.0;

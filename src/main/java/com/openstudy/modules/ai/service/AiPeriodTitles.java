@@ -2,6 +2,7 @@ package com.openstudy.modules.ai.service;
 
 import com.openstudy.domainlens.api.ir.ResultEnvelope;
 import com.openstudy.domainlens.api.ir.ViewSpec;
+
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -12,25 +13,45 @@ import java.util.List;
  * month's sales never read as "이번 달".
  */
 final class AiPeriodTitles {
+
     static final List<String> DEFAULT_WORDS = List.of("이번 달", "지난달", "이번 주", "지난주");
 
-    private AiPeriodTitles() {}
+    private AiPeriodTitles() {
+    }
 
-    static OpenStudyAnalyses.PocExecutionResult retitle(OpenStudyAnalyses.PocExecutionResult result, OpenStudyClock.KstPeriod period) {
+    static OpenStudyAnalyses.PocExecutionResult retitle(
+            OpenStudyAnalyses.PocExecutionResult result,
+            OpenStudyClock.KstPeriod period
+    ) {
         String label = label(period);
-        var envelope = result.envelope();
+        ResultEnvelope envelope = result.envelope();
         ViewSpec view = envelope.view();
         ViewSpec retitled = view == null ? null : new ViewSpec(view.catalogVersion(), view.components().stream()
                 .map(component -> {
-                    if (!(component.options().get("title") instanceof String title)) return component;
-                    var options = new LinkedHashMap<>(component.options());
+                    if (!(component.options().get("title") instanceof String title)) {
+                        return component;
+                    }
+
+                    LinkedHashMap<String,Object> options = new LinkedHashMap<>(component.options());
                     options.put("title", replace(title, label));
                     return new ViewSpec.Component(component.id(), component.componentRef(), component.datasetId(),
                             component.bindings(), options, component.events());
                 }).toList(), view.layout());
-        var newEnvelope = new ResultEnvelope(envelope.requestId(), envelope.executionId(), envelope.status(), envelope.datasets(),
-                retitled, envelope.warnings(), envelope.errorCode(), envelope.asOf(), envelope.snapshotVersion(),
-                envelope.policyVersion(), envelope.formulaBindings(), envelope.displayValues(), envelope.notice());
+        ResultEnvelope newEnvelope = new ResultEnvelope(
+                envelope.requestId(),
+                envelope.executionId(),
+                envelope.status(),
+                envelope.datasets(),
+                retitled,
+                envelope.warnings(),
+                envelope.errorCode(),
+                envelope.asOf(),
+                envelope.snapshotVersion(),
+                envelope.policyVersion(),
+                envelope.formulaBindings(),
+                envelope.displayValues(),
+                envelope.notice()
+        );
         return new OpenStudyAnalyses.PocExecutionResult(result.pocCode(), result.analysisId(),
                 result.question() == null ? null : replace(result.question(), label), result.semanticStatus(),
                 result.expectedViewTypes(), newEnvelope, result.summary());
@@ -48,7 +69,9 @@ final class AiPeriodTitles {
 
     static String replace(String text, String label) {
         for (String word : DEFAULT_WORDS) {
-            if (text.startsWith(word)) return label + text.substring(word.length());
+            if (text.startsWith(word)) {
+                return label + text.substring(word.length());
+            }
         }
         return text;
     }

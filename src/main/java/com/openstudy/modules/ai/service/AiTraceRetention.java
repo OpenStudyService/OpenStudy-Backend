@@ -22,14 +22,18 @@ import com.openstudy.modules.ai.repository.AiTraceRepository;
 @ConditionalOnProperty(name = "openstudy.ai.trace-retention.enabled", havingValue = "true", matchIfMissing = true)
 @RequiredArgsConstructor
 public class AiTraceRetention {
-    private final AiTraceRepository traces;
+
+    private final AiTraceRepository aiTraceRepository;
     private final Clock clock;
 
     @Scheduled(cron = "${openstudy.ai.trace-retention.cron:0 30 3 * * *}", zone = "Asia/Seoul")
     @Transactional
     public int clearExpiredQuestions() {
-        int cleared = traces.clearExpiredQuestions(clock.instant());
-        if (cleared > 0) log.info("AI trace questions past 30 days cleared: {}", cleared);
+        int cleared = aiTraceRepository.clearExpiredQuestions(clock.instant());
+        if (cleared > 0) {
+            log.info("AI trace questions past 30 days cleared: {}", cleared);
+        }
+
         return cleared;
     }
 }

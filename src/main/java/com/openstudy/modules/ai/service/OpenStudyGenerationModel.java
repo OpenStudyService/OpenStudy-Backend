@@ -4,7 +4,9 @@ import com.openstudy.config.DomainLensProperties;
 import com.openstudy.domainlens.ai.LiveModelGatewayFactory;
 import com.openstudy.domainlens.api.prompt.PromptLimits;
 import com.openstudy.domainlens.api.spi.ModelGateway;
+
 import java.util.Optional;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -16,18 +18,30 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class OpenStudyGenerationModel {
-    private final OpenStudyPlaybackGateway modes;
-    private final DomainLensProperties properties;
+
+    private final OpenStudyPlaybackGateway openStudyPlaybackGateway;
+    private final DomainLensProperties domainLensProperties;
     private volatile ModelGateway live;
 
     public Optional<ModelGateway> gateway() {
-        if (!"live".equals(modes.activeMode())) return Optional.empty();
+        if (!"live".equals(openStudyPlaybackGateway.activeMode())) {
+            return Optional.empty();
+        }
+
         if (live == null) {
             synchronized (this) {
                 if (live == null) {
-                    var m = properties.getModel();
-                    live = LiveModelGatewayFactory.create(m.getBaseUrl(), m.getApiKey(), m.getName(), m.getTimeout(),
-                            PromptLimits.defaults(), m.getEnableThinking(), m.getReasoningEffort(), m.getMaxCompletionTokens())
+                    DomainLensProperties.Model m = domainLensProperties.getModel();
+                    live = LiveModelGatewayFactory.create(
+                                    m.getBaseUrl(),
+                                    m.getApiKey(),
+                                    m.getName(),
+                                    m.getTimeout(),
+                                    PromptLimits.defaults(),
+                                    m.getEnableThinking(),
+                                    m.getReasoningEffort(),
+                                    m.getMaxCompletionTokens()
+                            )
                             .planning(true);
                 }
             }

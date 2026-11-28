@@ -2,6 +2,7 @@ package com.openstudy.modules.ai.service;
 
 import com.openstudy.domainlens.api.spi.ClockPort;
 import com.openstudy.domainlens.query.DateNormalizer;
+
 import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.Instant;
@@ -12,6 +13,7 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.temporal.TemporalAdjusters;
 import java.util.Locale;
+
 import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -27,6 +29,7 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class OpenStudyClock implements ClockPort {
+
     public static final ZoneId KST = ZoneId.of("Asia/Seoul");
     public static final Instant DEFAULT_AS_OF = Instant.parse("2026-11-02T05:00:00Z");
     public static final DateNormalizer.Range VALID_DATA_RANGE = new DateNormalizer.Range(

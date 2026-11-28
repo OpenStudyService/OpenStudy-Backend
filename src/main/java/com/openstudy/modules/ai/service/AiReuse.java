@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -26,15 +27,18 @@ import static com.openstudy.modules.ai.service.OpenStudyAnalyses.*;
  * permission checks and the run itself stay in AiWorkspaceService.
  */
 final class AiReuse {
+
     static final int MAX_PRODUCTS = 20;
     private static final Set<String> FIELDS = Set.of("period", "branchIds", "productIds", "clientRequestKey");
     private static final Pattern ID = Pattern.compile("[1-9][0-9]{0,18}");
     private static final Pattern CLIENT_KEY = Pattern.compile("[A-Za-z0-9._:-]{1,100}");
 
-    private AiReuse() {}
+    private AiReuse() {
+    }
 
     /** {@code editableFilters}: a null {@code maxDays} means the analysis looks at now and its period cannot change. */
     record Editable(Integer maxDays, boolean singleBranch, boolean products) {
+
         Map<String, Object> toMap() {
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("period", maxDays == null ? null : Map.of("maxDays", maxDays));
@@ -59,18 +63,33 @@ final class AiReuse {
 
     static Editable editable(String analysisId) {
         // #233: a generated result has no analysis and nothing editable (refinement stays with registered analyses).
-        if (analysisId == null) return new Editable(null, false, false);
+        if (analysisId == null) {
+            return new Editable(null, false, false);
+        }
+
         return EDITABLE.getOrDefault(analysisId, new Editable(null, false, false));
     }
 
     /** A refinement body; a null field keeps the source execution's value. */
-    record Refinement(LocalDate from, LocalDate to, Set<Long> branchIds, Set<Long> productIds, String clientRequestKey) {}
+    record Refinement(
+            LocalDate from,
+            LocalDate to,
+            Set<Long> branchIds,
+            Set<Long> productIds,
+            String clientRequestKey
+    ) {
+    }
 
     /** Step 4 of the contract order: the body's shape and the conditions this analysis lets a refinement change. */
     static Refinement parse(Map<String, Object> body, Editable editable) {
-        if (body == null) body = Map.of();
+        if (body == null) {
+            body = Map.of();
+        }
+
         for (String key : body.keySet()) {
-            if (!FIELDS.contains(key)) throw ApiException.validation(key, "필터 수정은 기간·지점·상품만 바꿀 수 있습니다. 분석을 바꾸려면 새로 질문해 주세요.");
+            if (!FIELDS.contains(key)) {
+                throw ApiException.validation(key, "필터 수정은 기간·지점·상품만 바꿀 수 있습니다. 분석을 바꾸려면 새로 질문해 주세요.");
+            }
         }
         if (!body.containsKey("period") && !body.containsKey("branchIds") && !body.containsKey("productIds")) {
             throw ApiException.validation("period", "기간·지점·상품 중 하나 이상을 보내 주세요.");
@@ -78,7 +97,10 @@ final class AiReuse {
         LocalDate from = null;
         LocalDate to = null;
         if (body.containsKey("period")) {
-            if (editable.maxDays() == null) throw notEditable("period", "이 분석은 지금 기준이라 기간을 바꿀 수 없습니다.");
+            if (editable.maxDays() == null) {
+                throw createNotEditableError("period", "이 분석은 지금 기준이라 기간을 바꿀 수 없습니다.");
+            }
+
             if (!(body.get("period") instanceof Map<?, ?> period) || period.size() != 2
                     || !(period.get("from") instanceof String start) || !(period.get("to") instanceof String end)) {
                 throw ApiException.validation("period", "기간은 {from, to} 날짜로 보내 주세요.");
@@ -89,20 +111,28 @@ final class AiReuse {
             } catch (DateTimeParseException e) {
                 throw ApiException.validation("period", "날짜는 YYYY-MM-DD 형식으로 보내 주세요.");
             }
-            if (to.isBefore(from)) throw ApiException.validation("period", "끝 날짜가 시작 날짜보다 앞설 수 없습니다.");
+            if (to.isBefore(from)) {
+                throw ApiException.validation("period", "끝 날짜가 시작 날짜보다 앞설 수 없습니다.");
+            }
         }
         Set<Long> branches = null;
         if (body.containsKey("branchIds")) {
-            branches = ids(body.get("branchIds"), "branchIds");
-            if (branches.isEmpty()) throw ApiException.validation("branchIds", "지점을 하나 이상 골라 주세요.");
+            branches = parseIds(body.get("branchIds"), "branchIds");
+            if (branches.isEmpty()) {
+                throw ApiException.validation("branchIds", "지점을 하나 이상 골라 주세요.");
+            }
+
             if (editable.singleBranch() && branches.size() != 1) {
                 throw ApiException.validation("branchIds", "이 분석은 한 지점만 볼 수 있습니다.");
             }
         }
         Set<Long> products = null;
         if (body.containsKey("productIds")) {
-            if (!editable.products()) throw notEditable("productIds", "이 분석은 상품 조건을 바꿀 수 없습니다.");
-            products = ids(body.get("productIds"), "productIds");
+            if (!editable.products()) {
+                throw createNotEditableError("productIds", "이 분석은 상품 조건을 바꿀 수 없습니다.");
+            }
+
+            products = parseIds(body.get("productIds"), "productIds");
             if (products.size() > MAX_PRODUCTS) {
                 throw ApiException.validation("productIds", "상품은 최대 " + MAX_PRODUCTS + "개까지 고를 수 있습니다.");
             }
@@ -119,37 +149,61 @@ final class AiReuse {
 
     /** Step 5: a changed period stays within the analysis's maximum. */
     static void checkLength(Refinement refinement, Editable editable) {
-        if (refinement.from() == null) return;
+        if (refinement.from() == null) {
+            return;
+        }
+
         if (ChronoUnit.DAYS.between(refinement.from(), refinement.to()) + 1 > editable.maxDays()) {
             throw ApiException.invalid("PERIOD_TOO_LONG", "기간이 이 분석에서 볼 수 있는 범위를 넘었습니다.", "period",
                     "기간은 최대 " + editable.maxDays() + "일까지 고를 수 있습니다.");
         }
     }
 
-    private static ApiException notEditable(String field, String message) {
+    private static ApiException createNotEditableError(String field, String message) {
         return ApiException.invalid("FILTER_NOT_EDITABLE", "이 분석에서 바꿀 수 없는 조건입니다.", field, message);
     }
 
     /** IDs as the contract's decimal strings; numbers are taken too. Duplicates collapse. */
-    private static Set<Long> ids(Object value, String field) {
-        if (!(value instanceof List<?> list)) throw ApiException.validation(field, "ID 목록으로 보내 주세요.");
+    private static Set<Long> parseIds(Object value, String field) {
+        if (!(value instanceof List<?> list)) {
+            throw ApiException.validation(field, "ID 목록으로 보내 주세요.");
+        }
+
         Set<Long> ids = new LinkedHashSet<>();
         for (Object item : list) {
             String text = item instanceof Number number && !(item instanceof Double || item instanceof Float)
                     ? Long.toString(number.longValue()) : item instanceof String s ? s : "";
-            if (!ID.matcher(text).matches()) throw ApiException.validation(field, "ID 형식을 확인해 주세요.");
+            if (!ID.matcher(text).matches()) {
+                throw ApiException.validation(field, "ID 형식을 확인해 주세요.");
+            }
+
             ids.add(Long.parseLong(text));
         }
         return ids;
     }
 
     /** {@code AiConditions}: what one execution was computed with. A null {@code from} is an analysis without a period. */
-    record Conditions(String analysisId, LocalDate from, LocalDate to, boolean periodEdited, Set<Long> branchIds,
-            Set<Long> productIds, String refundBasis, Boolean zeroFill) {
+    record Conditions(
+            String analysisId,
+            LocalDate from,
+            LocalDate to,
+            boolean periodEdited,
+            Set<Long> branchIds,
+            Set<Long> productIds,
+            String refundBasis,
+            Boolean zeroFill
+    ) {
 
         /** The period as Asia/Seoul dates, both ends inclusive; an end at midnight belongs to the day before. */
-        static Conditions of(String analysisId, OpenStudyClock.KstPeriod period, boolean periodEdited, Set<Long> branchIds,
-                Set<Long> productIds, String refundBasis, Boolean zeroFill) {
+        static Conditions of(
+                String analysisId,
+                OpenStudyClock.KstPeriod period,
+                boolean periodEdited,
+                Set<Long> branchIds,
+                Set<Long> productIds,
+                String refundBasis,
+                Boolean zeroFill
+        ) {
             LocalDate from = period == null ? null : period.startDateKst();
             LocalDate to = period == null ? null : period.endExclusiveKst().toLocalTime().equals(LocalTime.MIDNIGHT)
                     ? period.endDateExclusiveKst().minusDays(1) : period.endDateExclusiveKst();
@@ -159,17 +213,33 @@ final class AiReuse {
 
         Conditions with(Refinement refinement) {
             boolean period = refinement.from() != null;
-            return new Conditions(analysisId, period ? refinement.from() : from, period ? refinement.to() : to,
-                    periodEdited || period, refinement.branchIds() != null ? Set.copyOf(refinement.branchIds()) : branchIds,
-                    refinement.productIds() != null ? Set.copyOf(refinement.productIds()) : productIds, refundBasis, zeroFill);
+            return new Conditions(
+                    analysisId,
+                    period ? refinement.from() : from,
+                    period ? refinement.to() : to,
+                    periodEdited || period,
+                    refinement.branchIds() != null ? Set.copyOf(refinement.branchIds()) : branchIds,
+                    refinement.productIds() != null ? Set.copyOf(refinement.productIds()) : productIds,
+                    refundBasis,
+                    zeroFill
+            );
         }
 
         /** The refinable conditions that differ from {@code before}: PERIOD, BRANCHES, PRODUCTS. */
         List<String> changedFrom(Conditions before) {
             List<String> changed = new ArrayList<>();
-            if (!java.util.Objects.equals(from, before.from) || !java.util.Objects.equals(to, before.to)) changed.add("PERIOD");
-            if (!branchIds.equals(before.branchIds)) changed.add("BRANCHES");
-            if (!productIds.equals(before.productIds)) changed.add("PRODUCTS");
+            if (!Objects.equals(from, before.from) || !Objects.equals(to, before.to)) {
+                changed.add("PERIOD");
+            }
+
+            if (!branchIds.equals(before.branchIds)) {
+                changed.add("BRANCHES");
+            }
+
+            if (!productIds.equals(before.productIds)) {
+                changed.add("PRODUCTS");
+            }
+
             return changed;
         }
 
@@ -189,11 +259,26 @@ final class AiReuse {
     /** {@code AiContext} of a refinement: it builds on its source and names what it changed. */
     static Map<String, Object> refinementContext(String sourceExecutionId, Conditions applied, List<String> changed) {
         List<String> inherited = new ArrayList<>(List.of("ANALYSIS"));
-        if (applied.from() != null && !changed.contains("PERIOD")) inherited.add("PERIOD");
-        if (!changed.contains("BRANCHES")) inherited.add("BRANCHES");
-        if (!changed.contains("PRODUCTS")) inherited.add("PRODUCTS");
-        if (applied.refundBasis() != null) inherited.add("REFUND_BASIS");
-        if (applied.zeroFill() != null) inherited.add("ZERO_FILL");
+        if (applied.from() != null && !changed.contains("PERIOD")) {
+            inherited.add("PERIOD");
+        }
+
+        if (!changed.contains("BRANCHES")) {
+            inherited.add("BRANCHES");
+        }
+
+        if (!changed.contains("PRODUCTS")) {
+            inherited.add("PRODUCTS");
+        }
+
+        if (applied.refundBasis() != null) {
+            inherited.add("REFUND_BASIS");
+        }
+
+        if (applied.zeroFill() != null) {
+            inherited.add("ZERO_FILL");
+        }
+
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("basedOnExecutionId", sourceExecutionId);
         map.put("inherited", inherited);
@@ -212,7 +297,10 @@ final class AiReuse {
             "0원인 날");
 
     static boolean isFollowUp(String question, boolean namesBranch) {
-        if (question == null) return false;
+        if (question == null) {
+            return false;
+        }
+
         String key = QuestionNormalizer.key(question);
         return namesBranch || FOLLOW_UP_PHRASES.stream().anyMatch(phrase -> QuestionNormalizer.has(key, phrase));
     }
@@ -233,16 +321,35 @@ final class AiReuse {
      * condition does not apply to the analysis. A different analysis takes over only the branches; its period and other
      * conditions are its own defaults.
      */
-    static Map<String, Object> followUpContext(String basedOn, boolean sameAnalysis, boolean periodApplies, boolean branchesChanged,
-            boolean productsApply, Boolean refundBasisChanged, Boolean zeroFillChanged) {
+    static Map<String, Object> followUpContext(
+            String basedOn,
+            boolean sameAnalysis,
+            boolean periodApplies,
+            boolean branchesChanged,
+            boolean productsApply,
+            Boolean refundBasisChanged,
+            Boolean zeroFillChanged
+    ) {
         List<String> inherited = new ArrayList<>();
         List<String> changed = new ArrayList<>();
         (sameAnalysis ? inherited : changed).add("ANALYSIS");
-        if (periodApplies) inherited.add("PERIOD");
+        if (periodApplies) {
+            inherited.add("PERIOD");
+        }
+
         (branchesChanged ? changed : inherited).add("BRANCHES");
-        if (productsApply) inherited.add("PRODUCTS");
-        if (refundBasisChanged != null) (refundBasisChanged ? changed : inherited).add("REFUND_BASIS");
-        if (zeroFillChanged != null) (zeroFillChanged ? changed : inherited).add("ZERO_FILL");
+        if (productsApply) {
+            inherited.add("PRODUCTS");
+        }
+
+        if (refundBasisChanged != null) {
+            (refundBasisChanged ? changed : inherited).add("REFUND_BASIS");
+        }
+
+        if (zeroFillChanged != null) {
+            (zeroFillChanged ? changed : inherited).add("ZERO_FILL");
+        }
+
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("basedOnExecutionId", basedOn);
         map.put("inherited", inherited);
@@ -256,20 +363,41 @@ final class AiReuse {
      * {@code GET /ai/executions/{id}} with a table query: one dataset sorted within the result's 1,000-row cap and cut to
      * a page. Without any of these queries the result comes back whole, as before #125.
      */
-    static ResultEnvelope page(ResultEnvelope envelope, String datasetId, Integer page, Integer size, String sort,
-            String direction) {
-        if (datasetId == null && page == null && size == null && sort == null && direction == null) return envelope;
+    static ResultEnvelope page(
+            ResultEnvelope envelope,
+            String datasetId,
+            Integer page,
+            Integer size,
+            String sort,
+            String direction
+    ) {
+        if (datasetId == null && page == null && size == null && sort == null && direction == null) {
+            return envelope;
+        }
+
         int number = page == null ? 1 : page;
         int rowsPerPage = size == null ? 20 : size;
-        if (number < 1) throw ApiException.validation("page", "페이지는 1 이상이어야 합니다.");
-        if (rowsPerPage < 1 || rowsPerPage > 50) throw ApiException.validation("size", "한 페이지는 1~50행입니다.");
+        if (number < 1) {
+            throw ApiException.validation("page", "페이지는 1 이상이어야 합니다.");
+        }
+
+        if (rowsPerPage < 1 || rowsPerPage > 50) {
+            throw ApiException.validation("size", "한 페이지는 1~50행입니다.");
+        }
+
         boolean ascending = "asc".equals(direction);
         if (direction != null && !ascending && !"desc".equals(direction)) {
             throw ApiException.validation("direction", "정렬 방향은 asc 또는 desc입니다.");
         }
         TypedDataset dataset = datasetId == null
-                ? envelope.datasets().stream().findFirst().orElseThrow(() -> ApiException.validation("datasetId", "결과에 데이터셋이 없습니다."))
-                : envelope.datasets().stream().filter(d -> d.id().equals(datasetId)).findFirst()
+                ? envelope.datasets()
+                        .stream()
+                        .findFirst()
+                        .orElseThrow(() -> ApiException.validation("datasetId", "결과에 데이터셋이 없습니다."))
+                : envelope.datasets()
+                        .stream()
+                        .filter(d -> d.id().equals(datasetId))
+                        .findFirst()
                         .orElseThrow(() -> ApiException.validation("datasetId", "결과에 없는 데이터셋입니다."));
         List<Map<String, Object>> rows = new ArrayList<>(dataset.rows());
         if (sort != null) {
@@ -280,18 +408,44 @@ final class AiReuse {
             rows.sort(Comparator.comparing(row -> row.get(sort), Comparator.nullsLast(values)));
         }
         int start = (int) Math.min((long) (number - 1) * rowsPerPage, rows.size());
-        var paged = new TypedDataset(dataset.id(), dataset.columns(), rows.subList(start, Math.min(start + rowsPerPage, rows.size())),
-                rows.size(), number, rowsPerPage, dataset.snapshotAt(), dataset.asOf());
-        var datasets = envelope.datasets().stream().map(d -> d == dataset ? paged : d).toList();
-        return new ResultEnvelope(envelope.requestId(), envelope.executionId(), envelope.status(), datasets, envelope.view(),
-                envelope.warnings(), envelope.errorCode(), envelope.asOf(), envelope.snapshotVersion(), envelope.policyVersion(),
-                envelope.formulaBindings(), envelope.displayValues(), envelope.notice());
+        TypedDataset paged = new TypedDataset(
+                dataset.id(),
+                dataset.columns(),
+                rows.subList(start, Math.min(start + rowsPerPage, rows.size())),
+                rows.size(),
+                number,
+                rowsPerPage,
+                dataset.snapshotAt(),
+                dataset.asOf()
+        );
+        List<TypedDataset> datasets = envelope.datasets().stream().map(d -> d == dataset ? paged : d).toList();
+        return new ResultEnvelope(
+                envelope.requestId(),
+                envelope.executionId(),
+                envelope.status(),
+                datasets,
+                envelope.view(),
+                envelope.warnings(),
+                envelope.errorCode(),
+                envelope.asOf(),
+                envelope.snapshotVersion(),
+                envelope.policyVersion(),
+                envelope.formulaBindings(),
+                envelope.displayValues(),
+                envelope.notice()
+        );
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static int compareValues(Object a, Object b) {
-        if (a instanceof Number x && b instanceof Number y) return new BigDecimal(x.toString()).compareTo(new BigDecimal(y.toString()));
-        if (a instanceof Comparable x && a.getClass().isInstance(b)) return x.compareTo(b);
+        if (a instanceof Number x && b instanceof Number y) {
+            return new BigDecimal(x.toString()).compareTo(new BigDecimal(y.toString()));
+        }
+
+        if (a instanceof Comparable x && a.getClass().isInstance(b)) {
+            return x.compareTo(b);
+        }
+
         return a.toString().compareTo(b.toString());
     }
 }

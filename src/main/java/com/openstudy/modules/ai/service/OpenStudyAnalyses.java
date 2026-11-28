@@ -13,19 +13,27 @@ import com.openstudy.domainlens.api.ir.TypedDataset;
 import com.openstudy.domainlens.api.ir.ValueType;
 import com.openstudy.domainlens.api.ir.ViewSpec;
 import com.openstudy.domainlens.api.spi.AnalysisExecutor;
+import com.openstudy.domainlens.api.spi.AnalysisRegistry;
 import com.openstudy.domainlens.api.spi.UserContext;
 import com.openstudy.domainlens.api.work.Cancellation;
 import com.openstudy.domainlens.api.work.ExecutionPlan;
 import com.openstudy.domainlens.catalog.SemanticRegistry;
 import com.openstudy.domainlens.query.ViewBinder;
+import com.openstudy.domainlens.query.ViewLayouts;
+import com.openstudy.modules.branch.service.SessionBranchService;
+import com.openstudy.modules.sales.dto.response.PassProductSales;
 import com.openstudy.modules.sales.service.SalesAggregationService;
 import com.openstudy.modules.sales.service.SalesAggregationService.RefundBasis;
+
 import jakarta.persistence.EntityManager;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+
 import static com.openstudy.modules.ai.service.QuestionNormalizer.has;
 
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -37,6 +45,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Stream;
+
+import jakarta.persistence.TypedQuery;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,17 +61,22 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional(readOnly = true)
 public class OpenStudyAnalyses implements AnalysisExecutor {
+
     public static final String CATALOG_VERSION = "openstudy-ui-1.0.0";
     public static final String COMPONENT_VERSION = "1.0.0";
     /**
      * Analyses that look at one branch only; a wider scope asks which branch (2026-11-08 decision, ADR-M10-003).
      * Realtime seats left the list on 2026-11-16: over several branches it compares them instead of asking.
      */
-    public static final java.util.Set<String> SINGLE_BRANCH = java.util.Set.of("openstudy.seats.hourlyCongestion");
+    public static final Set<String> SINGLE_BRANCH = Set.of("openstudy.seats.hourlyCongestion");
 
     /** The result arranged as the DomainLens mock-up assembles it: KPI row, then each chart beside its table. */
     static ViewSpec arranged(ViewSpec view) {
-        return new ViewSpec(view.catalogVersion(), view.components(), com.openstudy.domainlens.query.ViewLayouts.compose(view.components()));
+        return new ViewSpec(
+                view.catalogVersion(),
+                view.components(),
+                ViewLayouts.compose(view.components())
+        );
     }
 
     public static final String ID_POC_001 = "openstudy.sales.branchComparison";
@@ -85,7 +101,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             List<String> expectedViewTypes,
             ResultEnvelope envelope,
             Map<String, Object> summary
-    ) {}
+    ) {
+    }
 
     public record HeatmapCell(
             int weekday,
@@ -93,10 +110,18 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             long occupiedSeatSamples,
             long seatSampleCapacity,
             double sampledOccupancyPct
-    ) {}
+    ) {
+    }
 
     /** One ranked pass product, in M9's pass quantities (sold, refunded, net sold). */
-    public record TopPassProductRow(long productId, String product, long issuedUnits, long refundedUnits, long netUnits) {}
+    public record TopPassProductRow(
+            long productId,
+            String product,
+            long issuedUnits,
+            long refundedUnits,
+            long netUnits
+    ) {
+    }
 
     public record RealtimeSeatSummary(
             long branchId,
@@ -106,7 +131,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             long free,
             long blocked,
             double occupiedPct
-    ) {}
+    ) {
+    }
 
     public record BranchRoomReservationSummary(
             long branchId,
@@ -116,7 +142,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             long activeBookings,
             long cancelledBookings,
             long billableBookingAmountKrw
-    ) {}
+    ) {
+    }
 
     public record ExpiringPassItem(
             long passId,
@@ -128,7 +155,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             Long remainingMinutes,
             Instant expiresAt,
             String status
-    ) {}
+    ) {
+    }
 
     public record UrgentTaskCandidate(
             long id,
@@ -139,7 +167,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             String status,
             Instant dueAt,
             Long assigneeEmployeeId
-    ) {}
+    ) {
+    }
 
     public record EmployeeAttendanceComparisonRow(
             long employeeId,
@@ -150,13 +179,14 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             long rawWorkMinutes,
             long illustrativeCorrectedMinutes,
             long correctionDeltaMinutes
-    ) {}
+    ) {
+    }
 
     private final EntityManager entityManager;
-    private final SalesAggregationService salesService;
-    private final OpenStudyClock clock;
-    private final SemanticRegistry registry;
-    private final com.openstudy.modules.branch.service.SessionBranchService branchNames;
+    private final SalesAggregationService salesAggregationService;
+    private final OpenStudyClock openStudyClock;
+    private final SemanticRegistry semanticRegistry;
+    private final SessionBranchService sessionBranchService;
     private final ViewBinder viewBinder;
     private final Map<String, Definition> definitions;
     private final Map<String, String> aliasToAnalysisId;
@@ -166,13 +196,13 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             SalesAggregationService salesService,
             OpenStudyClock clock,
             SemanticRegistry registry,
-            com.openstudy.modules.branch.service.SessionBranchService branchNames
+            SessionBranchService branchNames
     ) {
         this.entityManager = entityManager;
-        this.branchNames = branchNames;
-        this.salesService = salesService;
-        this.clock = clock;
-        this.registry = registry;
+        this.sessionBranchService = branchNames;
+        this.salesAggregationService = salesService;
+        this.openStudyClock = clock;
+        this.semanticRegistry = registry;
         this.viewBinder = new ViewBinder(ComponentCatalog.openStudyDefault());
         this.definitions = buildDefinitions();
         this.aliasToAnalysisId = Map.ofEntries(
@@ -209,54 +239,54 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         );
     }
 
-    private static TypedDataset.Column integer(String alias, String unit) {
+    private static TypedDataset.Column toIntegerColumn(String alias, String unit) {
         return new TypedDataset.Column(alias, ValueType.INTEGER, unit, 0);
     }
 
-    private static TypedDataset.Column krw(String alias) {
+    private static TypedDataset.Column toKrwColumn(String alias) {
         return new TypedDataset.Column(alias, ValueType.INTEGER, "KRW", 0);
     }
 
-    private static TypedDataset.Column decimal(String alias, String unit, int precision) {
+    private static TypedDataset.Column toDecimalColumn(String alias, String unit, int precision) {
         return new TypedDataset.Column(alias, ValueType.DECIMAL, unit, precision);
     }
 
-    private static TypedDataset.Column string(String alias) {
+    private static TypedDataset.Column toStringColumn(String alias) {
         return new TypedDataset.Column(alias, ValueType.STRING, null, null);
     }
 
-    private static TypedDataset.Column timestamp(String alias) {
+    private static TypedDataset.Column toTimestampColumn(String alias) {
         return new TypedDataset.Column(alias, ValueType.TIMESTAMP, null, null);
     }
 
     private static Map<String, Definition> buildDefinitions() {
-        var defs = new LinkedHashMap<String, Definition>();
+        LinkedHashMap<String,AnalysisRegistry.Definition> defs = new LinkedHashMap<String, Definition>();
 
         defs.put(ID_POC_001, new Definition(
                 ID_POC_001, "1", "payment", "payment",
                 Map.of(
                         ResultCards.DATASET, ResultCards.COLUMNS,
                         "branchSales", List.of(
-                                integer("branch_id", null),
-                                string("branch_name"),
-                                krw("approved_krw"),
-                                krw("refund_krw"),
-                                krw("net_krw"),
-                                integer("approved_count", "건"),
-                                integer("refund_count", "건")
+                                toIntegerColumn("branch_id", null),
+                                toStringColumn("branch_name"),
+                                toKrwColumn("approved_krw"),
+                                toKrwColumn("refund_krw"),
+                                toKrwColumn("net_krw"),
+                                toIntegerColumn("approved_count", "건"),
+                                toIntegerColumn("refund_count", "건")
                         ),
                         "salesTotals", List.of(
-                                krw("approved_krw"),
-                                krw("refund_krw"),
-                                krw("net_krw"),
-                                integer("approved_count", "건"),
-                                integer("refund_count", "건")
+                                toKrwColumn("approved_krw"),
+                                toKrwColumn("refund_krw"),
+                                toKrwColumn("net_krw"),
+                                toIntegerColumn("approved_count", "건"),
+                                toIntegerColumn("refund_count", "건")
                         ),
                         "basisContrast", List.of(
-                                integer("branch_id", null),
-                                krw("approved_krw"),
-                                krw("refund_krw"),
-                                krw("net_krw")
+                                toIntegerColumn("branch_id", null),
+                                toKrwColumn("approved_krw"),
+                                toKrwColumn("refund_krw"),
+                                toKrwColumn("net_krw")
                         )
                 ),
                 true
@@ -267,23 +297,23 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 Map.of(
                         ResultCards.DATASET, ResultCards.COLUMNS,
                         "heatmapRows", List.of(
-                                integer("weekday", null),
-                                integer("hour_kst", "시"),
-                                integer("occupied_seat_samples", "석"),
-                                integer("seat_sample_capacity", "석"),
-                                decimal("sampled_occupancy_pct", "%", 1)
+                                toIntegerColumn("weekday", null),
+                                toIntegerColumn("hour_kst", "시"),
+                                toIntegerColumn("occupied_seat_samples", "석"),
+                                toIntegerColumn("seat_sample_capacity", "석"),
+                                toDecimalColumn("sampled_occupancy_pct", "%", 1)
                         ),
                         "peakCells", List.of(
-                                integer("weekday", null),
-                                integer("hour_kst", "시"),
-                                integer("occupied_seat_samples", "석"),
-                                integer("seat_sample_capacity", "석"),
-                                decimal("sampled_occupancy_pct", "%", 1)
+                                toIntegerColumn("weekday", null),
+                                toIntegerColumn("hour_kst", "시"),
+                                toIntegerColumn("occupied_seat_samples", "석"),
+                                toIntegerColumn("seat_sample_capacity", "석"),
+                                toDecimalColumn("sampled_occupancy_pct", "%", 1)
                         ),
                         "peakTop5", List.of(
-                                string("weekday_label"),
-                                string("hour_label"),
-                                decimal("sampled_occupancy_pct", "%", 1)
+                                toStringColumn("weekday_label"),
+                                toStringColumn("hour_label"),
+                                toDecimalColumn("sampled_occupancy_pct", "%", 1)
                         )
                 ),
                 true
@@ -294,11 +324,11 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 Map.of(
                         ResultCards.DATASET, ResultCards.COLUMNS,
                         "topProducts", List.of(
-                                integer("product_id", null),
-                                string("product"),
-                                integer("issued_units", "건"),
-                                integer("refunded_units", "건"),
-                                integer("net_units", "건")
+                                toIntegerColumn("product_id", null),
+                                toStringColumn("product"),
+                                toIntegerColumn("issued_units", "건"),
+                                toIntegerColumn("refunded_units", "건"),
+                                toIntegerColumn("net_units", "건")
                         )
                 ),
                 true
@@ -309,28 +339,28 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 Map.of(
                         ResultCards.DATASET, ResultCards.COLUMNS,
                         "seatSummary", List.of(
-                                integer("branch_id", null),
-                                integer("total", "석"),
-                                integer("available", "석"),
-                                integer("occupied", "석"),
-                                integer("free", "석"),
-                                integer("blocked", "석"),
-                                decimal("occupied_pct", "%", 1)
+                                toIntegerColumn("branch_id", null),
+                                toIntegerColumn("total", "석"),
+                                toIntegerColumn("available", "석"),
+                                toIntegerColumn("occupied", "석"),
+                                toIntegerColumn("free", "석"),
+                                toIntegerColumn("blocked", "석"),
+                                toDecimalColumn("occupied_pct", "%", 1)
                         ),
                         "branchSeats", List.of(
-                                integer("branch_id", null),
-                                string("branch_name"),
-                                integer("available", "석"),
-                                integer("occupied", "석"),
-                                integer("free", "석"),
-                                integer("blocked", "석"),
-                                decimal("occupied_pct", "%", 1)
+                                toIntegerColumn("branch_id", null),
+                                toStringColumn("branch_name"),
+                                toIntegerColumn("available", "석"),
+                                toIntegerColumn("occupied", "석"),
+                                toIntegerColumn("free", "석"),
+                                toIntegerColumn("blocked", "석"),
+                                toDecimalColumn("occupied_pct", "%", 1)
                         ),
                         "seatMap", List.of(
-                                integer("seat_id", null),
-                                string("seat_no"),
-                                string("seat_status"),
-                                string("occupancy_state")
+                                toIntegerColumn("seat_id", null),
+                                toStringColumn("seat_no"),
+                                toStringColumn("seat_status"),
+                                toStringColumn("occupancy_state")
                         )
                 ),
                 true
@@ -341,30 +371,30 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 Map.of(
                         ResultCards.DATASET, ResultCards.COLUMNS,
                         "reservationRows", List.of(
-                                integer("reservation_id", null),
-                                integer("branch_id", null),
-                                string("branch_name"),
-                                integer("room_id", null),
-                                string("room_name"),
-                                timestamp("start_at"),
-                                timestamp("end_at"),
-                                string("status"),
-                                krw("billable_amount_krw")
+                                toIntegerColumn("reservation_id", null),
+                                toIntegerColumn("branch_id", null),
+                                toStringColumn("branch_name"),
+                                toIntegerColumn("room_id", null),
+                                toStringColumn("room_name"),
+                                toTimestampColumn("start_at"),
+                                toTimestampColumn("end_at"),
+                                toStringColumn("status"),
+                                toKrwColumn("billable_amount_krw")
                         ),
                         "branchSummaries", List.of(
-                                integer("branch_id", null),
-                                string("branch_name"),
-                                integer("total", "건"),
-                                integer("confirmed_count", "건"),
-                                integer("completed_count", "건"),
-                                integer("cancelled_count", "건"),
-                                krw("billable_booking_amount_krw")
+                                toIntegerColumn("branch_id", null),
+                                toStringColumn("branch_name"),
+                                toIntegerColumn("total", "건"),
+                                toIntegerColumn("confirmed_count", "건"),
+                                toIntegerColumn("completed_count", "건"),
+                                toIntegerColumn("cancelled_count", "건"),
+                                toKrwColumn("billable_booking_amount_krw")
                         ),
                         "reservationTotals", List.of(
-                                integer("all_bookings", "건"),
-                                integer("cancelled", "건"),
-                                integer("active_bookings", "건"),
-                                krw("billable_booking_amount_krw")
+                                toIntegerColumn("all_bookings", "건"),
+                                toIntegerColumn("cancelled", "건"),
+                                toIntegerColumn("active_bookings", "건"),
+                                toKrwColumn("billable_booking_amount_krw")
                         )
                 ),
                 true
@@ -375,24 +405,24 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 Map.of(
                         ResultCards.DATASET, ResultCards.COLUMNS,
                         "expiringPasses", List.of(
-                                integer("pass_id", null),
-                                integer("branch_id", null),
-                                string("branch_name"),
-                                integer("product_id", null),
-                                string("product_name"),
-                                string("pass_type"),
-                                integer("remaining_minutes", "분"),
-                                timestamp("expires_at"),
-                                string("status"),
-                                integer("days_left", "일")
+                                toIntegerColumn("pass_id", null),
+                                toIntegerColumn("branch_id", null),
+                                toStringColumn("branch_name"),
+                                toIntegerColumn("product_id", null),
+                                toStringColumn("product_name"),
+                                toStringColumn("pass_type"),
+                                toIntegerColumn("remaining_minutes", "분"),
+                                toTimestampColumn("expires_at"),
+                                toStringColumn("status"),
+                                toIntegerColumn("days_left", "일")
                         ),
                         "expiringByBranch", List.of(
-                                integer("branch_id", null),
-                                string("branch_name"),
-                                integer("expiring_count", "건")
+                                toIntegerColumn("branch_id", null),
+                                toStringColumn("branch_name"),
+                                toIntegerColumn("expiring_count", "건")
                         ),
                         "expiringTotals", List.of(
-                                integer("count", "건")
+                                toIntegerColumn("count", "건")
                         )
                 ),
                 true
@@ -403,18 +433,18 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 Map.of(
                         ResultCards.DATASET, ResultCards.COLUMNS,
                         "dailySales", List.of(
-                                string("date_kst"),
-                                krw("approved_krw"),
-                                krw("refund_krw"),
-                                krw("net_krw"),
-                                integer("approved_count", "건"),
-                                integer("refund_count", "건")
+                                toStringColumn("date_kst"),
+                                toKrwColumn("approved_krw"),
+                                toKrwColumn("refund_krw"),
+                                toKrwColumn("net_krw"),
+                                toIntegerColumn("approved_count", "건"),
+                                toIntegerColumn("refund_count", "건")
                         ),
                         "dailySalesTotals", List.of(
-                                integer("days_count", "일"),
-                                krw("approved_krw"),
-                                krw("refund_krw"),
-                                krw("total_net_krw")
+                                toIntegerColumn("days_count", "일"),
+                                toKrwColumn("approved_krw"),
+                                toKrwColumn("refund_krw"),
+                                toKrwColumn("total_net_krw")
                         )
                 ),
                 true
@@ -425,20 +455,20 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 Map.of(
                         ResultCards.DATASET, ResultCards.COLUMNS,
                         "purposeSales", List.of(
-                                string("purpose"),
-                                krw("approved_krw"),
-                                krw("refund_krw"),
-                                krw("net_krw"),
-                                integer("approved_count", "건"),
-                                integer("refund_count", "건"),
-                                decimal("share_pct", "%", 1),
-                                string("purpose_label")
+                                toStringColumn("purpose"),
+                                toKrwColumn("approved_krw"),
+                                toKrwColumn("refund_krw"),
+                                toKrwColumn("net_krw"),
+                                toIntegerColumn("approved_count", "건"),
+                                toIntegerColumn("refund_count", "건"),
+                                toDecimalColumn("share_pct", "%", 1),
+                                toStringColumn("purpose_label")
                         ),
                         "purposeWinner", List.of(
-                                string("winner_purpose"),
-                                string("ranking_metric"),
-                                krw("winner_net_krw"),
-                                krw("total_net_krw")
+                                toStringColumn("winner_purpose"),
+                                toStringColumn("ranking_metric"),
+                                toKrwColumn("winner_net_krw"),
+                                toKrwColumn("total_net_krw")
                         )
                 ),
                 true
@@ -449,18 +479,18 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 Map.of(
                         ResultCards.DATASET, ResultCards.COLUMNS,
                         "urgentTasks", List.of(
-                                integer("id", null),
-                                string("title"),
-                                integer("branch_id", null),
-                                string("branch_name"),
-                                string("priority"),
-                                string("status"),
-                                timestamp("due_at"),
-                                integer("assignee_employee_id", null)
+                                toIntegerColumn("id", null),
+                                toStringColumn("title"),
+                                toIntegerColumn("branch_id", null),
+                                toStringColumn("branch_name"),
+                                toStringColumn("priority"),
+                                toStringColumn("status"),
+                                toTimestampColumn("due_at"),
+                                toIntegerColumn("assignee_employee_id", null)
                         ),
                         "taskPolicyMeta", List.of(
-                                integer("candidate_count", "건"),
-                                string("status")
+                                toIntegerColumn("candidate_count", "건"),
+                                toStringColumn("status")
                         )
                 ),
                 true
@@ -471,19 +501,19 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 Map.of(
                         ResultCards.DATASET, ResultCards.COLUMNS,
                         "employeeWorkHours", List.of(
-                                integer("employee_id", null),
-                                string("employee_name"),
-                                integer("branch_id", null),
-                                string("branch_name"),
-                                integer("shift_days", "일"),
-                                integer("raw_work_minutes", "분"),
-                                integer("illustrative_corrected_minutes", "분"),
-                                integer("correction_delta_minutes", "분"),
-                                decimal("work_hours", "시간", 1)
+                                toIntegerColumn("employee_id", null),
+                                toStringColumn("employee_name"),
+                                toIntegerColumn("branch_id", null),
+                                toStringColumn("branch_name"),
+                                toIntegerColumn("shift_days", "일"),
+                                toIntegerColumn("raw_work_minutes", "분"),
+                                toIntegerColumn("illustrative_corrected_minutes", "분"),
+                                toIntegerColumn("correction_delta_minutes", "분"),
+                                toDecimalColumn("work_hours", "시간", 1)
                         ),
                         "attendancePolicyMeta", List.of(
-                                integer("illustrative_correction_delta_minutes", "분"),
-                                string("status")
+                                toIntegerColumn("illustrative_correction_delta_minutes", "분"),
+                                toStringColumn("status")
                         )
                 ),
                 true
@@ -515,30 +545,44 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             case ID_POC_003, ID_POC_006 -> Set.of("pass", "product", "payment", "refund", "branch");
             case ID_POC_005 -> Set.of("room", "room_reservation", "branch");
             case ID_POC_009 -> Set.of("work_task", "branch", "employee");
-            case ID_POC_010 -> Set.of("attendance_record", "attendance_break", "attendance_correction", "employee", "branch");
+            case ID_POC_010 -> Set.of(
+                    "attendance_record",
+                    "attendance_break",
+                    "attendance_correction",
+                    "employee",
+                    "branch"
+            );
             default -> Set.of();
         };
     }
 
     @Override
     public void validate(QuerySpec query, UserContext user) {
-        ContractRules.require(query != null && query.mode() == QuerySpec.Mode.REGISTERED_ANALYSIS, "Registered analysis mode required");
-        ContractRules.require(supports(query.analysisId()), "Unsupported OpenStudy analysis: " + (query == null ? null : query.analysisId()));
+        ContractRules.require(
+                query != null && query.mode() == QuerySpec.Mode.REGISTERED_ANALYSIS,
+                "Registered analysis mode required"
+        );
+        ContractRules.require(
+                supports(query.analysisId()),
+                "Unsupported OpenStudy analysis: " + (query == null ? null : query.analysisId())
+        );
     }
 
     @Override
     public ExecutionPlan plan(QuerySpec query, UserContext user, Instant asOf, Instant snapshotAt) {
         validate(query, user);
         String subject = user == null ? "anonymous" : user.subjectId();
-        Map<String, Object> scope = (user == null || user.policyBinding() == null) ? Map.of() : user.policyBinding().scope();
+        Map<String, Object> scope = (user == null || user.policyBinding() == null)
+                ? Map.of()
+                : user.policyBinding().scope();
         return new ExecutionPlan(
                 ExecutionPlan.VERSION,
-                registry.version(),
+                semanticRegistry.version(),
                 "openstudy-policy-v1",
                 subject,
                 scope,
-                asOf != null ? asOf : clock.asOf(),
-                snapshotAt != null ? snapshotAt : clock.asOf(),
+                asOf != null ? asOf : openStudyClock.asOf(),
+                snapshotAt != null ? snapshotAt : openStudyClock.asOf(),
                 query,
                 List.of(),
                 Map.of(),
@@ -557,13 +601,22 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
     }
 
     public String normalizeAnalysisId(String raw) {
-        if (raw == null) return "";
+        if (raw == null) {
+            return "";
+        }
+
         String trimmed = raw.trim();
-        return aliasToAnalysisId.getOrDefault(trimmed, aliasToAnalysisId.getOrDefault(trimmed.toUpperCase(Locale.ROOT), trimmed));
+        return aliasToAnalysisId.getOrDefault(
+                trimmed,
+                aliasToAnalysisId.getOrDefault(trimmed.toUpperCase(Locale.ROOT), trimmed)
+        );
     }
 
     public Optional<String> resolveFromQuestion(String question) {
-        if (question == null || question.isBlank()) return Optional.empty();
+        if (question == null || question.isBlank()) {
+            return Optional.empty();
+        }
+
         String q = question.trim();
         if (aliasToAnalysisId.containsKey(q)) {
             return Optional.of(aliasToAnalysisId.get(q));
@@ -614,11 +667,23 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
     }
 
     /** The registered analyses (ADR-M10-003 M10-D14). */
-    public static final java.util.Set<String> REGISTERED = java.util.Set.of(ID_POC_001, ID_POC_002, ID_POC_003, ID_POC_004,
-            ID_POC_005, ID_POC_006, ID_POC_007, ID_POC_008, ID_POC_009, ID_POC_010);
+    public static final Set<String> REGISTERED = Set.of(
+            ID_POC_001,
+            ID_POC_002,
+            ID_POC_003,
+            ID_POC_004,
+            ID_POC_005,
+            ID_POC_006,
+            ID_POC_007,
+            ID_POC_008,
+            ID_POC_009,
+            ID_POC_010
+    );
 
     public PocExecutionResult executeCase(String caseOrAnalysisId, Collection<Long> branchScope, long requester) {
-        String analysisId = resolveFromQuestion(caseOrAnalysisId).orElseGet(() -> normalizeAnalysisId(caseOrAnalysisId));
+        String analysisId = resolveFromQuestion(caseOrAnalysisId).orElseGet(
+                () -> normalizeAnalysisId(caseOrAnalysisId)
+        );
         return switch (analysisId) {
             case ID_POC_001 -> executePoc001BranchSales(branchScope, requester);
             case ID_POC_002 -> executePoc002HourlyCongestion(singleBranch(branchScope));
@@ -630,7 +695,10 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             case ID_POC_008 -> executePoc008SalesByItemType(branchScope, requester);
             case ID_POC_009 -> executePoc009UrgentTasks(branchScope);
             case ID_POC_010 -> executePoc010WeeklyAttendance(branchScope);
-            default -> throw new EngineException(EngineErrorCode.IR_UNSUPPORTED, "Unsupported analysis ID: " + caseOrAnalysisId);
+            default -> throw new EngineException(
+                    EngineErrorCode.IR_UNSUPPORTED,
+                    "Unsupported analysis ID: " + caseOrAnalysisId
+            );
         };
     }
 
@@ -638,9 +706,17 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
      * #125: an analysis run under a refinement's conditions. A null {@code period} keeps the analysis default and an empty
      * {@code products} is every product; analyses without that condition never receive one (AiReuse.EDITABLE).
      */
-    public PocExecutionResult executeCase(String analysisId, Collection<Long> branchScope, long requester,
-            OpenStudyClock.KstPeriod period, Set<Long> products) {
-        if (period == null && products.isEmpty()) return executeCase(analysisId, branchScope, requester);
+    public PocExecutionResult executeCase(
+            String analysisId,
+            Collection<Long> branchScope,
+            long requester,
+            OpenStudyClock.KstPeriod period,
+            Set<Long> products
+    ) {
+        if (period == null && products.isEmpty()) {
+            return executeCase(analysisId, branchScope, requester);
+        }
+
         return switch (analysisId) {
             case ID_POC_001 -> executePoc001BranchSales(branchScope, requester, period);
             case ID_POC_002 -> executePoc002HourlyCongestion(singleBranch(branchScope), period);
@@ -650,28 +726,38 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             case ID_POC_007 -> executePoc007DailySalesTrend(branchScope, requester, period);
             case ID_POC_008 -> executePoc008SalesByItemType(branchScope, requester, period);
             case ID_POC_010 -> executePoc010WeeklyAttendance(branchScope, period);
-            default -> throw new IllegalArgumentException("Analysis " + analysisId + " takes no period or product condition");
+            default -> throw new IllegalArgumentException(
+                    "Analysis " + analysisId + " takes no period or product condition"
+            );
         };
     }
 
     /** #125: the period an analysis uses when nobody changed it, or null for the analyses that look at now. */
     public OpenStudyClock.KstPeriod defaultPeriod(String analysisId) {
         return switch (analysisId) {
-            case ID_POC_001 -> clock.thisMonth();
-            case ID_POC_002 -> clock.previousTwoWeeks();
-            case ID_POC_003, ID_POC_007, ID_POC_008 -> clock.lastMonth();
-            case ID_POC_005 -> clock.thisWeek();
-            case ID_POC_006 -> clock.next7Days();
-            case ID_POC_010 -> clock.lastWeek();
+            case ID_POC_001 -> openStudyClock.thisMonth();
+            case ID_POC_002 -> openStudyClock.previousTwoWeeks();
+            case ID_POC_003, ID_POC_007, ID_POC_008 -> openStudyClock.lastMonth();
+            case ID_POC_005 -> openStudyClock.thisWeek();
+            case ID_POC_006 -> openStudyClock.next7Days();
+            case ID_POC_010 -> openStudyClock.lastWeek();
             default -> null;
         };
     }
 
     /** #125: which of these product IDs exist. Products are shared by every branch, so existing means visible. */
     public Set<Long> existingProducts(Set<Long> ids) {
-        if (ids.isEmpty()) return Set.of();
-        return new LinkedHashSet<>(entityManager.createQuery("SELECT p.id FROM Product p WHERE p.id IN :ids", Long.class)
-                .setParameter("ids", ids).getResultList());
+        if (ids.isEmpty()) {
+            return Set.of();
+        }
+
+        return new LinkedHashSet<>(
+                entityManager.createQuery("SELECT p.id FROM Product p WHERE p.id IN :ids", Long.class).setParameter(
+                        "ids",
+                        ids
+                )
+                        .getResultList()
+        );
     }
 
     /** An analysis always names its branches; an empty scope is a caller error, never "every branch". */
@@ -690,8 +776,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         return branchScope.iterator().next();
     }
 
-    private String branchName(long branchId) {
-        return branchNames.names(List.of(branchId)).getOrDefault(branchId, "지점 " + branchId);
+    private String findBranchName(long branchId) {
+        return sessionBranchService.names(List.of(branchId)).getOrDefault(branchId, "지점 " + branchId);
     }
 
     /**
@@ -702,19 +788,23 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
     }
 
     /** #125: {@code override} is a refinement's period; null keeps the analysis default. */
-    public PocExecutionResult executePoc001BranchSales(Collection<Long> branchScope, long requester, OpenStudyClock.KstPeriod override) {
-        var period = override != null ? override : clock.thisMonth();
-        var processed = salesService.aggregateByBranch(requester,
+    public PocExecutionResult executePoc001BranchSales(
+            Collection<Long> branchScope,
+            long requester,
+            OpenStudyClock.KstPeriod override
+    ) {
+        OpenStudyClock.KstPeriod period = override != null ? override : openStudyClock.thisMonth();
+        SalesAggregationService.BranchSalesSummary processed = salesAggregationService.aggregateByBranch(requester,
                 branchScope, period.startInclusive(), period.endExclusive(), RefundBasis.REFUND_PROCESSED_AT);
-        var original = salesService.aggregateByBranch(requester,
+        SalesAggregationService.BranchSalesSummary original = salesAggregationService.aggregateByBranch(requester,
                 branchScope, period.startInclusive(), period.endExclusive(), RefundBasis.ORIGINAL_PAYMENT_DATE);
 
-        Instant now = clock.asOf();
-        var def = definitions.get(ID_POC_001);
+        Instant now = openStudyClock.asOf();
+        AnalysisRegistry.Definition def = definitions.get(ID_POC_001);
 
         List<Map<String, Object>> branchRows = new ArrayList<>();
-        for (var r : processed.rows()) {
-            var row = new LinkedHashMap<String, Object>();
+        for (SalesAggregationService.BranchSalesRow r : processed.rows()) {
+            LinkedHashMap<String,Object> row = new LinkedHashMap<String, Object>();
             row.put("branch_id", r.branchId());
             row.put("branch_name", r.branchName());
             row.put("approved_krw", r.approvedKrw());
@@ -734,8 +824,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         )));
 
         List<Map<String, Object>> contrastRows = new ArrayList<>();
-        for (var r : original.rows()) {
-            var row = new LinkedHashMap<String, Object>();
+        for (SalesAggregationService.BranchSalesRow r : original.rows()) {
+            LinkedHashMap<String,Object> row = new LinkedHashMap<String, Object>();
             row.put("branch_id", r.branchId());
             row.put("approved_krw", r.approvedKrw());
             row.put("refund_krw", r.refundKrw());
@@ -743,33 +833,66 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             contrastRows.add(row);
         }
 
-        var dsBranch = new TypedDataset("branchSales", def.outputs().get("branchSales"), branchRows, branchRows.size(), 0, 10, now, now);
-        var dsTotals = new TypedDataset("salesTotals", def.outputs().get("salesTotals"), totalRows, 1, 0, 1, now, now);
-        var dsContrast = new TypedDataset("basisContrast", def.outputs().get("basisContrast"), contrastRows, contrastRows.size(), 0, 10, now, now);
-        var cards = ResultCards.dataset(List.of(
+        TypedDataset dsBranch = new TypedDataset(
+                "branchSales",
+                def.outputs().get("branchSales"),
+                branchRows,
+                branchRows.size(),
+                0,
+                10,
+                now,
+                now
+        );
+        TypedDataset dsTotals = new TypedDataset(
+                "salesTotals",
+                def.outputs().get("salesTotals"),
+                totalRows,
+                1,
+                0,
+                1,
+                now,
+                now
+        );
+        TypedDataset dsContrast = new TypedDataset(
+                "basisContrast",
+                def.outputs().get("basisContrast"),
+                contrastRows,
+                contrastRows.size(),
+                0,
+                10,
+                now,
+                now
+        );
+        TypedDataset cards = ResultCards.dataset(List.of(
                 new ResultCards.Card("순매출", ResultCards.won(processed.totalNetKrw()), "승인액 − 환불액"),
                 new ResultCards.Card("승인 결제액", ResultCards.won(processed.totalApprovedKrw()),
                         "승인 " + ResultCards.count(processed.totalApprovedCount(), "건")),
                 new ResultCards.Card("환불액", ResultCards.won(processed.totalRefundKrw()),
                         "환불 " + ResultCards.count(processed.totalRefundCount(), "건") + " · 처리일 기준"),
                 new ResultCards.Card("조회 범위", ResultCards.count(branchRows.size(), "개 지점"), "허용된 지점 범위")), now);
-        var datasets = List.of(dsBranch, dsTotals, dsContrast, cards);
+        List<TypedDataset> datasets = List.of(dsBranch, dsTotals, dsContrast, cards);
 
         // The DomainLens result mock-up: KPI cards, then the branches' net sales beside their table.
-        var view = arranged(new ViewSpec(
+        ViewSpec view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
                         ResultCards.component(),
                         ResultCards.panel("chart", "BAR_CHART", "branchSales",
                                 Map.of("category", "branch_name", "value", "net_krw"), "이번 달 지점별 순매출", "KRW · 순매출 기준"),
                         ResultCards.panel("table", "DATA_TABLE", "branchSales",
-                                Map.of("columns", List.of("branch_name", "approved_krw", "refund_krw", "net_krw", "approved_count")),
+                                Map.of("columns", List.of(
+                                        "branch_name",
+                                        "approved_krw",
+                                        "refund_krw",
+                                        "net_krw",
+                                        "approved_count"
+                                )),
                                 "지점별 매출 집계", "제목을 눌러 정렬")
                 ),
                 null // arranged() lays the components out
         ));
 
-        var envelope = buildEnvelope("POC-001", datasets, view, null);
+        ResultEnvelope envelope = buildEnvelope("POC-001", datasets, view, null);
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("branch_rows", processed.rows());
         summary.put("original_payment_date_basis_contrast", original.rows());
@@ -799,22 +922,22 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
 
     /** #125: {@code override} is a refinement's period; null keeps the analysis default. */
     public PocExecutionResult executePoc002HourlyCongestion(long branchId, OpenStudyClock.KstPeriod override) {
-        var period = override != null ? override : clock.previousTwoWeeks();
-        Instant now = clock.asOf();
-        var def = definitions.get(ID_POC_002);
+        OpenStudyClock.KstPeriod period = override != null ? override : openStudyClock.previousTwoWeeks();
+        Instant now = openStudyClock.asOf();
+        AnalysisRegistry.Definition def = definitions.get(ID_POC_002);
 
-        Long availableSeatsCount = entityManager.createQuery(
-                        "SELECT COUNT(s.id) FROM Seat s WHERE s.branchId = :branchId AND CAST(s.status AS string) = 'AVAILABLE'",
-                        Long.class)
+        Long availableSeatsCount = entityManager.createQuery("""
+                SELECT COUNT(s.id) FROM Seat s WHERE s.branchId = :branchId AND CAST(s.status AS string) = 'AVAILABLE'
+                """, Long.class)
                 .setParameter("branchId", branchId)
                 .getSingleResult();
         long availableSeats = availableSeatsCount == null ? 0L : availableSeatsCount;
 
-        List<Object[]> sessionTuples = entityManager.createQuery(
-                        "SELECT ss.checkedInAt, ss.checkedOutAt FROM SeatSession ss "
-                                + "WHERE ss.branchId = :branchId AND ss.checkedInAt < :endExclusive "
-                                + "AND (ss.checkedOutAt IS NULL OR ss.checkedOutAt > :startInclusive)",
-                        Object[].class)
+        List<Object[]> sessionTuples = entityManager.createQuery("""
+                SELECT ss.checkedInAt, ss.checkedOutAt FROM SeatSession ss \
+                WHERE ss.branchId = :branchId AND ss.checkedInAt < :endExclusive \
+                AND (ss.checkedOutAt IS NULL OR ss.checkedOutAt > :startInclusive)
+                """, Object[].class)
                 .setParameter("branchId", branchId)
                 .setParameter("startInclusive", period.startInclusive())
                 .setParameter("endExclusive", period.endExclusive())
@@ -837,7 +960,9 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 for (Object[] tuple : sessionTuples) {
                     Instant checkedIn = (Instant) tuple[0];
                     Instant checkedOut = (Instant) tuple[1];
-                    if (!checkedIn.isAfter(sampleInstant) && (checkedOut == null || checkedOut.isAfter(sampleInstant))) {
+                    if (!checkedIn.isAfter(sampleInstant) && (
+                            checkedOut == null || checkedOut.isAfter(sampleInstant)
+                            )) {
                         occupiedAtSample++;
                     }
                 }
@@ -860,10 +985,10 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 if (pct > maxPct) {
                     maxPct = pct;
                 }
-                var cell = new HeatmapCell(weekday, hour, occupiedSamples, capacity, pct);
+                HeatmapCell cell = new HeatmapCell(weekday, hour, occupiedSamples, capacity, pct);
                 cells.add(cell);
 
-                var row = new LinkedHashMap<String, Object>();
+                LinkedHashMap<String,Object> row = new LinkedHashMap<String, Object>();
                 row.put("weekday", weekday);
                 row.put("hour_kst", hour);
                 row.put("occupied_seat_samples", occupiedSamples);
@@ -879,8 +1004,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 .toList();
 
         List<Map<String, Object>> peakDatasetRows = new ArrayList<>(peakCells.size());
-        for (var cell : peakCells) {
-            var row = new LinkedHashMap<String, Object>();
+        for (HeatmapCell cell : peakCells) {
+            LinkedHashMap<String,Object> row = new LinkedHashMap<String, Object>();
             row.put("weekday", cell.weekday());
             row.put("hour_kst", cell.hourKst());
             row.put("occupied_seat_samples", cell.occupiedSeatSamples());
@@ -889,38 +1014,80 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             peakDatasetRows.add(row);
         }
 
-        var dsHeatmap = new TypedDataset("heatmapRows", def.outputs().get("heatmapRows"), heatmapRows, heatmapRows.size(), 0, 50, now, now);
+        TypedDataset dsHeatmap = new TypedDataset(
+                "heatmapRows",
+                def.outputs().get("heatmapRows"),
+                heatmapRows,
+                heatmapRows.size(),
+                0,
+                50,
+                now,
+                now
+        );
         // Every cell ties for the peak when no seat was used (all 0%): the page holds them all (35 at most).
-        var dsPeaks = new TypedDataset("peakCells", def.outputs().get("peakCells"), peakDatasetRows, peakDatasetRows.size(), 0,
-                Math.max(10, peakDatasetRows.size()), now, now);
+        TypedDataset dsPeaks = new TypedDataset(
+                "peakCells",
+                def.outputs().get("peakCells"),
+                peakDatasetRows,
+                peakDatasetRows.size(),
+                0,
+                Math.max(10, peakDatasetRows.size()),
+                now,
+                now
+        );
         double averagePct = cells.stream().filter(c -> c.seatSampleCapacity() > 0)
                 .mapToDouble(HeatmapCell::sampledOccupancyPct).average().orElse(0.0);
-        var ranked = cells.stream()
+        List<HeatmapCell> ranked = cells.stream()
                 .sorted(Comparator.comparingDouble(HeatmapCell::sampledOccupancyPct).reversed()
                         .thenComparingInt(HeatmapCell::weekday).thenComparingInt(HeatmapCell::hourKst))
                 .limit(5).toList();
         List<Map<String, Object>> topRows = new ArrayList<>(ranked.size());
-        for (var cell : ranked) {
-            var row = new LinkedHashMap<String, Object>();
+        for (HeatmapCell cell : ranked) {
+            LinkedHashMap<String,Object> row = new LinkedHashMap<String, Object>();
             row.put("weekday_label", ResultCards.weekday(cell.weekday()) + "요일");
             row.put("hour_label", cell.hourKst() + "시");
             row.put("sampled_occupancy_pct", cell.sampledOccupancyPct());
             topRows.add(row);
         }
-        var dsTop = new TypedDataset("peakTop5", def.outputs().get("peakTop5"), topRows, topRows.size(), 0, 5, now, now);
-        var peak = ranked.isEmpty() ? null : ranked.getFirst();
-        long observedDays = java.time.temporal.ChronoUnit.DAYS.between(period.startDateKst(), period.endDateExclusiveKst());
-        var cards = ResultCards.dataset(List.of(
-                new ResultCards.Card("평균 점유율", ResultCards.pct(averagePct), ResultCards.count(cells.size(), "개 시간대 슬롯")),
-                new ResultCards.Card("가장 혼잡",
-                        peak == null ? "-" : ResultCards.weekday(peak.weekday()) + " " + peak.hourKst() + "시",
-                        peak == null ? "샘플 없음" : ResultCards.pct(peak.sampledOccupancyPct())),
-                new ResultCards.Card("운영 좌석", ResultCards.count(availableSeats, "석"), "가용 좌석 기준"),
-                new ResultCards.Card("관측 기간", ResultCards.count(observedDays, "일"),
-                        ResultCards.days(period.startDateKst(), period.endDateExclusiveKst().minusDays(1)))), now);
-        var datasets = List.of(dsHeatmap, dsPeaks, dsTop, cards);
+        TypedDataset dsTop = new TypedDataset(
+                "peakTop5",
+                def.outputs().get("peakTop5"),
+                topRows,
+                topRows.size(),
+                0,
+                5,
+                now,
+                now
+        );
+        HeatmapCell peak = ranked.isEmpty() ? null : ranked.getFirst();
+        long observedDays = ChronoUnit.DAYS.between(
+                period.startDateKst(),
+                period.endDateExclusiveKst()
+        );
+        TypedDataset cards = ResultCards.dataset(
+                List.of(
+                        new ResultCards.Card(
+                                "평균 점유율",
+                                ResultCards.pct(averagePct),
+                                ResultCards.count(cells.size(), "개 시간대 슬롯")
+                        ),
+                        new ResultCards.Card(
+                                "가장 혼잡",
+                                peak == null ? "-" : ResultCards.weekday(peak.weekday()) + " " + peak.hourKst() + "시",
+                                peak == null ? "샘플 없음" : ResultCards.pct(peak.sampledOccupancyPct())
+                        ),
+                        new ResultCards.Card("운영 좌석", ResultCards.count(availableSeats, "석"), "가용 좌석 기준"),
+                        new ResultCards.Card(
+                                "관측 기간",
+                                ResultCards.count(observedDays, "일"),
+                                ResultCards.days(period.startDateKst(), period.endDateExclusiveKst().minusDays(1))
+                        )
+                ),
+                now
+        );
+        List<TypedDataset> datasets = List.of(dsHeatmap, dsPeaks, dsTop, cards);
 
-        var view = arranged(new ViewSpec(
+        ViewSpec view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
                         ResultCards.component(),
@@ -929,18 +1096,18 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                                 "요일 × 시간대 혼잡도", "샘플 시각 09·12·15·18·21시 · 좌석 점유율"),
                         ResultCards.panel("table", "DATA_TABLE", "peakTop5",
                                 Map.of("columns", List.of("weekday_label", "hour_label", "sampled_occupancy_pct")),
-                                "혼잡 시간대 TOP 5", branchName(branchId))
+                                "혼잡 시간대 TOP 5", findBranchName(branchId))
                 ),
                 null // arranged() lays the components out
         ));
 
-        var notice = new OutcomeNotice(
+        OutcomeNotice notice = new OutcomeNotice(
                 "PROVISIONAL_OCCUPANCY_DEFINITION",
                 OutcomeNotice.Kind.CLARIFICATION,
                 "가용 좌석 23석 및 2주 샘플 시간대(09/12/15/18/21시) 기준 임시 점유율입니다.",
                 "점유율 분모 및 시간 가중치 정책 확정 전 참고 수치"
         );
-        var envelope = buildEnvelope("POC-002", datasets, view, notice);
+        ResultEnvelope envelope = buildEnvelope("POC-002", datasets, view, notice);
 
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("status", "PROVISIONAL_NOT_GOLDEN");
@@ -950,7 +1117,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         return new PocExecutionResult(
                 "POC-002",
                 ID_POC_002,
-                branchName(branchId) + "은 언제 가장 붐벼?",
+                findBranchName(branchId) + "은 언제 가장 붐벼?",
                 "POLICY_PENDING_OCCUPANCY_DENOMINATOR_AND_TIME_WEIGHTING",
                 List.of("KPI", "HEATMAP", "DATA_TABLE"),
                 envelope,
@@ -966,26 +1133,55 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
     }
 
     /** #125: {@code override} is a refinement's period; null keeps the analysis default. An empty {@code products} is every product. */
-    public PocExecutionResult executePoc003Top5Passes(Collection<Long> branchScope, long requester, OpenStudyClock.KstPeriod override, Set<Long> products) {
-        var period = override != null ? override : clock.lastMonth();
-        Instant now = clock.asOf();
-        var def = definitions.get(ID_POC_003);
+    public PocExecutionResult executePoc003Top5Passes(
+            Collection<Long> branchScope,
+            long requester,
+            OpenStudyClock.KstPeriod override,
+            Set<Long> products
+    ) {
+        OpenStudyClock.KstPeriod period = override != null ? override : openStudyClock.lastMonth();
+        Instant now = openStudyClock.asOf();
+        AnalysisRegistry.Definition def = definitions.get(ID_POC_003);
         // GET /sales/passes/products with the same condition (#95, M10-D05): M9's ranking by net sold quantity.
         // #125: M9 filters one product at a time, so a product condition ranks each chosen product's own row.
-        var ranked = products.isEmpty()
-                ? salesService.topPassProducts(requester, branchScope, period.startInclusive(), period.endExclusive(), 5)
-                : products.stream().flatMap(product -> salesService.topPassProducts(requester, branchScope,
-                        period.startInclusive(), period.endExclusive(), 1, product).stream()).toList();
-        var rows = ranked.stream()
-                .map(item -> new TopPassProductRow(Long.parseLong(item.productId()), item.productName(), item.soldQuantity(),
-                        item.refundedQuantity(), item.netSoldQuantity()));
+        List<PassProductSales> ranked =
+                products.isEmpty()
+                        ? salesAggregationService.topPassProducts(
+                                requester,
+                                branchScope,
+                                period.startInclusive(),
+                                period.endExclusive(),
+                                5
+                        )
+                        : products.stream()
+                                .flatMap(
+                                        product -> salesAggregationService.topPassProducts(
+                                                requester,
+                                                branchScope,
+                                                period.startInclusive(),
+                                                period.endExclusive(),
+                                                1,
+                                                product
+                                        )
+                                                .stream()
+                                )
+                                .toList();
+        Stream<TopPassProductRow> rows = ranked.stream().map(
+                item -> new TopPassProductRow(
+                        Long.parseLong(item.productId()),
+                        item.productName(),
+                        item.soldQuantity(),
+                        item.refundedQuantity(),
+                        item.netSoldQuantity()
+                )
+        );
         List<TopPassProductRow> top5 = (products.isEmpty() ? rows : rows.sorted(Comparator
                 .comparingLong(TopPassProductRow::netUnits).reversed().thenComparingLong(TopPassProductRow::productId)))
                 .limit(5).toList();
 
         List<Map<String, Object>> datasetRows = new ArrayList<>(top5.size());
-        for (var r : top5) {
-            var row = new LinkedHashMap<String, Object>();
+        for (TopPassProductRow r : top5) {
+            LinkedHashMap<String,Object> row = new LinkedHashMap<String, Object>();
             row.put("product_id", r.productId());
             row.put("product", r.product());
             row.put("issued_units", r.issuedUnits());
@@ -994,21 +1190,30 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             datasetRows.add(row);
         }
 
-        var dsTop5 = new TypedDataset("topProducts", def.outputs().get("topProducts"), datasetRows, datasetRows.size(), 0, 5, now, now);
+        TypedDataset dsTop5 = new TypedDataset(
+                "topProducts",
+                def.outputs().get("topProducts"),
+                datasetRows,
+                datasetRows.size(),
+                0,
+                5,
+                now,
+                now
+        );
         long issued = 0L, refunded = 0L, net = 0L;
-        for (var row : datasetRows) {
+        for (Map<String,Object> row : datasetRows) {
             issued += ResultCards.longValue(row.get("issued_units"));
             refunded += ResultCards.longValue(row.get("refunded_units"));
             net += ResultCards.longValue(row.get("net_units"));
         }
-        var cards = ResultCards.dataset(List.of(
+        TypedDataset cards = ResultCards.dataset(List.of(
                 new ResultCards.Card("발급 수", ResultCards.count(issued, "건"), "표시 상품 합계"),
                 new ResultCards.Card("환불 수", ResultCards.count(refunded, "건"), "같은 기간 환불"),
                 new ResultCards.Card("순판매 수", ResultCards.count(net, "건"), "발급 − 환불"),
                 new ResultCards.Card("표시 상품", ResultCards.count(datasetRows.size(), "건"), "TOP 5 이내")), now);
-        var datasets = List.of(dsTop5, cards);
+        List<TypedDataset> datasets = List.of(dsTop5, cards);
 
-        var view = arranged(new ViewSpec(
+        ViewSpec view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
                         ResultCards.component(),
@@ -1021,7 +1226,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 null // arranged() lays the components out
         ));
 
-        var envelope = buildEnvelope("POC-003", datasets, view, null);
+        ResultEnvelope envelope = buildEnvelope("POC-003", datasets, view, null);
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("top5", top5);
         summary.put("ranking", "M9 /sales/passes/products: netSoldQuantity DESC, competition rank");
@@ -1042,8 +1247,13 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
      * {@code POC-004}: "지금 ○○점에 빈자리가 얼마나 있어?" ({@code asOf = 2026-11-02T14:00:00+09:00}).
      */
     /** One branch's seats right now: each seat's state and the counts. Blocked seats are not operating seats. */
-    private record SeatCounts(List<Map<String, Object>> seatMapRows, long total, long available, long occupied,
-            long blocked) {
+    private record SeatCounts(
+            List<Map<String, Object>> seatMapRows,
+            long total,
+            long available,
+            long occupied,
+            long blocked
+    ) {
         long free() {
             return available - occupied;
         }
@@ -1053,18 +1263,18 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         }
     }
 
-    private SeatCounts seatCounts(long branchId, Instant now) {
+    private SeatCounts countSeats(long branchId, Instant now) {
 
-        List<Object[]> seatTuples = entityManager.createQuery(
-                        "SELECT s.id, s.seatNo, s.status FROM Seat s WHERE s.branchId = :branchId ORDER BY s.seatNo ASC",
-                        Object[].class)
+        List<Object[]> seatTuples = entityManager.createQuery("""
+                SELECT s.id, s.seatNo, s.status FROM Seat s WHERE s.branchId = :branchId ORDER BY s.seatNo ASC
+                """, Object[].class)
                 .setParameter("branchId", branchId)
                 .getResultList();
 
-        List<Long> occupiedSeatIds = entityManager.createQuery(
-                        "SELECT ss.seatId FROM SeatSession ss WHERE ss.branchId = :branchId "
-                                + "AND ss.checkedInAt <= :asOf AND (ss.checkedOutAt IS NULL OR ss.checkedOutAt > :asOf)",
-                        Long.class)
+        List<Long> occupiedSeatIds = entityManager.createQuery("""
+                SELECT ss.seatId FROM SeatSession ss WHERE ss.branchId = :branchId \
+                AND ss.checkedInAt <= :asOf AND (ss.checkedOutAt IS NULL OR ss.checkedOutAt > :asOf)
+                """, Long.class)
                 .setParameter("branchId", branchId)
                 .setParameter("asOf", now)
                 .getResultList();
@@ -1094,7 +1304,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                     occupancyState = "FREE";
                 }
             }
-            var row = new LinkedHashMap<String, Object>();
+            LinkedHashMap<String,Object> row = new LinkedHashMap<String, Object>();
             row.put("seat_id", seatId);
             row.put("seat_no", seatNo);
             row.put("seat_status", status);
@@ -1113,25 +1323,28 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         if (branchScope == null || branchScope.isEmpty()) {
             throw new IllegalArgumentException("Realtime seats need at least one branch");
         }
-        if (branchScope.size() == 1) return executePoc004RealtimeSeats(branchScope.iterator().next().longValue());
+        if (branchScope.size() == 1) {
+            return executePoc004RealtimeSeats(branchScope.iterator().next().longValue());
+        }
+
         return executePoc004BranchSeats(branchScope);
     }
 
     private PocExecutionResult executePoc004BranchSeats(Collection<Long> branchScope) {
-        Instant now = clock.asOf();
-        var def = definitions.get(ID_POC_004);
-        var ids = branchScope.stream().sorted().toList();
-        var names = branchNames.names(ids);
-        var rows = new ArrayList<Map<String, Object>>();
+        Instant now = openStudyClock.asOf();
+        AnalysisRegistry.Definition def = definitions.get(ID_POC_004);
+        List<Long> ids = branchScope.stream().sorted().toList();
+        Map<Long,String> names = sessionBranchService.names(ids);
+        ArrayList<Map<String,Object>> rows = new ArrayList<Map<String, Object>>();
         long available = 0L;
         long occupied = 0L;
         long blocked = 0L;
         String busiest = null;
         double busiestPct = -1.0;
         for (long branchId : ids) {
-            var counts = seatCounts(branchId, now);
+            SeatCounts counts = countSeats(branchId, now);
             String name = names.getOrDefault(branchId, "지점 " + branchId);
-            var row = new LinkedHashMap<String, Object>();
+            LinkedHashMap<String,Object> row = new LinkedHashMap<String, Object>();
             row.put("branch_id", branchId);
             row.put("branch_name", name);
             row.put("available", counts.available());
@@ -1150,32 +1363,48 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         }
         double occupiedPct = available > 0 ? Math.round((occupied * 1000.0) / available) / 10.0 : 0.0;
 
-        var dsBranches = new TypedDataset("branchSeats", def.outputs().get("branchSeats"), rows, rows.size(), 0,
-                Math.max(10, rows.size()), now, now);
+        TypedDataset dsBranches = new TypedDataset(
+                "branchSeats",
+                def.outputs().get("branchSeats"),
+                rows,
+                rows.size(),
+                0,
+                Math.max(10, rows.size()),
+                now,
+                now
+        );
         String blockedNote = blocked > 0 ? " · 차단 " + ResultCards.count(blocked, "석") + " 제외" : "";
-        var cards = ResultCards.dataset(List.of(
+        TypedDataset cards = ResultCards.dataset(List.of(
                 new ResultCards.Card("운영 좌석", ResultCards.count(available, "석"),
                         ResultCards.count(rows.size(), "개 지점") + blockedNote),
                 new ResultCards.Card("이용 중", ResultCards.count(occupied, "석"), "현재 입실 세션"),
                 new ResultCards.Card("빈자리", ResultCards.count(available - occupied, "석"), "바로 배정 가능"),
                 new ResultCards.Card("점유율", ResultCards.pct(occupiedPct),
                         busiest == null ? "운영 좌석 기준" : "가장 높은 곳 " + busiest + " " + ResultCards.pct(busiestPct))), now);
-        var datasets = List.of(dsBranches, cards);
+        List<TypedDataset> datasets = List.of(dsBranches, cards);
 
-        var view = arranged(new ViewSpec(
+        ViewSpec view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
                         ResultCards.component(),
                         ResultCards.panel("chart", "BAR_CHART", "branchSeats",
-                                Map.of("category", "branch_name", "value", "occupied_pct"), "지점별 좌석 점유율", "실시간 · 운영 좌석 기준"),
+                                Map.of("category", "branch_name", "value", "occupied_pct"),
+                                "지점별 좌석 점유율",
+                                "실시간 · 운영 좌석 기준"),
                         ResultCards.panel("table", "DATA_TABLE", "branchSeats",
-                                Map.of("columns", List.of("branch_name", "occupied", "available", "free", "occupied_pct")),
+                                Map.of("columns", List.of(
+                                        "branch_name",
+                                        "occupied",
+                                        "available",
+                                        "free",
+                                        "occupied_pct"
+                                )),
                                 "지점별 좌석 이용 현황", "이용 중 / 운영 좌석")
                 ),
                 null // arranged() lays the components out
         ));
 
-        var envelope = buildEnvelope("POC-004", datasets, view, null);
+        ResultEnvelope envelope = buildEnvelope("POC-004", datasets, view, null);
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("branch_rows", rows);
         summary.put("available", available);
@@ -1196,10 +1425,10 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
     }
 
     public PocExecutionResult executePoc004RealtimeSeats(long branchId) {
-        Instant now = clock.asOf();
-        var def = definitions.get(ID_POC_004);
-        var counts = seatCounts(branchId, now);
-        var seatMapRows = counts.seatMapRows();
+        Instant now = openStudyClock.asOf();
+        AnalysisRegistry.Definition def = definitions.get(ID_POC_004);
+        SeatCounts counts = countSeats(branchId, now);
+        List<Map<String,Object>> seatMapRows = counts.seatMapRows();
         long total = counts.total();
         long available = counts.available();
         long occupied = counts.occupied();
@@ -1207,9 +1436,17 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
 
         long free = available - occupied;
         double occupiedPct = available > 0 ? Math.round((occupied * 1000.0) / available) / 10.0 : 0.0;
-        var summaryObj = new RealtimeSeatSummary(branchId, total, available, occupied, free, blocked, occupiedPct);
+        RealtimeSeatSummary summaryObj = new RealtimeSeatSummary(
+                branchId,
+                total,
+                available,
+                occupied,
+                free,
+                blocked,
+                occupiedPct
+        );
 
-        var summaryRow = new LinkedHashMap<String, Object>();
+        LinkedHashMap<String,Object> summaryRow = new LinkedHashMap<String, Object>();
         summaryRow.put("branch_id", branchId);
         summaryRow.put("total", total);
         summaryRow.put("available", available);
@@ -1218,28 +1455,46 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         summaryRow.put("blocked", blocked);
         summaryRow.put("occupied_pct", occupiedPct);
 
-        var dsSummary = new TypedDataset("seatSummary", def.outputs().get("seatSummary"), List.of(summaryRow), 1, 0, 1, now, now);
-        var dsMap = new TypedDataset("seatMap", def.outputs().get("seatMap"), seatMapRows, seatMapRows.size(), 0, 30, now, now);
-        var cards = ResultCards.dataset(List.of(
+        TypedDataset dsSummary = new TypedDataset(
+                "seatSummary",
+                def.outputs().get("seatSummary"),
+                List.of(summaryRow),
+                1,
+                0,
+                1,
+                now,
+                now
+        );
+        TypedDataset dsMap = new TypedDataset(
+                "seatMap",
+                def.outputs().get("seatMap"),
+                seatMapRows,
+                seatMapRows.size(),
+                0,
+                30,
+                now,
+                now
+        );
+        TypedDataset cards = ResultCards.dataset(List.of(
                 new ResultCards.Card("운영 좌석", ResultCards.count(available, "석"),
                         blocked > 0 ? "차단 " + ResultCards.count(blocked, "석") + " 제외" : "차단 좌석 없음"),
                 new ResultCards.Card("이용 중", ResultCards.count(occupied, "석"), "현재 입실 세션"),
                 new ResultCards.Card("빈자리", ResultCards.count(free, "석"), "바로 배정 가능"),
                 new ResultCards.Card("점유율", ResultCards.pct(occupiedPct), "운영 좌석 기준")), now);
-        var datasets = List.of(dsSummary, dsMap, cards);
+        List<TypedDataset> datasets = List.of(dsSummary, dsMap, cards);
 
-        var view = arranged(new ViewSpec(
+        ViewSpec view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
                         ResultCards.component(),
                         ResultCards.panel("seatMap", "SEAT_MAP", "seatMap",
                                 Map.of("columns", List.of("seat_id", "seat_no", "seat_status", "occupancy_state")),
-                                "현재 좌석 배치", branchName(branchId) + " · 실시간")
+                                "현재 좌석 배치", findBranchName(branchId) + " · 실시간")
                 ),
                 null // arranged() lays the components out
         ));
 
-        var envelope = buildEnvelope("POC-004", datasets, view, null);
+        ResultEnvelope envelope = buildEnvelope("POC-004", datasets, view, null);
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("branch_id", branchId);
         summary.put("total", total);
@@ -1253,7 +1508,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         return new PocExecutionResult(
                 "POC-004",
                 ID_POC_004,
-                "지금 " + branchName(branchId) + "에 빈자리가 얼마나 있어?",
+                "지금 " + findBranchName(branchId) + "에 빈자리가 얼마나 있어?",
                 "CONFIRMED_ADR",
                 List.of("KPI", "SEAT_MAP"),
                 envelope,
@@ -1269,15 +1524,18 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
     }
 
     /** #125: {@code override} is a refinement's period; null keeps the analysis default. */
-    public PocExecutionResult executePoc005WeeklyRoomReservations(Collection<Long> branchScope, OpenStudyClock.KstPeriod override) {
-        var period = override != null ? override : clock.thisWeek();
-        Instant now = clock.asOf();
-        var def = definitions.get(ID_POC_005);
+    public PocExecutionResult executePoc005WeeklyRoomReservations(
+            Collection<Long> branchScope,
+            OpenStudyClock.KstPeriod override
+    ) {
+        OpenStudyClock.KstPeriod period = override != null ? override : openStudyClock.thisWeek();
+        Instant now = openStudyClock.asOf();
+        AnalysisRegistry.Definition def = definitions.get(ID_POC_005);
         Collection<Long> effectiveBranches = requireBranches(branchScope);
 
-        List<Object[]> branchTuples = entityManager.createQuery(
-                        "SELECT b.id, b.name FROM Branch b WHERE b.id IN :branchIds ORDER BY b.id ASC",
-                        Object[].class)
+        List<Object[]> branchTuples = entityManager.createQuery("""
+                SELECT b.id, b.name FROM Branch b WHERE b.id IN :branchIds ORDER BY b.id ASC
+                """, Object[].class)
                 .setParameter("branchIds", effectiveBranches)
                 .getResultList();
 
@@ -1286,12 +1544,12 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             branchNames.put(((Number) tuple[0]).longValue(), String.valueOf(tuple[1]));
         }
 
-        List<Object[]> reservationTuples = entityManager.createQuery(
-                        "SELECT rr.id, r.branchId, r.id, r.name, rr.startAt, rr.endAt, rr.status, rr.ratePerHourSnapshotKrw "
-                                + "FROM RoomReservation rr, Room r WHERE r.id = rr.roomId AND r.branchId IN :branchIds "
-                                + "AND rr.startAt >= :startInclusive AND rr.startAt < :endExclusive "
-                                + "ORDER BY rr.startAt ASC, rr.id ASC",
-                        Object[].class)
+        List<Object[]> reservationTuples = entityManager.createQuery("""
+                SELECT rr.id, r.branchId, r.id, r.name, rr.startAt, rr.endAt, rr.status, rr.ratePerHourSnapshotKrw \
+                FROM RoomReservation rr, Room r WHERE r.id = rr.roomId AND r.branchId IN :branchIds \
+                AND rr.startAt >= :startInclusive AND rr.startAt < :endExclusive \
+                ORDER BY rr.startAt ASC, rr.id ASC
+                """, Object[].class)
                 .setParameter("branchIds", effectiveBranches)
                 .setParameter("startInclusive", period.startInclusive())
                 .setParameter("endExclusive", period.endExclusive())
@@ -1327,9 +1585,14 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             long[] acc = branchAcc.get(branchId);
             if (acc != null) {
                 acc[0] += 1;
-                if ("CONFIRMED".equals(status)) acc[1] += 1;
-                else if ("COMPLETED".equals(status)) acc[2] += 1;
-                else if ("CANCELLED".equals(status)) acc[3] += 1;
+                if ("CONFIRMED".equals(status)) {
+                    acc[1] += 1;
+                } else if ("COMPLETED".equals(status)) {
+                    acc[2] += 1;
+                } else if ("CANCELLED".equals(status)) {
+                    acc[3] += 1;
+                }
+
                 acc[4] += billableAmount;
             }
             Map<String, Long> statusMap = byStatusPerBranch.get(branchId);
@@ -1343,7 +1606,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             }
             totalBillableKrw += billableAmount;
 
-            var row = new LinkedHashMap<String, Object>();
+            LinkedHashMap<String,Object> row = new LinkedHashMap<String, Object>();
             row.put("reservation_id", reservationId);
             row.put("branch_id", branchId);
             row.put("branch_name", branchNames.getOrDefault(branchId, ""));
@@ -1358,10 +1621,10 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
 
         List<Map<String, Object>> branchSummaryRows = new ArrayList<>(branchNames.size());
         Map<String, BranchRoomReservationSummary> branchSummariesMap = new LinkedHashMap<>();
-        for (var entry : branchNames.entrySet()) {
+        for (Map.Entry<Long,String> entry : branchNames.entrySet()) {
             long bId = entry.getKey();
             long[] acc = branchAcc.get(bId);
-            var row = new LinkedHashMap<String, Object>();
+            LinkedHashMap<String,Object> row = new LinkedHashMap<String, Object>();
             row.put("branch_id", bId);
             row.put("branch_name", entry.getValue());
             row.put("total", acc[0]);
@@ -1382,36 +1645,71 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             ));
         }
 
-        var totalsRow = new LinkedHashMap<String, Object>();
+        LinkedHashMap<String,Object> totalsRow = new LinkedHashMap<String, Object>();
         totalsRow.put("all_bookings", allBookings);
         totalsRow.put("cancelled", totalCancelled);
         totalsRow.put("active_bookings", allBookings - totalCancelled);
         totalsRow.put("billable_booking_amount_krw", totalBillableKrw);
 
-        var dsReservations = new TypedDataset("reservationRows", def.outputs().get("reservationRows"), reservationRows, reservationRows.size(), 0, 100, now, now);
-        var dsBranches = new TypedDataset("branchSummaries", def.outputs().get("branchSummaries"), branchSummaryRows, branchSummaryRows.size(), 0, 10, now, now);
-        var dsTotals = new TypedDataset("reservationTotals", def.outputs().get("reservationTotals"), List.of(totalsRow), 1, 0, 1, now, now);
-        long weekDays = java.time.temporal.ChronoUnit.DAYS.between(period.startDateKst(), period.endDateExclusiveKst());
-        var cards = ResultCards.dataset(List.of(
+        TypedDataset dsReservations = new TypedDataset(
+                "reservationRows",
+                def.outputs().get("reservationRows"),
+                reservationRows,
+                reservationRows.size(),
+                0,
+                100,
+                now,
+                now
+        );
+        TypedDataset dsBranches = new TypedDataset(
+                "branchSummaries",
+                def.outputs().get("branchSummaries"),
+                branchSummaryRows,
+                branchSummaryRows.size(),
+                0,
+                10,
+                now,
+                now
+        );
+        TypedDataset dsTotals = new TypedDataset(
+                "reservationTotals",
+                def.outputs().get("reservationTotals"),
+                List.of(totalsRow),
+                1,
+                0,
+                1,
+                now,
+                now
+        );
+        long weekDays = ChronoUnit.DAYS.between(period.startDateKst(), period.endDateExclusiveKst());
+        TypedDataset cards = ResultCards.dataset(List.of(
                 new ResultCards.Card("주간 예약", ResultCards.count(allBookings, "건"), "일별 합계"),
                 new ResultCards.Card("예약 확정", ResultCards.count(allBookings - totalCancelled, "건"), "취소 제외"),
                 new ResultCards.Card("취소", ResultCards.count(totalCancelled, "건"), "같은 예약 원장"),
                 new ResultCards.Card("조회 일수", ResultCards.count(weekDays, "일"),
                         ResultCards.days(period.startDateKst(), period.endDateExclusiveKst().minusDays(1)))), now);
-        var datasets = List.of(dsReservations, dsBranches, dsTotals, cards);
+        List<TypedDataset> datasets = List.of(dsReservations, dsBranches, dsTotals, cards);
 
-        var view = arranged(new ViewSpec(
+        ViewSpec view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
                         ResultCards.component(),
                         ResultCards.panel("calendar", "WEEK_CALENDAR", "reservationRows",
-                                Map.of("columns", List.of("reservation_id", "branch_name", "room_name", "start_at", "end_at", "status", "billable_amount_krw")),
+                                Map.of("columns", List.of(
+                                        "reservation_id",
+                                        "branch_name",
+                                        "room_name",
+                                        "start_at",
+                                        "end_at",
+                                        "status",
+                                        "billable_amount_krw"
+                                )),
                                 "이번 주 예약 · 날짜를 선택해 예약 보기", ResultCards.count(weekDays, "일"))
                 ),
                 null // arranged() lays the components out
         ));
 
-        var envelope = buildEnvelope("POC-005", datasets, view, null);
+        ResultEnvelope envelope = buildEnvelope("POC-005", datasets, view, null);
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("branch_summaries", branchSummariesMap);
         summary.put("all_bookings", allBookings);
@@ -1439,15 +1737,19 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
     }
 
     /** #125: {@code override} is a refinement's period; null keeps the analysis default. An empty {@code products} is every product. */
-    public PocExecutionResult executePoc006ExpiringPasses(Collection<Long> branchScope, OpenStudyClock.KstPeriod override, Set<Long> products) {
-        var period = override != null ? override : clock.next7Days();
-        Instant now = clock.asOf();
-        var def = definitions.get(ID_POC_006);
+    public PocExecutionResult executePoc006ExpiringPasses(
+            Collection<Long> branchScope,
+            OpenStudyClock.KstPeriod override,
+            Set<Long> products
+    ) {
+        OpenStudyClock.KstPeriod period = override != null ? override : openStudyClock.next7Days();
+        Instant now = openStudyClock.asOf();
+        AnalysisRegistry.Definition def = definitions.get(ID_POC_006);
         Collection<Long> effectiveBranches = requireBranches(branchScope);
 
-        List<Object[]> branchTuples = entityManager.createQuery(
-                        "SELECT b.id, b.name FROM Branch b WHERE b.id IN :branchIds ORDER BY b.id ASC",
-                        Object[].class)
+        List<Object[]> branchTuples = entityManager.createQuery("""
+                SELECT b.id, b.name FROM Branch b WHERE b.id IN :branchIds ORDER BY b.id ASC
+                """, Object[].class)
                 .setParameter("branchIds", effectiveBranches)
                 .getResultList();
 
@@ -1459,7 +1761,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             byBranchCount.put(bId, 0L);
         }
 
-        var passQuery = entityManager.createQuery(
+        TypedQuery<Object[]> passQuery = entityManager.createQuery(
                         "SELECT pa.id, pa.purchaseBranchId, pa.productId, pa.snapshotProductName, pa.kind, "
                                 + "pa.remainingMinutes, pa.expiresAt, pa.status "
                                 + "FROM Pass pa WHERE pa.purchaseBranchId IN :branchIds "
@@ -1471,7 +1773,10 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 .setParameter("branchIds", effectiveBranches)
                 .setParameter("startInclusive", period.startInclusive())
                 .setParameter("endExclusive", period.endExclusive());
-        if (!products.isEmpty()) passQuery.setParameter("productIds", products);
+        if (!products.isEmpty()) {
+            passQuery.setParameter("productIds", products);
+        }
+
         List<Object[]> passTuples = passQuery.getResultList();
 
         List<ExpiringPassItem> items = new ArrayList<>(passTuples.size());
@@ -1491,9 +1796,21 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
 
             byBranchCount.computeIfPresent(branchId, (k, v) -> v + 1L);
             passIds.add(passId);
-            items.add(new ExpiringPassItem(passId, branchId, branchName, productId, productName, passType, remainingMinutes, expiresAt, status));
+            items.add(
+                    new ExpiringPassItem(
+                            passId,
+                            branchId,
+                            branchName,
+                            productId,
+                            productName,
+                            passType,
+                            remainingMinutes,
+                            expiresAt,
+                            status
+                    )
+            );
 
-            var row = new LinkedHashMap<String, Object>();
+            LinkedHashMap<String,Object> row = new LinkedHashMap<String, Object>();
             row.put("pass_id", passId);
             row.put("branch_id", branchId);
             row.put("branch_name", branchName);
@@ -1508,49 +1825,86 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
 
         List<Map<String, Object>> branchRows = new ArrayList<>(branchNames.size());
         Map<String, Long> byBranchStringKey = new LinkedHashMap<>();
-        for (var entry : branchNames.entrySet()) {
+        for (Map.Entry<Long,String> entry : branchNames.entrySet()) {
             long bId = entry.getKey();
             long cnt = byBranchCount.getOrDefault(bId, 0L);
             byBranchStringKey.put(Long.toString(bId), cnt);
-            var row = new LinkedHashMap<String, Object>();
+            LinkedHashMap<String,Object> row = new LinkedHashMap<String, Object>();
             row.put("branch_id", bId);
             row.put("branch_name", entry.getValue());
             row.put("expiring_count", cnt);
             branchRows.add(row);
         }
 
-        var totalsRow = new LinkedHashMap<String, Object>(Map.of("count", (long) items.size()));
+        LinkedHashMap<String,Object> totalsRow = new LinkedHashMap<String, Object>(
+                Map.of("count", (long) items.size())
+        );
 
-        var dsPasses = new TypedDataset("expiringPasses", def.outputs().get("expiringPasses"), passRows, passRows.size(), 0, 100, now, now);
-        var dsByBranch = new TypedDataset("expiringByBranch", def.outputs().get("expiringByBranch"), branchRows, branchRows.size(), 0, 10, now, now);
-        var dsTotals = new TypedDataset("expiringTotals", def.outputs().get("expiringTotals"), List.of(totalsRow), 1, 0, 1, now, now);
-        var dsPassesDays = ResultCards.withColumns(dsPasses, List.of(integer("days_left", "일")), row -> {
+        TypedDataset dsPasses = new TypedDataset(
+                "expiringPasses",
+                def.outputs().get("expiringPasses"),
+                passRows,
+                passRows.size(),
+                0,
+                100,
+                now,
+                now
+        );
+        TypedDataset dsByBranch = new TypedDataset(
+                "expiringByBranch",
+                def.outputs().get("expiringByBranch"),
+                branchRows,
+                branchRows.size(),
+                0,
+                10,
+                now,
+                now
+        );
+        TypedDataset dsTotals = new TypedDataset(
+                "expiringTotals",
+                def.outputs().get("expiringTotals"),
+                List.of(totalsRow),
+                1,
+                0,
+                1,
+                now,
+                now
+        );
+        TypedDataset dsPassesDays =
+                ResultCards.withColumns(dsPasses, List.of(toIntegerColumn("days_left", "일")), row -> {
             Instant expires = row.get("expires_at") instanceof Instant at ? at : now;
-            long days = Math.max(0L, java.time.temporal.ChronoUnit.DAYS.between(
+            long days = Math.max(0L, ChronoUnit.DAYS.between(
                     now.atZone(OpenStudyClock.KST).toLocalDate(), expires.atZone(OpenStudyClock.KST).toLocalDate()));
             return Map.of("days_left", days);
         });
-        long withinThree = dsPassesDays.rows().stream().filter(r -> ResultCards.longValue(r.get("days_left")) <= 3).count();
+        long withinThree =
+                dsPassesDays.rows().stream().filter(r -> ResultCards.longValue(r.get("days_left")) <= 3).count();
         long branchCount = dsPassesDays.rows().stream().map(r -> r.get("branch_name")).distinct().count();
-        var cards = ResultCards.dataset(List.of(
+        TypedDataset cards = ResultCards.dataset(List.of(
                 new ResultCards.Card("7일 이내 만료", ResultCards.count(passRows.size(), "건"), "사용 중 이용권"),
                 new ResultCards.Card("3일 이내", ResultCards.count(withinThree, "건"), "임박"),
                 new ResultCards.Card("조회 지점", ResultCards.count(branchCount, "개"), "만료 예정이 있는 지점"),
                 new ResultCards.Card("표 표시", ResultCards.count(passRows.size(), "건"), "가까운 만료일 순")), now);
-        var datasets = List.of(dsPassesDays, dsByBranch, dsTotals, cards);
+        List<TypedDataset> datasets = List.of(dsPassesDays, dsByBranch, dsTotals, cards);
 
-        var view = arranged(new ViewSpec(
+        ViewSpec view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
                         ResultCards.component(),
                         ResultCards.panel("table", "DATA_TABLE", "expiringPasses",
-                                Map.of("columns", List.of("pass_id", "product_name", "branch_name", "expires_at", "days_left")),
+                                Map.of("columns", List.of(
+                                        "pass_id",
+                                        "product_name",
+                                        "branch_name",
+                                        "expires_at",
+                                        "days_left"
+                                )),
                                 "만료 예정 목록 · 가장 가까운 날짜 순", "개인정보 비노출")
                 ),
                 null // arranged() lays the components out
         ));
 
-        var envelope = buildEnvelope("POC-006", datasets, view, null);
+        ResultEnvelope envelope = buildEnvelope("POC-006", datasets, view, null);
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("count", (long) items.size());
         summary.put("by_branch", byBranchStringKey);
@@ -1577,12 +1931,16 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
     }
 
     /** #125: {@code override} is a refinement's period; null keeps the analysis default. */
-    public PocExecutionResult executePoc007DailySalesTrend(Collection<Long> branchScope, long requester, OpenStudyClock.KstPeriod override) {
-        var period = override != null ? override : clock.lastMonth();
-        Instant now = clock.asOf();
-        var def = definitions.get(ID_POC_007);
+    public PocExecutionResult executePoc007DailySalesTrend(
+            Collection<Long> branchScope,
+            long requester,
+            OpenStudyClock.KstPeriod override
+    ) {
+        OpenStudyClock.KstPeriod period = override != null ? override : openStudyClock.lastMonth();
+        Instant now = openStudyClock.asOf();
+        AnalysisRegistry.Definition def = definitions.get(ID_POC_007);
 
-        var trend = salesService.aggregateDailyTrend(requester,
+        SalesAggregationService.DailySalesSummary trend = salesAggregationService.aggregateDailyTrend(requester,
                 branchScope,
                 period.startDateKst(),
                 period.endDateExclusiveKst(),
@@ -1590,8 +1948,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         );
 
         List<Map<String, Object>> dayRows = new ArrayList<>(trend.days().size());
-        for (var d : trend.days()) {
-            var row = new LinkedHashMap<String, Object>();
+        for (SalesAggregationService.DailySalesRow d : trend.days()) {
+            LinkedHashMap<String,Object> row = new LinkedHashMap<String, Object>();
             row.put("date_kst", d.dateKst());
             row.put("approved_krw", d.approvedKrw());
             row.put("refund_krw", d.refundKrw());
@@ -1601,28 +1959,46 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             dayRows.add(row);
         }
 
-        var totalsRow = new LinkedHashMap<String, Object>();
+        LinkedHashMap<String,Object> totalsRow = new LinkedHashMap<String, Object>();
         totalsRow.put("days_count", (long) trend.daysCount());
         totalsRow.put("approved_krw", trend.totalApprovedKrw());
         totalsRow.put("refund_krw", trend.totalRefundKrw());
         totalsRow.put("total_net_krw", trend.totalNetKrw());
 
-        var dsDaily = new TypedDataset("dailySales", def.outputs().get("dailySales"), dayRows, dayRows.size(), 0, 31, now, now);
-        var dsTotals = new TypedDataset("dailySalesTotals", def.outputs().get("dailySalesTotals"), List.of(totalsRow), 1, 0, 1, now, now);
+        TypedDataset dsDaily = new TypedDataset(
+                "dailySales",
+                def.outputs().get("dailySales"),
+                dayRows,
+                dayRows.size(),
+                0,
+                31,
+                now,
+                now
+        );
+        TypedDataset dsTotals = new TypedDataset(
+                "dailySalesTotals",
+                def.outputs().get("dailySalesTotals"),
+                List.of(totalsRow),
+                1,
+                0,
+                1,
+                now,
+                now
+        );
         long approvedSum = 0L, refundSum = 0L, netSum = 0L;
-        for (var row : dayRows) {
+        for (Map<String,Object> row : dayRows) {
             approvedSum += ResultCards.longValue(row.get("approved_krw"));
             refundSum += ResultCards.longValue(row.get("refund_krw"));
             netSum += ResultCards.longValue(row.get("net_krw"));
         }
-        var cards = ResultCards.dataset(List.of(
+        TypedDataset cards = ResultCards.dataset(List.of(
                 new ResultCards.Card("승인액", ResultCards.won(approvedSum), "선택 기간"),
                 new ResultCards.Card("환불액", ResultCards.won(refundSum), "처리일 기준"),
                 new ResultCards.Card("순매출", ResultCards.won(netSum), "승인액 − 환불액"),
                 new ResultCards.Card("일별 데이터", ResultCards.count(dayRows.size(), "일"), "0원인 날 포함")), now);
-        var datasets = List.of(dsDaily, dsTotals, cards);
+        List<TypedDataset> datasets = List.of(dsDaily, dsTotals, cards);
 
-        var view = arranged(new ViewSpec(
+        ViewSpec view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
                         ResultCards.component(),
@@ -1636,7 +2012,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 null // arranged() lays the components out
         ));
 
-        var envelope = buildEnvelope("POC-007", datasets, view, null);
+        ResultEnvelope envelope = buildEnvelope("POC-007", datasets, view, null);
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("days", trend.days());
         summary.put("zero_filled", trend.zeroFilled());
@@ -1664,12 +2040,16 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
     }
 
     /** #125: {@code override} is a refinement's period; null keeps the analysis default. */
-    public PocExecutionResult executePoc008SalesByItemType(Collection<Long> branchScope, long requester, OpenStudyClock.KstPeriod override) {
-        var period = override != null ? override : clock.lastMonth();
-        Instant now = clock.asOf();
-        var def = definitions.get(ID_POC_008);
+    public PocExecutionResult executePoc008SalesByItemType(
+            Collection<Long> branchScope,
+            long requester,
+            OpenStudyClock.KstPeriod override
+    ) {
+        OpenStudyClock.KstPeriod period = override != null ? override : openStudyClock.lastMonth();
+        Instant now = openStudyClock.asOf();
+        AnalysisRegistry.Definition def = definitions.get(ID_POC_008);
 
-        var byPurpose = salesService.aggregateByPurpose(requester,
+        SalesAggregationService.PurposeSalesSummary byPurpose = salesAggregationService.aggregateByPurpose(requester,
                 branchScope,
                 period.startInclusive(),
                 period.endExclusive(),
@@ -1677,8 +2057,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         );
 
         List<Map<String, Object>> purposeRows = new ArrayList<>(byPurpose.purposeRows().size());
-        for (var r : byPurpose.purposeRows()) {
-            var row = new LinkedHashMap<String, Object>();
+        for (SalesAggregationService.PurposeSalesRow r : byPurpose.purposeRows()) {
+            LinkedHashMap<String,Object> row = new LinkedHashMap<String, Object>();
             row.put("purpose", r.purpose());
             row.put("approved_krw", r.approvedKrw());
             row.put("refund_krw", r.refundKrw());
@@ -1690,32 +2070,66 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         }
 
         long winnerNetKrw = byPurpose.purposeRows().isEmpty() ? 0L : byPurpose.purposeRows().getFirst().netKrw();
-        var winnerRow = new LinkedHashMap<String, Object>();
+        LinkedHashMap<String,Object> winnerRow = new LinkedHashMap<String, Object>();
         winnerRow.put("winner_purpose", byPurpose.winnerPurpose());
         winnerRow.put("ranking_metric", byPurpose.rankingMetric());
         winnerRow.put("winner_net_krw", winnerNetKrw);
         winnerRow.put("total_net_krw", byPurpose.totalNetKrw());
 
-        var dsPurpose = new TypedDataset("purposeSales", def.outputs().get("purposeSales"), purposeRows, purposeRows.size(), 0, 10, now, now);
-        var dsWinner = new TypedDataset("purposeWinner", def.outputs().get("purposeWinner"), List.of(winnerRow), 1, 0, 1, now, now);
-        var labels = Map.of("PASS", "이용권", "ROOM", "스터디룸", "LOCKER", "사물함");
-        var dsPurposeLabeled = ResultCards.withColumns(dsPurpose, List.of(string("purpose_label")),
-                row -> Map.of("purpose_label", labels.getOrDefault(String.valueOf(row.get("purpose")), String.valueOf(row.get("purpose")))));
+        TypedDataset dsPurpose = new TypedDataset(
+                "purposeSales",
+                def.outputs().get("purposeSales"),
+                purposeRows,
+                purposeRows.size(),
+                0,
+                10,
+                now,
+                now
+        );
+        TypedDataset dsWinner = new TypedDataset(
+                "purposeWinner",
+                def.outputs().get("purposeWinner"),
+                List.of(winnerRow),
+                1,
+                0,
+                1,
+                now,
+                now
+        );
+        Map<String,String> labels = Map.of("PASS", "이용권", "ROOM", "스터디룸", "LOCKER", "사물함");
+        TypedDataset dsPurposeLabeled = ResultCards.withColumns(
+                dsPurpose,
+                List.of(toStringColumn("purpose_label")),
+                row -> Map.of(
+                        "purpose_label",
+                        labels.getOrDefault(String.valueOf(row.get("purpose")), String.valueOf(row.get("purpose")))
+                )
+        );
         long approvedSum = 0L, refundSum = 0L, netSum = 0L;
-        for (var row : purposeRows) {
+        for (Map<String,Object> row : purposeRows) {
             approvedSum += ResultCards.longValue(row.get("approved_krw"));
             refundSum += ResultCards.longValue(row.get("refund_krw"));
             netSum += ResultCards.longValue(row.get("net_krw"));
         }
-        String winner = dsPurposeLabeled.rows().isEmpty() ? "없음" : String.valueOf(dsPurposeLabeled.rows().getFirst().get("purpose_label"));
-        var cards = ResultCards.dataset(List.of(
-                new ResultCards.Card("총 승인액", ResultCards.won(approvedSum), ResultCards.count(purposeRows.size(), "개 결제 목적")),
-                new ResultCards.Card("총 환불액", ResultCards.won(refundSum), "처리일 기준"),
-                new ResultCards.Card("총 순매출", ResultCards.won(netSum), "승인액 − 환불액"),
-                new ResultCards.Card("최대 매출", winner, "순매출 기준")), now);
-        var datasets = List.of(dsPurposeLabeled, dsWinner, cards);
+        String winner = dsPurposeLabeled.rows().isEmpty() ? "없음" : String.valueOf(
+                dsPurposeLabeled.rows().getFirst().get("purpose_label")
+        );
+        TypedDataset cards = ResultCards.dataset(
+                List.of(
+                        new ResultCards.Card(
+                                "총 승인액",
+                                ResultCards.won(approvedSum),
+                                ResultCards.count(purposeRows.size(), "개 결제 목적")
+                        ),
+                        new ResultCards.Card("총 환불액", ResultCards.won(refundSum), "처리일 기준"),
+                        new ResultCards.Card("총 순매출", ResultCards.won(netSum), "승인액 − 환불액"),
+                        new ResultCards.Card("최대 매출", winner, "순매출 기준")
+                ),
+                now
+        );
+        List<TypedDataset> datasets = List.of(dsPurposeLabeled, dsWinner, cards);
 
-        var view = arranged(new ViewSpec(
+        ViewSpec view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
                         ResultCards.component(),
@@ -1728,7 +2142,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 null // arranged() lays the components out
         ));
 
-        var envelope = buildEnvelope("POC-008", datasets, view, null);
+        ResultEnvelope envelope = buildEnvelope("POC-008", datasets, view, null);
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("purpose_rows", byPurpose.purposeRows());
         summary.put("winner_purpose", byPurpose.winnerPurpose());
@@ -1751,14 +2165,14 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
      * Never selects or exposes {@code work_task.body}.
      */
     public PocExecutionResult executePoc009UrgentTasks(Collection<Long> branchScope) {
-        var today = clock.today();
-        Instant now = clock.asOf();
-        var def = definitions.get(ID_POC_009);
+        OpenStudyClock.KstPeriod today = openStudyClock.today();
+        Instant now = openStudyClock.asOf();
+        AnalysisRegistry.Definition def = definitions.get(ID_POC_009);
         Collection<Long> effectiveBranches = requireBranches(branchScope);
 
-        List<Object[]> branchTuples = entityManager.createQuery(
-                        "SELECT b.id, b.name FROM Branch b WHERE b.id IN :branchIds ORDER BY b.id ASC",
-                        Object[].class)
+        List<Object[]> branchTuples = entityManager.createQuery("""
+                SELECT b.id, b.name FROM Branch b WHERE b.id IN :branchIds ORDER BY b.id ASC
+                """, Object[].class)
                 .setParameter("branchIds", effectiveBranches)
                 .getResultList();
         Map<Long, String> branchNames = new LinkedHashMap<>();
@@ -1766,14 +2180,14 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             branchNames.put(((Number) tuple[0]).longValue(), String.valueOf(tuple[1]));
         }
 
-        List<Object[]> taskTuples = entityManager.createQuery(
-                        "SELECT wt.id, wt.title, wt.branchId, wt.priority, wt.status, wt.dueAt, wt.assigneeEmployeeId "
-                                + "FROM WorkTask wt WHERE wt.branchId IN :branchIds "
-                                + "AND CAST(wt.status AS string) IN ('TODO', 'IN_PROGRESS') "
-                                + "AND CAST(wt.priority AS string) IN ('URGENT', 'HIGH') "
-                                + "AND wt.dueAt IS NOT NULL AND wt.dueAt < :endOfTodayKst "
-                                + "ORDER BY wt.id ASC",
-                        Object[].class)
+        List<Object[]> taskTuples = entityManager.createQuery("""
+                SELECT wt.id, wt.title, wt.branchId, wt.priority, wt.status, wt.dueAt, wt.assigneeEmployeeId \
+                FROM WorkTask wt WHERE wt.branchId IN :branchIds \
+                AND CAST(wt.status AS string) IN ('TODO', 'IN_PROGRESS') \
+                AND CAST(wt.priority AS string) IN ('URGENT', 'HIGH') \
+                AND wt.dueAt IS NOT NULL AND wt.dueAt < :endOfTodayKst \
+                ORDER BY wt.id ASC
+                """, Object[].class)
                 .setParameter("branchIds", effectiveBranches)
                 .setParameter("endOfTodayKst", today.endExclusive())
                 .getResultList();
@@ -1791,9 +2205,11 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             Long assigneeId = tuple[6] == null ? null : ((Number) tuple[6]).longValue();
             String branchName = branchNames.getOrDefault(branchId, "");
 
-            candidates.add(new UrgentTaskCandidate(id, title, branchId, branchName, priority, status, dueAt, assigneeId));
+            candidates.add(
+                    new UrgentTaskCandidate(id, title, branchId, branchName, priority, status, dueAt, assigneeId)
+            );
 
-            var row = new LinkedHashMap<String, Object>();
+            LinkedHashMap<String,Object> row = new LinkedHashMap<String, Object>();
             row.put("id", id);
             row.put("title", title);
             row.put("branch_id", branchId);
@@ -1805,46 +2221,76 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             taskRows.add(row);
         }
 
-        var metaRow = new LinkedHashMap<String, Object>();
+        LinkedHashMap<String,Object> metaRow = new LinkedHashMap<String, Object>();
         metaRow.put("candidate_count", (long) candidates.size());
         metaRow.put("status", "PROVISIONAL_NOT_GOLDEN");
 
-        var dsTasks = new TypedDataset("urgentTasks", def.outputs().get("urgentTasks"), taskRows, taskRows.size(), 0, 20, now, now);
-        var dsMeta = new TypedDataset("taskPolicyMeta", def.outputs().get("taskPolicyMeta"), List.of(metaRow), 1, 0, 1, now, now);
+        TypedDataset dsTasks = new TypedDataset(
+                "urgentTasks",
+                def.outputs().get("urgentTasks"),
+                taskRows,
+                taskRows.size(),
+                0,
+                20,
+                now,
+                now
+        );
+        TypedDataset dsMeta = new TypedDataset(
+                "taskPolicyMeta",
+                def.outputs().get("taskPolicyMeta"),
+                List.of(metaRow),
+                1,
+                0,
+                1,
+                now,
+                now
+        );
         long urgent = taskRows.stream().filter(r -> "URGENT".equals(String.valueOf(r.get("priority")))).count();
         long inProgress = taskRows.stream().filter(r -> "IN_PROGRESS".equals(String.valueOf(r.get("status")))).count();
         long branchCount = taskRows.stream().map(r -> r.get("branch_name")).distinct().count();
-        var cards = ResultCards.dataset(List.of(
+        TypedDataset cards = ResultCards.dataset(List.of(
                 new ResultCards.Card("처리 대상", ResultCards.count(taskRows.size(), "건"), "기한 지남·오늘 마감"),
                 new ResultCards.Card("긴급", ResultCards.count(urgent, "건"), "우선순위 긴급"),
                 new ResultCards.Card("진행 중", ResultCards.count(inProgress, "건"), "상태 기준"),
                 new ResultCards.Card("조회 지점", ResultCards.count(branchCount, "개"), "업무가 있는 지점")), now);
-        var datasets = List.of(dsTasks, dsMeta, cards);
+        List<TypedDataset> datasets = List.of(dsTasks, dsMeta, cards);
 
-        var view = arranged(new ViewSpec(
+        ViewSpec view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
                         ResultCards.component(),
                         ResultCards.panel("taskList", "TASK_LIST", "urgentTasks",
-                                Map.of("columns", List.of("id", "title", "branch_id", "branch_name", "priority", "status", "due_at", "assignee_employee_id")),
+                                Map.of("columns", List.of(
+                                        "id",
+                                        "title",
+                                        "branch_id",
+                                        "branch_name",
+                                        "priority",
+                                        "status",
+                                        "due_at",
+                                        "assignee_employee_id"
+                                )),
                                 "기한이 도래한 미완료 업무 · 우선순위 순", "긴급·높음")
                 ),
                 null // arranged() lays the components out
         ));
 
-        var notice = new OutcomeNotice(
+        OutcomeNotice notice = new OutcomeNotice(
                 "POLICY_PENDING_URGENT_DEFINITION",
                 OutcomeNotice.Kind.CLARIFICATION,
                 "긴급 업무 정렬 및 마감 기한 컷오프 정책 확정 전 후보 목록입니다.",
                 "due_at cutoff, priority weighting, assignee vs branch scope, order 정책 확정 필요"
         );
-        var envelope = buildEnvelope("POC-009", datasets, view, notice);
+        ResultEnvelope envelope = buildEnvelope("POC-009", datasets, view, notice);
 
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("status", "PROVISIONAL_NOT_GOLDEN");
         summary.put("illustrative_due_today_or_earlier_and_high_or_urgent", candidates);
         summary.put("candidate_count", candidates.size());
-        summary.put("needs_decision", List.of("due_at cutoff", "priority weighting", "assignee vs branch scope", "order"));
+        summary.put(
+                "needs_decision",
+                List.of("due_at cutoff", "priority weighting", "assignee vs branch scope", "order")
+        );
 
         return new PocExecutionResult(
                 "POC-009",
@@ -1865,15 +2311,18 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
     }
 
     /** #125: {@code override} is a refinement's period; null keeps the analysis default. */
-    public PocExecutionResult executePoc010WeeklyAttendance(Collection<Long> branchScope, OpenStudyClock.KstPeriod override) {
-        var period = override != null ? override : clock.lastWeek();
-        Instant now = clock.asOf();
-        var def = definitions.get(ID_POC_010);
+    public PocExecutionResult executePoc010WeeklyAttendance(
+            Collection<Long> branchScope,
+            OpenStudyClock.KstPeriod override
+    ) {
+        OpenStudyClock.KstPeriod period = override != null ? override : openStudyClock.lastWeek();
+        Instant now = openStudyClock.asOf();
+        AnalysisRegistry.Definition def = definitions.get(ID_POC_010);
         Collection<Long> effectiveBranches = requireBranches(branchScope);
 
-        List<Object[]> branchTuples = entityManager.createQuery(
-                        "SELECT b.id, b.name FROM Branch b WHERE b.id IN :branchIds ORDER BY b.id ASC",
-                        Object[].class)
+        List<Object[]> branchTuples = entityManager.createQuery("""
+                SELECT b.id, b.name FROM Branch b WHERE b.id IN :branchIds ORDER BY b.id ASC
+                """, Object[].class)
                 .setParameter("branchIds", effectiveBranches)
                 .getResultList();
         Map<Long, String> branchNames = new LinkedHashMap<>();
@@ -1890,12 +2339,12 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             employeeNames.put(((Number) tuple[0]).longValue(), String.valueOf(tuple[1]));
         }
 
-        List<Object[]> recordTuples = entityManager.createQuery(
-                        "SELECT ar.id, ar.employeeId, ar.branchId, ar.clockInAt, ar.clockOutAt "
-                                + "FROM AttendanceRecord ar WHERE ar.branchId IN :branchIds "
-                                + "AND ar.clockInAt >= :startInclusive AND ar.clockInAt < :endExclusive "
-                                + "ORDER BY ar.employeeId ASC, ar.clockInAt ASC",
-                        Object[].class)
+        List<Object[]> recordTuples = entityManager.createQuery("""
+                SELECT ar.id, ar.employeeId, ar.branchId, ar.clockInAt, ar.clockOutAt \
+                FROM AttendanceRecord ar WHERE ar.branchId IN :branchIds \
+                AND ar.clockInAt >= :startInclusive AND ar.clockInAt < :endExclusive \
+                ORDER BY ar.employeeId ASC, ar.clockInAt ASC
+                """, Object[].class)
                 .setParameter("branchIds", effectiveBranches)
                 .setParameter("startInclusive", period.startInclusive())
                 .setParameter("endExclusive", period.endExclusive())
@@ -1909,12 +2358,12 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         Map<Long, Instant[]> originalClocks = new LinkedHashMap<>();
 
         if (!attendanceIds.isEmpty()) {
-            List<Object[]> corrTuples = entityManager.createQuery(
-                            "SELECT ac.attendanceRecordId, CAST(ac.correctionKind AS string), ac.breakId, "
-                                    + "ac.beforeClockInAt, ac.beforeClockOutAt, ac.beforeBreakStartAt, ac.beforeBreakEndAt "
-                                    + "FROM AttendanceCorrection ac WHERE ac.attendanceRecordId IN :attendanceIds "
-                                    + "AND CAST(ac.status AS string) = 'APPROVED' ORDER BY ac.decidedAt ASC, ac.id ASC",
-                            Object[].class)
+            List<Object[]> corrTuples = entityManager.createQuery("""
+                    SELECT ac.attendanceRecordId, CAST(ac.correctionKind AS string), ac.breakId, \
+                    ac.beforeClockInAt, ac.beforeClockOutAt, ac.beforeBreakStartAt, ac.beforeBreakEndAt \
+                    FROM AttendanceCorrection ac WHERE ac.attendanceRecordId IN :attendanceIds \
+                    AND CAST(ac.status AS string) = 'APPROVED' ORDER BY ac.decidedAt ASC, ac.id ASC
+                    """, Object[].class)
                     .setParameter("attendanceIds", attendanceIds)
                     .getResultList();
             Map<Long, Instant[]> originalBreaks = new LinkedHashMap<>();
@@ -1923,14 +2372,17 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 if ("CLOCK".equals(tuple[1])) {
                     originalClocks.putIfAbsent(attId, new Instant[]{(Instant) tuple[3], (Instant) tuple[4]});
                 } else if (tuple[2] != null) {
-                    originalBreaks.putIfAbsent(((Number) tuple[2]).longValue(), new Instant[]{(Instant) tuple[5], (Instant) tuple[6]});
+                    originalBreaks.putIfAbsent(
+                            ((Number) tuple[2]).longValue(),
+                            new Instant[]{(Instant) tuple[5], (Instant) tuple[6]}
+                    );
                 }
             }
 
-            List<Object[]> breakTuples = entityManager.createQuery(
-                            "SELECT ab.id, ab.attendanceId, ab.startedAt, ab.endedAt FROM AttendanceBreak ab "
-                                    + "WHERE ab.attendanceId IN :attendanceIds AND ab.endedAt IS NOT NULL",
-                            Object[].class)
+            List<Object[]> breakTuples = entityManager.createQuery("""
+                    SELECT ab.id, ab.attendanceId, ab.startedAt, ab.endedAt FROM AttendanceBreak ab \
+                    WHERE ab.attendanceId IN :attendanceIds AND ab.endedAt IS NOT NULL
+                    """, Object[].class)
                     .setParameter("attendanceIds", attendanceIds)
                     .getResultList();
             for (Object[] tuple : breakTuples) {
@@ -1939,7 +2391,11 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 Instant[] original = originalBreaks.getOrDefault(((Number) tuple[0]).longValue(), current);
                 currentBreaksByAttendanceId.computeIfAbsent(attId, k -> new ArrayList<>()).add(current);
                 originalBreaksByAttendanceId.computeIfAbsent(attId, k -> new ArrayList<>()).add(new Instant[]{
-                        original[0] != null ? original[0] : current[0], original[1] != null ? original[1] : current[1]});
+                        original[0] != null
+                                ? original[0]
+                                : current[0], original[1] != null
+                                ? original[1]
+                                : current[1]});
             }
         }
 
@@ -1951,16 +2407,18 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             long branchId = ((Number) tuple[2]).longValue();
             Instant clockIn = (Instant) tuple[3];
             Instant clockOut = (Instant) tuple[4];
-            if (clockOut == null) continue;
+            if (clockOut == null) {
+                continue;
+            }
 
             Instant[] original = originalClocks.get(attId);
             Instant rawIn = (original != null && original[0] != null) ? original[0] : clockIn;
             Instant rawOut = (original != null && original[1] != null) ? original[1] : clockOut;
             long rawMins = Duration.between(rawIn, rawOut).toMinutes()
-                    - breakMinutes(originalBreaksByAttendanceId.getOrDefault(attId, List.of()));
+                    - calculateBreakMinutes(originalBreaksByAttendanceId.getOrDefault(attId, List.of()));
 
             long corrMins = Duration.between(clockIn, clockOut).toMinutes()
-                    - breakMinutes(currentBreaksByAttendanceId.getOrDefault(attId, List.of()));
+                    - calculateBreakMinutes(currentBreaksByAttendanceId.getOrDefault(attId, List.of()));
 
             long[] acc = empAcc.computeIfAbsent(empId, k -> new long[]{branchId, 0L, 0L, 0L});
             acc[1] += 1;
@@ -1972,7 +2430,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         List<Map<String, Object>> datasetRows = new ArrayList<>(empAcc.size());
         long totalDelta = 0L;
 
-        for (var entry : empAcc.entrySet()) {
+        for (Map.Entry<Long,long[]> entry : empAcc.entrySet()) {
             long empId = entry.getKey();
             long[] acc = entry.getValue();
             long branchId = acc[0];
@@ -1988,7 +2446,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                     empId, empName, branchId, branchName, shiftDays, rawMins, corrMins, delta
             ));
 
-            var row = new LinkedHashMap<String, Object>();
+            LinkedHashMap<String,Object> row = new LinkedHashMap<String, Object>();
             row.put("employee_id", empId);
             row.put("employee_name", empName);
             row.put("branch_id", branchId);
@@ -2000,25 +2458,47 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             datasetRows.add(row);
         }
 
-        var metaRow = new LinkedHashMap<String, Object>();
+        LinkedHashMap<String,Object> metaRow = new LinkedHashMap<String, Object>();
         metaRow.put("illustrative_correction_delta_minutes", totalDelta);
         metaRow.put("status", "PROVISIONAL_NOT_GOLDEN");
 
-        var dsEmp = new TypedDataset("employeeWorkHours", def.outputs().get("employeeWorkHours"), datasetRows, datasetRows.size(), 0, 20, now, now);
-        var dsMeta = new TypedDataset("attendancePolicyMeta", def.outputs().get("attendancePolicyMeta"), List.of(metaRow), 1, 0, 1, now, now);
-        var dsEmpHours = ResultCards.withColumns(dsEmp, List.of(decimal("work_hours", "시간", 1)),
-                row -> Map.of("work_hours", Math.round(ResultCards.longValue(row.get("raw_work_minutes")) / 6.0) / 10.0));
-        double totalHours = dsEmpHours.rows().stream().mapToDouble(r -> ResultCards.doubleValue(r.get("work_hours"))).sum();
+        TypedDataset dsEmp = new TypedDataset(
+                "employeeWorkHours",
+                def.outputs().get("employeeWorkHours"),
+                datasetRows,
+                datasetRows.size(),
+                0,
+                20,
+                now,
+                now
+        );
+        TypedDataset dsMeta = new TypedDataset(
+                "attendancePolicyMeta",
+                def.outputs().get("attendancePolicyMeta"),
+                List.of(metaRow),
+                1,
+                0,
+                1,
+                now,
+                now
+        );
+        TypedDataset dsEmpHours = ResultCards.withColumns(
+                dsEmp,
+                List.of(toDecimalColumn("work_hours", "시간", 1)),
+                row -> Map.of("work_hours", Math.round(ResultCards.longValue(row.get("raw_work_minutes")) / 6.0) / 10.0)
+        );
+        double totalHours =
+                dsEmpHours.rows().stream().mapToDouble(r -> ResultCards.doubleValue(r.get("work_hours"))).sum();
         long people = dsEmpHours.rows().size();
         long branchCount = dsEmpHours.rows().stream().map(r -> r.get("branch_name")).distinct().count();
-        var cards = ResultCards.dataset(List.of(
+        TypedDataset cards = ResultCards.dataset(List.of(
                 new ResultCards.Card("대상 직원", ResultCards.count(people, "명"), "근무 기록이 있는 직원"),
                 new ResultCards.Card("총 근무시간", ResultCards.hours(totalHours), "실근무 기준"),
                 new ResultCards.Card("평균", ResultCards.hours(people == 0 ? 0.0 : totalHours / people), "1인당"),
                 new ResultCards.Card("조회 지점", ResultCards.count(branchCount, "개"), "소속 지점")), now);
-        var datasets = List.of(dsEmpHours, dsMeta, cards);
+        List<TypedDataset> datasets = List.of(dsEmpHours, dsMeta, cards);
 
-        var view = arranged(new ViewSpec(
+        ViewSpec view = arranged(new ViewSpec(
                 CATALOG_VERSION,
                 List.of(
                         ResultCards.component(),
@@ -2031,13 +2511,13 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 null // arranged() lays the components out
         ));
 
-        var notice = new OutcomeNotice(
+        OutcomeNotice notice = new OutcomeNotice(
                 "POLICY_PENDING_ATTENDANCE_CORRECTION_AGGREGATION",
                 OutcomeNotice.Kind.CLARIFICATION,
                 "근무시간 반올림과 근태 조회 범위 정책 확정 전 비교 수치입니다. 원본은 정정 전, 보정 후는 승인된 정정을 반영한 근태입니다.",
                 "working-hours aggregation rounding, attendance read scope 정책 확정 필요"
         );
-        var envelope = buildEnvelope("POC-010", datasets, view, notice);
+        ResultEnvelope envelope = buildEnvelope("POC-010", datasets, view, notice);
 
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("status", "PROVISIONAL_NOT_GOLDEN");
@@ -2061,7 +2541,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
         );
     }
 
-    private static long breakMinutes(List<Instant[]> breaks) {
+    private static long calculateBreakMinutes(List<Instant[]> breaks) {
         long minutes = 0L;
         for (Instant[] interval : breaks) {
             minutes += Duration.between(interval[0], interval[1]).toMinutes();
@@ -2075,8 +2555,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             ViewSpec rawView,
             OutcomeNotice notice
     ) {
-        var bound = viewBinder.bind(rawView, datasets);
-        var envelope = new ResultEnvelope(
+        ViewBinder.Binding bound = viewBinder.bind(rawView, datasets);
+        ResultEnvelope envelope = new ResultEnvelope(
                 requestIdPrefix + "-" + UUID.randomUUID(),
                 "exec-" + requestIdPrefix,
                 "READY",
@@ -2084,8 +2564,8 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
                 bound.view(),
                 bound.warnings(),
                 null,
-                clock.asOf(),
-                registry.version(),
+                openStudyClock.asOf(),
+                semanticRegistry.version(),
                 "openstudy-policy-v1",
                 List.<FormulaDefinition.Binding>of(),
                 List.<FormulaDefinition.DisplayValues>of(),
@@ -2098,7 +2578,7 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
     @SuppressWarnings("unchecked")
     private Collection<Long> extractBranchScope(UserContext user) {
         if (user == null || user.policyBinding() == null || user.policyBinding().scope() == null) {
-            return salesService.allBranchIds();
+            return salesAggregationService.allBranchIds();
         }
         Object branchIdsObj = user.policyBinding().scope().get("authorizedBranchIds");
         if (branchIdsObj instanceof Collection<?> col && !col.isEmpty()) {
@@ -2112,6 +2592,6 @@ public class OpenStudyAnalyses implements AnalysisExecutor {
             }
             return parsed;
         }
-        return salesService.allBranchIds();
+        return salesAggregationService.allBranchIds();
     }
 }

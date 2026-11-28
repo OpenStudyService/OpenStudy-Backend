@@ -1,12 +1,19 @@
 package com.openstudy.modules.ai.controller;
 
+import com.openstudy.common.export.CsvFile;
+import com.openstudy.common.web.ApiRequestFilter;
 import com.openstudy.modules.ai.service.AiWorkspaceService;
 import com.openstudy.modules.ai.service.OpenStudyPlaybackGateway;
 import com.openstudy.modules.ai.service.OpenStudyUserContextResolver;
+
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -31,36 +38,44 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 public class AiWorkspaceController {
 
-    public record ConversationCreateRequest(String scope, String title) {}
+    public record ConversationCreateRequest(String scope, String title) {
+    }
 
-    public record ConversationQueryRequest(String question, String scope, String clarificationChoice, String actor,
-            String clientRequestKey) {
+    public record ConversationQueryRequest(
+            String question,
+            String scope,
+            String clarificationChoice,
+            String actor,
+            String clientRequestKey
+    ) {
         public ConversationQueryRequest(String question, String scope, String clarificationChoice, String actor) {
             this(question, scope, clarificationChoice, actor, null);
         }
     }
 
-    public record WorkRecordCreateRequest(String executionId, String title, Boolean pinned) {}
+    public record WorkRecordCreateRequest(String executionId, String title, Boolean pinned) {
+    }
 
-    public record EvaluationRunRequest(String suiteId) {}
+    public record EvaluationRunRequest(String suiteId) {
+    }
 
-    private final AiWorkspaceService workspaceService;
-    private final OpenStudyPlaybackGateway playbackGateway;
-    private final OpenStudyUserContextResolver userResolver;
+    private final AiWorkspaceService aiWorkspaceService;
+    private final OpenStudyPlaybackGateway openStudyPlaybackGateway;
+    private final OpenStudyUserContextResolver openStudyUserContextResolver;
 
     public AiWorkspaceController(
             AiWorkspaceService workspaceService,
             OpenStudyPlaybackGateway playbackGateway,
             OpenStudyUserContextResolver userResolver
     ) {
-        this.workspaceService = workspaceService;
-        this.playbackGateway = playbackGateway;
-        this.userResolver = userResolver;
+        this.aiWorkspaceService = workspaceService;
+        this.openStudyPlaybackGateway = playbackGateway;
+        this.openStudyUserContextResolver = userResolver;
     }
 
     @GetMapping("/api/ai/catalog/readiness")
     public Map<String, Object> readiness() {
-        return workspaceService.readiness();
+        return aiWorkspaceService.readiness();
     }
 
     @PostMapping("/api/ai/conversations")
@@ -68,7 +83,7 @@ public class AiWorkspaceController {
             Authentication auth,
             @RequestBody(required = false) ConversationCreateRequest body
     ) {
-        return workspaceService.createConversation(
+        return aiWorkspaceService.createConversation(
                 auth,
                 body == null ? "all" : body.scope(),
                 body == null ? null : body.title()
@@ -78,7 +93,7 @@ public class AiWorkspaceController {
     /** The signed-in employee's saved AI conversations, most recently asked first. */
     @GetMapping("/api/ai/conversations")
     public List<Map<String, Object>> listConversations(Authentication auth) {
-        return workspaceService.listConversations(auth);
+        return aiWorkspaceService.listConversations(auth);
     }
 
     /** Reopens one conversation: saved questions re-run under current permissions and a new as-of time (M10-D12). */
@@ -88,10 +103,11 @@ public class AiWorkspaceController {
             @PathVariable String conversationId,
             @RequestParam(required = false) String scope
     ) {
-        return workspaceService.reopenConversation(auth, conversationId, scope);
+        return aiWorkspaceService.reopenConversation(auth, conversationId, scope);
     }
 
-    public record ConversationRenameRequest(String title) {}
+    public record ConversationRenameRequest(String title) {
+    }
 
     @PatchMapping("/api/ai/conversations/{conversationId}")
     public Map<String, Object> renameConversation(
@@ -99,12 +115,12 @@ public class AiWorkspaceController {
             @PathVariable String conversationId,
             @RequestBody ConversationRenameRequest body
     ) {
-        return workspaceService.renameConversation(auth, conversationId, body == null ? null : body.title());
+        return aiWorkspaceService.renameConversation(auth, conversationId, body == null ? null : body.title());
     }
 
     @DeleteMapping("/api/ai/conversations/{conversationId}")
     public ResponseEntity<Void> deleteConversation(Authentication auth, @PathVariable String conversationId) {
-        workspaceService.deleteConversation(auth, conversationId);
+        aiWorkspaceService.deleteConversation(auth, conversationId);
         return ResponseEntity.noContent().build();
     }
 
@@ -114,8 +130,11 @@ public class AiWorkspaceController {
             @PathVariable String conversationId,
             @RequestBody ConversationQueryRequest body
     ) {
-        var actor = userResolver.resolve(auth, body == null ? null : body.actor());
-        if (!playbackGateway.tryAcquireRateLimit(actor.employeeId())) {
+        OpenStudyUserContextResolver.ResolvedActor actor = openStudyUserContextResolver.resolve(
+                auth,
+                body == null ? null : body.actor()
+        );
+        if (!openStudyPlaybackGateway.tryAcquireRateLimit(actor.employeeId())) {
             return ResponseEntity.status(429)
                     .header(HttpHeaders.RETRY_AFTER, "60")
                     .body(Map.of(
@@ -124,7 +143,7 @@ public class AiWorkspaceController {
                     ));
         }
         try {
-            var request = new AiWorkspaceService.AiQueryRequest(
+            AiWorkspaceService.AiQueryRequest request = new AiWorkspaceService.AiQueryRequest(
                     body == null ? null : body.question(),
                     body == null ? "all" : body.scope(),
                     body == null ? null : body.clarificationChoice(),
@@ -132,7 +151,7 @@ public class AiWorkspaceController {
                     body == null ? null : body.actor(),
                     body == null ? null : body.clientRequestKey()
             );
-            var response = askOnce(auth, request);
+            AiWorkspaceService.AiQueryResponse response = askOnce(auth, request);
             if (response.httpStatus() >= 400) {
                 Map<String, Object> err = new LinkedHashMap<>();
                 err.put("code", response.errorCode() == null ? "REQUEST_FAILED" : response.errorCode());
@@ -149,7 +168,7 @@ public class AiWorkspaceController {
             accepted.put("status", response.status());
             return ResponseEntity.ok(accepted);
         } finally {
-            playbackGateway.releaseRateLimit(actor.employeeId());
+            openStudyPlaybackGateway.releaseRateLimit(actor.employeeId());
         }
     }
 
@@ -158,9 +177,12 @@ public class AiWorkspaceController {
             Authentication auth,
             @RequestBody AiWorkspaceService.AiQueryRequest body
     ) {
-        var actor = userResolver.resolve(auth, body == null ? null : body.actor());
-        if (!playbackGateway.tryAcquireRateLimit(actor.employeeId())) {
-            var rateLimited = new AiWorkspaceService.AiQueryResponse(
+        OpenStudyUserContextResolver.ResolvedActor actor = openStudyUserContextResolver.resolve(
+                auth,
+                body == null ? null : body.actor()
+        );
+        if (!openStudyPlaybackGateway.tryAcquireRateLimit(actor.employeeId())) {
+            AiWorkspaceService.AiQueryResponse rateLimited = new AiWorkspaceService.AiQueryResponse(
                     "req-ratelimited",
                     null,
                     body == null ? null : body.conversationId(),
@@ -183,10 +205,10 @@ public class AiWorkspaceController {
                     .body(rateLimited);
         }
         try {
-            var response = askOnce(auth, body);
+            AiWorkspaceService.AiQueryResponse response = askOnce(auth, body);
             return ResponseEntity.status(response.httpStatus()).body(response);
         } finally {
-            playbackGateway.releaseRateLimit(actor.employeeId());
+            openStudyPlaybackGateway.releaseRateLimit(actor.employeeId());
         }
     }
 
@@ -196,15 +218,15 @@ public class AiWorkspaceController {
      */
     private AiWorkspaceService.AiQueryResponse askOnce(Authentication auth, AiWorkspaceService.AiQueryRequest request) {
         try {
-            return workspaceService.executeQuery(auth, request);
-        } catch (org.springframework.dao.DataIntegrityViolationException duplicate) {
-            return workspaceService.replay(auth, request).orElseThrow(() -> duplicate);
+            return aiWorkspaceService.executeQuery(auth, request);
+        } catch (DataIntegrityViolationException duplicate) {
+            return aiWorkspaceService.replay(auth, request).orElseThrow(() -> duplicate);
         }
     }
 
         @PostMapping("/api/ai/requests/{requestId}/cancel")
     public Map<String, Object> cancelRequest(Authentication auth, @PathVariable String requestId) {
-        return workspaceService.cancelRequest(auth, requestId);
+        return aiWorkspaceService.cancelRequest(auth, requestId);
     }
 
     /** #125: the saved execution run again; the table query pages and sorts one dataset (M15-D04). */
@@ -218,7 +240,7 @@ public class AiWorkspaceController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String direction
     ) {
-        return workspaceService.getExecution(auth, executionId, datasetId, page, size, sort, direction);
+        return aiWorkspaceService.getExecution(auth, executionId, datasetId, page, size, sort, direction);
     }
 
     /** #125: the execution's analysis run again with a changed period, branches or products (M15-D05). */
@@ -228,15 +250,15 @@ public class AiWorkspaceController {
             @PathVariable String executionId,
             @RequestBody(required = false) Map<String, Object> body
     ) {
-        var actor = userResolver.resolve(auth, null);
-        if (!playbackGateway.tryAcquireRateLimit(actor.employeeId())) {
+        OpenStudyUserContextResolver.ResolvedActor actor = openStudyUserContextResolver.resolve(auth, null);
+        if (!openStudyPlaybackGateway.tryAcquireRateLimit(actor.employeeId())) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS);
         }
         try {
             return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store")
-                    .body(workspaceService.refine(auth, executionId, body));
+                    .body(aiWorkspaceService.refine(auth, executionId, body));
         } finally {
-            playbackGateway.releaseRateLimit(actor.employeeId());
+            openStudyPlaybackGateway.releaseRateLimit(actor.employeeId());
         }
     }
 
@@ -244,29 +266,31 @@ public class AiWorkspaceController {
     @GetMapping("/api/ai/executions/{executionId}/export")
     public ResponseEntity<byte[]> exportExecution(
             Authentication auth,
-            jakarta.servlet.http.HttpServletRequest request,
+            HttpServletRequest request,
             @PathVariable String executionId,
             @RequestParam(required = false) String datasetId
     ) {
-        var actor = userResolver.resolve(auth, null);
-        if (!playbackGateway.tryAcquireRateLimit(actor.employeeId())) {
+        OpenStudyUserContextResolver.ResolvedActor actor = openStudyUserContextResolver.resolve(auth, null);
+        if (!openStudyPlaybackGateway.tryAcquireRateLimit(actor.employeeId())) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS);
         }
         try {
-            java.time.Instant createdAt = java.time.Instant.now();
-            var export = workspaceService.exportExecution(auth, executionId, datasetId,
-                    com.openstudy.common.web.ApiRequestFilter.requestId(request));
-            return com.openstudy.common.export.CsvFile.response(export.name(), createdAt,
-                    com.openstudy.common.export.CsvFile.write(export.table(), createdAt));
+            Instant createdAt = Instant.now();
+            AiWorkspaceService.Export export = aiWorkspaceService.exportExecution(auth, executionId, datasetId,
+                    ApiRequestFilter.requestId(request));
+            return CsvFile.response(export.name(), createdAt,
+                    CsvFile.write(export.table(), createdAt));
         } finally {
-            playbackGateway.releaseRateLimit(actor.employeeId());
+            openStudyPlaybackGateway.releaseRateLimit(actor.employeeId());
         }
     }
 
     /** #125: the employee's own questions of the last 30 days, newest 20 (M15-D01). */
     @GetMapping("/api/ai/recent-queries")
     public ResponseEntity<Map<String, Object>> recentQueries(Authentication auth) {
-        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store").body(workspaceService.recentQueries(auth));
+        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store").body(
+                aiWorkspaceService.recentQueries(auth)
+        );
     }
 
     // =========================================================================
@@ -275,7 +299,7 @@ public class AiWorkspaceController {
 
     @GetMapping("/api/ai/records")
     public List<Map<String, Object>> listWorkRecords(Authentication auth) {
-        return workspaceService.listWorkRecords(auth);
+        return aiWorkspaceService.listWorkRecords(auth);
     }
 
     @PostMapping("/api/ai/records")
@@ -283,7 +307,7 @@ public class AiWorkspaceController {
             Authentication auth,
             @RequestBody WorkRecordCreateRequest body
     ) {
-        return workspaceService.createWorkRecord(
+        return aiWorkspaceService.createWorkRecord(
                 auth,
                 body == null ? null : body.executionId(),
                 body == null ? null : body.title(),
@@ -293,7 +317,7 @@ public class AiWorkspaceController {
 
     @GetMapping("/api/ai/records/{recordId}")
     public Map<String, Object> getWorkRecord(Authentication auth, @PathVariable String recordId) {
-        return workspaceService.getWorkRecord(auth, recordId);
+        return aiWorkspaceService.getWorkRecord(auth, recordId);
     }
 
     // =========================================================================
@@ -302,12 +326,12 @@ public class AiWorkspaceController {
 
     @GetMapping("/api/ai/traces")
     public List<Map<String, Object>> listTraces(Authentication auth) {
-        return workspaceService.listTraces(auth);
+        return aiWorkspaceService.listTraces(auth);
     }
 
     @GetMapping("/api/ai/traces/{traceId}")
     public Map<String, Object> getTrace(Authentication auth, @PathVariable String traceId) {
-        return workspaceService.getTrace(auth, traceId);
+        return aiWorkspaceService.getTrace(auth, traceId);
     }
 
     // =========================================================================
@@ -316,7 +340,7 @@ public class AiWorkspaceController {
 
     @GetMapping("/api/ai/evaluation/suites")
     public List<Map<String, Object>> listEvaluationSuites() {
-        return workspaceService.listEvaluationSuites();
+        return aiWorkspaceService.listEvaluationSuites();
     }
 
     @PostMapping("/api/ai/evaluation/run")
@@ -324,6 +348,6 @@ public class AiWorkspaceController {
             Authentication auth,
             @RequestBody(required = false) EvaluationRunRequest body
     ) {
-        return workspaceService.runEvaluationSuite(auth, body == null ? "ALL" : body.suiteId());
+        return aiWorkspaceService.runEvaluationSuite(auth, body == null ? "ALL" : body.suiteId());
     }
 }

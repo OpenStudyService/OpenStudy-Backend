@@ -10,6 +10,7 @@ import java.util.Map;
  * here is not guessed: the question goes on to clarification or "not supported" as before.
  */
 public final class QuestionNormalizer {
+
     /**
      * Reviewed replacements, applied in order to the question without spaces. Every entry has a case in
      * QuestionNormalizerUnitTests; adding one goes through code review (M15-D03). Words that are also branch or place names
@@ -34,13 +35,20 @@ public final class QuestionNormalizer {
         REPLACEMENTS.put("스터디롬", "스터디룸");
     }
 
-    private QuestionNormalizer() {}
+    private QuestionNormalizer() {
+    }
 
     /** The question without whitespace, ASCII letters upper-cased, with the reviewed replacements applied. */
     public static String key(String question) {
-        if (question == null) return "";
+        if (question == null) {
+            return "";
+        }
+
         String key = question.replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
-        for (var replacement : REPLACEMENTS.entrySet()) key = key.replace(replacement.getKey(), replacement.getValue());
+        for (Map.Entry<String,String> replacement : REPLACEMENTS.entrySet()) {
+            key = key.replace(replacement.getKey(), replacement.getValue());
+        }
+
         return key;
     }
 

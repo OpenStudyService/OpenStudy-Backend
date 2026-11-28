@@ -19,17 +19,21 @@ import com.openstudy.domainlens.query.RetrievalService;
 import com.openstudy.domainlens.query.Retriever;
 import com.openstudy.domainlens.query.ViewBinder;
 import com.openstudy.domainlens.security.PolicyEngine;
+
 import jakarta.persistence.EntityManagerFactory;
+
 import com.openstudy.domainlens.api.ir.QuerySpec;
 import com.openstudy.domainlens.api.ir.ResultEnvelope;
 import com.openstudy.domainlens.api.ir.TypedDataset;
 import com.openstudy.domainlens.api.ir.ViewSpec;
 import com.openstudy.domainlens.api.spi.UserContext;
 import com.openstudy.domainlens.api.work.Cancellation;
+
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -42,24 +46,35 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class OpenStudyQueryPipelineFactory {
+
     private final EntityManagerFactory entityManagerFactory;
-    private final SemanticRegistry registry;
-    private final PolicyEngine policies;
-    private final OpenStudyClock clock;
-    private final OpenStudyAnalyses analyses;
+    private final SemanticRegistry semanticRegistry;
+    private final PolicyEngine policyEngine;
+    private final OpenStudyClock openStudyClock;
+    private final OpenStudyAnalyses openStudyAnalyses;
     private final Retriever retriever;
     private final EmbeddingIndex embeddingIndex;
-    private final OpenStudyIntentAnalyzer intents;
+    private final OpenStudyIntentAnalyzer openStudyIntentAnalyzer;
 
     /** The pipeline over a fresh, activated catalog snapshot. */
     public QueryPipeline create(ModelGateway gateway) {
-        var validator = new IrValidator(registry, policies, clock.normalizer(), analyses);
-        var planner = new JoinPlanner(registry, policies, analyses);
-        var executor = new JpaQueryExecutor(entityManagerFactory, registry, policies, validator);
-        var binder = new ViewBinder(ComponentCatalog.openStudyDefault());
-        return new QueryPipeline(gateway, validator, planner, executor, binder, clock, registry,
+        IrValidator validator = new IrValidator(
+                semanticRegistry,
+                policyEngine,
+                openStudyClock.normalizer(),
+                openStudyAnalyses
+        );
+        JoinPlanner planner = new JoinPlanner(semanticRegistry, policyEngine, openStudyAnalyses);
+        JpaQueryExecutor executor = new JpaQueryExecutor(
+                entityManagerFactory,
+                semanticRegistry,
+                policyEngine,
+                validator
+        );
+        ViewBinder binder = new ViewBinder(ComponentCatalog.openStudyDefault());
+        return new QueryPipeline(gateway, validator, planner, executor, binder, openStudyClock, semanticRegistry,
                 OpenStudyPolicies.POLICY_VERSION, activate(binder), PromptExamples.empty(), PromptLimits.defaults())
-                .grounding(intents);
+                .grounding(openStudyIntentAnalyzer);
     }
 
     /**
@@ -67,33 +82,61 @@ public class OpenStudyQueryPipelineFactory {
      * requester's current policies (branch scope, sales grant) before JPA runs it, and the saved view is bound again.
      */
     public ResultEnvelope execute(List<QuerySpec> queries, ViewSpec view, UserContext user) {
-        var validator = new IrValidator(registry, policies, clock.normalizer(), analyses);
-        var planner = new JoinPlanner(registry, policies, analyses);
-        var executor = new JpaQueryExecutor(entityManagerFactory, registry, policies, validator);
-        var binder = new ViewBinder(ComponentCatalog.openStudyDefault());
-        var datasets = new ArrayList<TypedDataset>();
-        var cancellation = new Cancellation();
-        Instant asOf = clock.asOf();
+        IrValidator validator = new IrValidator(
+                semanticRegistry,
+                policyEngine,
+                openStudyClock.normalizer(),
+                openStudyAnalyses
+        );
+        JoinPlanner planner = new JoinPlanner(semanticRegistry, policyEngine, openStudyAnalyses);
+        JpaQueryExecutor executor = new JpaQueryExecutor(
+                entityManagerFactory,
+                semanticRegistry,
+                policyEngine,
+                validator
+        );
+        ViewBinder binder = new ViewBinder(ComponentCatalog.openStudyDefault());
+        ArrayList<TypedDataset> datasets = new ArrayList<TypedDataset>();
+        Cancellation cancellation = new Cancellation();
+        Instant asOf = openStudyClock.asOf();
         Instant snapshot = Instant.now();
-        for (var query : queries) {
+        for (QuerySpec query : queries) {
             validator.query(query, user);
             datasets.addAll(executor.executeAll(planner.plan(query, user, asOf, snapshot), user, cancellation));
         }
-        var binding = binder.bind(view, datasets);
-        return new ResultEnvelope(UUID.randomUUID().toString(), UUID.randomUUID().toString(), "COMPLETED", datasets,
-                binding.view(), binding.warnings(), null, asOf, registry.version(), OpenStudyPolicies.POLICY_VERSION);
+        ViewBinder.Binding binding = binder.bind(view, datasets);
+        return new ResultEnvelope(
+                UUID.randomUUID().toString(),
+                UUID.randomUUID().toString(),
+                "COMPLETED",
+                datasets,
+                binding.view(),
+                binding.warnings(),
+                null,
+                asOf,
+                semanticRegistry.version(),
+                OpenStudyPolicies.POLICY_VERSION
+        );
     }
 
     /** Permission-first semantic retrieval feeding the pipeline's prompt context. */
     public RetrievalService retrieval() {
         QuestionNormalizer normalizer = (ask, user) -> ask;
-        return new RetrievalService(normalizer, retriever, new ContextGate(registry), TraceSpanCollector.NOOP);
+        return new RetrievalService(normalizer, retriever, new ContextGate(semanticRegistry), TraceSpanCollector.NOOP);
     }
 
     private CatalogActivation activate(ViewBinder binder) {
-        var activation = new CatalogActivation();
-        var status = activation.activate(registry, embeddingIndex, OpenStudyPolicies.POLICY_VERSION, binder.catalog(), clock,
-                OpenStudyCatalogConfiguration.metricImplementations(), List.of(), () -> true);
+        CatalogActivation activation = new CatalogActivation();
+        CatalogActivation.Status status = activation.activate(
+                semanticRegistry,
+                embeddingIndex,
+                OpenStudyPolicies.POLICY_VERSION,
+                binder.catalog(),
+                openStudyClock,
+                OpenStudyCatalogConfiguration.metricImplementations(),
+                List.of(),
+                () -> true
+        );
         if (!status.ready()) {
             throw new IllegalStateException("DomainLens catalog is not ready: " + status.checks());
         }
